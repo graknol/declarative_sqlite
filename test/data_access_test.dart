@@ -323,15 +323,17 @@ void main() {
 
         expect(metadata.tableName, equals('users'));
         expect(metadata.primaryKeyColumn, equals('id'));
-        expect(metadata.columns, hasLength(6));
-        expect(metadata.requiredColumns, containsAll(['username', 'email']));
-        expect(metadata.uniqueColumns, contains('username'));
+        expect(metadata.columns, hasLength(8)); // Now includes systemId and systemVersion
+        expect(metadata.requiredColumns, containsAll(['username', 'email'])); // systemId/systemVersion are auto-populated
+        expect(metadata.uniqueColumns, containsAll(['username', 'systemId'])); // systemId is unique
         expect(metadata.indices, containsAll(['idx_username', 'idx_email']));
 
         // Test helper methods
         expect(metadata.isColumnRequired('username'), isTrue);
         expect(metadata.isColumnRequired('full_name'), isFalse);
+        expect(metadata.isColumnRequired('systemId'), isFalse); // Auto-populated, not user-required
         expect(metadata.isColumnUnique('username'), isTrue);
+        expect(metadata.isColumnUnique('systemId'), isTrue);
         expect(metadata.isColumnUnique('email'), isFalse);
         expect(metadata.isColumnPrimaryKey('id'), isTrue);
         expect(metadata.isColumnPrimaryKey('username'), isFalse);
@@ -341,6 +343,8 @@ void main() {
         expect(metadata.getColumnType('username'), equals(SqliteDataType.text));
         expect(metadata.getColumnType('age'), equals(SqliteDataType.integer));
         expect(metadata.getColumnType('balance'), equals(SqliteDataType.real));
+        expect(metadata.getColumnType('systemId'), equals(SqliteDataType.text));
+        expect(metadata.getColumnType('systemVersion'), equals(SqliteDataType.text));
       });
 
       test('can get metadata for different tables', () async {
@@ -348,8 +352,8 @@ void main() {
 
         expect(postsMetadata.tableName, equals('posts'));
         expect(postsMetadata.primaryKeyColumn, equals('id'));
-        expect(postsMetadata.requiredColumns, containsAll(['title', 'user_id']));
-        expect(postsMetadata.uniqueColumns, isEmpty);
+        expect(postsMetadata.requiredColumns, containsAll(['title', 'user_id'])); // systemId/systemVersion excluded
+        expect(postsMetadata.uniqueColumns, contains('systemId')); // Only systemId is unique
         expect(postsMetadata.indices, containsAll(['idx_user_id', 'idx_title_user']));
       });
     });

@@ -13,12 +13,19 @@ enum SqliteDataType {
   text('TEXT'),
   
   /// BLOB affinity for binary data
-  blob('BLOB');
+  blob('BLOB'),
+  
+  /// Date type stored as TEXT in ISO8601 format (like Oracle's DATE)
+  /// Automatically handles encoding/decoding between DateTime and ISO8601 string
+  date('TEXT');
 
   const SqliteDataType(this.sqlName);
   
   /// The SQL type name as it appears in CREATE TABLE statements
   final String sqlName;
+  
+  /// Whether this type requires special encoding/decoding
+  bool get requiresEncoding => this == date;
   
   @override
   String toString() => sqlName;
@@ -42,4 +49,18 @@ enum ConstraintType {
   
   @override
   String toString() => sqlName;
+}
+
+/// System metacolumn names that are automatically added to all tables
+class SystemColumns {
+  static const String systemId = 'systemId';
+  static const String systemVersion = 'systemVersion';
+  
+  /// List of all system column names
+  static const List<String> all = [systemId, systemVersion];
+  
+  /// Checks if a column name is a reserved system column
+  static bool isSystemColumn(String columnName) {
+    return all.contains(columnName);
+  }
 }

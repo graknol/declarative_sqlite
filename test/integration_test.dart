@@ -6,6 +6,7 @@ void main() {
   group('SchemaMigrator Integration Tests', () {
     late Database database;
     late SchemaMigrator migrator;
+    late DataAccess dataAccess;
 
     setUpAll(() {
       // Initialize sqflite_ffi for testing
@@ -45,10 +46,10 @@ void main() {
 
       // Verify table structure
       final columns = await database.rawQuery('PRAGMA table_info(users)');
-      expect(columns, hasLength(4));
+      expect(columns, hasLength(6)); // Now includes systemId and systemVersion
       
       final columnNames = columns.map((c) => c['name']).toList();
-      expect(columnNames, containsAll(['id', 'name', 'email', 'age']));
+      expect(columnNames, containsAll(['systemId', 'systemVersion', 'id', 'name', 'email', 'age']));
     });
 
     test('can create indices during migration', () async {
@@ -122,8 +123,11 @@ void main() {
 
       await migrator.migrate(database, schema);
 
-      // Insert test data
-      await database.insert('test_data', {
+      // Create DataAccess for this schema
+      dataAccess = DataAccess(database: database, schema: schema);
+
+      // Insert test data using DataAccess
+      await dataAccess.insert('test_data', {
         'message': 'Hello, World!',
         'value': 42,
       });
@@ -145,8 +149,11 @@ void main() {
 
       await migrator.migrate(database, initialSchema);
 
-      // Insert some initial data
-      await database.insert('users', {'name': 'John Doe', 'email': 'john@example.com'});
+      // Create DataAccess for initial schema
+      dataAccess = DataAccess(database: database, schema: initialSchema);
+
+      // Insert some initial data using DataAccess
+      await dataAccess.insert('users', {'name': 'John Doe', 'email': 'john@example.com'});
 
       // Now add index to the schema (on existing column)
       final extendedSchema = SchemaBuilder()
@@ -187,14 +194,17 @@ void main() {
 
       await migrator.migrate(database, v1Schema);
 
-      // Add some data to v1 schema
-      await database.insert('users', {
+      // Create DataAccess for v1 schema
+      dataAccess = DataAccess(database: database, schema: v1Schema);
+
+      // Add some data to v1 schema using DataAccess
+      final userId = await dataAccess.insert('users', {
         'username': 'alice',
         'email': 'alice@example.com',
       });
-      await database.insert('posts', {
+      await dataAccess.insert('posts', {
         'title': 'My First Post',
-        'user_id': 1,
+        'user_id': userId,
       });
 
       // Evolve schema - add new table and indices
@@ -220,6 +230,9 @@ void main() {
 
       await migrator.migrate(database, v2Schema);
 
+      // Update DataAccess for v2 schema
+      dataAccess = DataAccess(database: database, schema: v2Schema);
+
       // Verify all tables exist
       final tables = await database.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
@@ -244,8 +257,8 @@ void main() {
       expect(postData, hasLength(1));
       expect(postData.first['title'], equals('My First Post'));
 
-      // Verify new table can accept data
-      await database.insert('comments', {
+      // Verify new table can accept data using DataAccess
+      await dataAccess.insert('comments', {
         'content': 'Great post!',
         'post_id': 1,
         'user_id': 1,
@@ -266,9 +279,12 @@ void main() {
 
       await migrator.migrate(database, originalSchema);
 
-      // Insert test data
-      await database.insert('products', {'name': 'Widget', 'price': 19.99});
-      await database.insert('products', {'name': 'Gadget', 'price': 29.99});
+      // Create DataAccess for original schema
+      dataAccess = DataAccess(database: database, schema: originalSchema);
+
+      // Insert test data using DataAccess
+      await dataAccess.insert('products', {'name': 'Widget', 'price': 19.99});
+      await dataAccess.insert('products', {'name': 'Gadget', 'price': 29.99});
 
       // Modify schema to add indices and validate data preservation
       final updatedSchema = SchemaBuilder()
