@@ -16,6 +16,76 @@ void main() {
       expect(schema.hasTable('nonexistent'), isFalse);
     });
 
+    test('can create schema with views', () {
+      final schema = SchemaBuilder()
+          .table('users', (table) => table
+              .autoIncrementPrimaryKey('id')
+              .text('username', (col) => col.notNull())
+              .text('email', (col) => col.unique())
+              .integer('active', (col) => col.withDefaultValue(1)))
+          .addView(ViewBuilder.simple('active_users', 'users', 'active = 1'))
+          .view('user_summary', (name) => ViewBuilder.withColumns(name, 'users', ['id', 'username', 'email']));
+
+      expect(schema.tableCount, equals(1));
+      expect(schema.viewCount, equals(2));
+      expect(schema.totalCount, equals(3));
+      expect(schema.hasTable('users'), isTrue);
+      expect(schema.hasView('active_users'), isTrue);
+      expect(schema.hasView('user_summary'), isTrue);
+      expect(schema.viewNames, containsAll(['active_users', 'user_summary']));
+      expect(schema.allNames, containsAll(['users', 'active_users', 'user_summary']));
+    });
+
+    test('can generate SQL for schema with views', () {
+      final schema = SchemaBuilder()
+          .table('users', (table) => table
+              .autoIncrementPrimaryKey('id')
+              .text('name', (col) => col.notNull()))
+          .addView(ViewBuilder.simple('all_users', 'users'));
+
+      final statements = schema.toSqlStatements();
+      expect(statements.length, greaterThan(1));
+      
+      // Should have CREATE TABLE statement
+      expect(statements.any((stmt) => stmt.contains('CREATE TABLE users')), isTrue);
+      // Should have CREATE VIEW statement
+      expect(statements.any((stmt) => stmt.contains('CREATE VIEW all_users AS')), isTrue);
+      
+      // Views should come after tables in the statements
+      final tableIndex = statements.indexWhere((stmt) => stmt.contains('CREATE TABLE'));
+      final viewIndex = statements.indexWhere((stmt) => stmt.contains('CREATE VIEW'));
+      expect(tableIndex, lessThan(viewIndex));
+    });
+
+    test('prevents duplicate view names', () {
+      expect(() {
+        SchemaBuilder()
+            .addView(ViewBuilder.simple('duplicate', 'users'))
+            .addView(ViewBuilder.simple('duplicate', 'posts'));
+      }, throwsArgumentError);
+    });
+
+    test('prevents view names conflicting with table names', () {
+      expect(() {
+        SchemaBuilder()
+            .table('users', (table) => table.text('name'))
+            .addView(ViewBuilder.simple('users', 'posts'));
+      }, throwsArgumentError);
+    });
+
+    test('can create a simple schema', () {
+      final schema = SchemaBuilder()
+          .table('users', (table) => table
+              .autoIncrementPrimaryKey('id')
+              .text('name', (col) => col.notNull())
+              .text('email', (col) => col.unique()));
+
+      expect(schema.tableCount, equals(1));
+      expect(schema.tableNames, contains('users'));
+      expect(schema.hasTable('users'), isTrue);
+      expect(schema.hasTable('nonexistent'), isFalse);
+    });
+
     test('can generate SQL for table creation', () {
       final table = TableBuilder('test_table')
           .integer('id', (col) => col.primaryKey())

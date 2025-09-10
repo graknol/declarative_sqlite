@@ -3,9 +3,9 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 // import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() async {
-  print('=== Declarative SQLite Example ===\n');
+  print('=== Declarative SQLite with Views Example ===\n');
   
-  // Define a comprehensive database schema
+  // Define a comprehensive database schema with views
   final schema = SchemaBuilder()
       .table('users', (table) => table
           .autoIncrementPrimaryKey('id')
@@ -14,6 +14,7 @@ void main() async {
           .text('full_name')
           .integer('age', (col) => col.withDefaultValue(0))
           .real('balance', (col) => col.withDefaultValue(0.0))
+          .integer('active', (col) => col.withDefaultValue(1))
           .index('idx_username', ['username'])
           .index('idx_email', ['email']))
       .table('posts', (table) => table
@@ -22,150 +23,207 @@ void main() async {
           .text('content')
           .integer('user_id', (col) => col.notNull())
           .integer('likes', (col) => col.withDefaultValue(0))
+          .integer('published', (col) => col.withDefaultValue(0))
+          .text('created_at', (col) => col.notNull())
           .index('idx_user_id', ['user_id'])
           .index('idx_title_user', ['title', 'user_id'], unique: true))
       .table('categories', (table) => table
           .autoIncrementPrimaryKey('id')
           .text('name', (col) => col.notNull().unique())
-          .text('description')
-          .blob('icon_data')
-          .index('idx_name', ['name']));
+          .text('description'))
+      .table('post_categories', (table) => table
+          .autoIncrementPrimaryKey('id')
+          .integer('post_id', (col) => col.notNull())
+          .integer('category_id', (col) => col.notNull())
+          .index('idx_post_category', ['post_id', 'category_id'], unique: true))
+      
+      // Add various types of views using the new unified API
+      
+      // Simple filtered view - new way
+      .addView(ViewBuilder.create('active_users')
+          .fromTable('users', whereCondition: 'active = 1'))
+      
+      // View with specific columns and aliases - new way  
+      .addView(ViewBuilder.create('user_summary').fromTable('users', expressions: [
+        ExpressionBuilder.column('id'),
+        ExpressionBuilder.column('username').as('name'),
+        ExpressionBuilder.function('UPPER', ['email']).as('email_upper'),
+        ExpressionBuilder.literal('Member').as('user_type'),
+      ]))
+      
+      // Aggregated view with user statistics - new way
+      .addView(ViewBuilder.create('user_stats').fromQuery((query) =>
+        query.select([
+          Expressions.count.as('total_users'),
+          Expressions.avg('age').as('average_age'),
+          Expressions.min('age').as('youngest_user'),
+          Expressions.max('age').as('oldest_user'),
+          Expressions.sum('balance').as('total_balance'),
+        ]).from('users')))
+      
+      // View with GROUP BY for department statistics - new way
+      .addView(ViewBuilder.create('users_by_age_group').fromQuery((query) =>
+        query.select([
+            ExpressionBuilder.raw('CASE WHEN age < 25 THEN "Young" WHEN age < 50 THEN "Middle" ELSE "Senior" END').as('age_group'),
+            Expressions.count.as('user_count'),
+            Expressions.avg('balance').as('avg_balance'),
+          ])
+          .from('users')
+          .where('active = 1')
+          .groupBy(['CASE WHEN age < 25 THEN "Young" WHEN age < 50 THEN "Middle" ELSE "Senior" END'])
+          .having('COUNT(*) > 0')
+          .orderByColumn('user_count', true)
+      ))
+      
+      // View with INNER JOIN - new way
+      .addView(ViewBuilder.create('user_posts').fromQuery((query) =>
+        query.select([
+            ExpressionBuilder.qualifiedColumn('users', 'username'),
+            ExpressionBuilder.qualifiedColumn('users', 'email'),
+            ExpressionBuilder.qualifiedColumn('posts', 'title'),
+            ExpressionBuilder.qualifiedColumn('posts', 'likes'),
+            ExpressionBuilder.qualifiedColumn('posts', 'created_at'),
+          ])
+          .from('users')
+          .innerJoin('posts', 'users.id = posts.user_id')
+      ))
+      
+      // Complex view with multiple joins and conditions - new way
+      .addView(ViewBuilder.create('published_posts_with_categories').fromQuery((query) =>
+        query
+          .select([
+            ExpressionBuilder.qualifiedColumn('u', 'username').as('author'),
+            ExpressionBuilder.qualifiedColumn('p', 'title'),
+            ExpressionBuilder.qualifiedColumn('p', 'likes'),
+            ExpressionBuilder.qualifiedColumn('c', 'name').as('category'),
+            ExpressionBuilder.qualifiedColumn('p', 'created_at'),
+          ])
+          .from('users', 'u')
+          .innerJoin('posts', 'u.id = p.user_id', 'p')
+          .leftJoin('post_categories', 'p.id = pc.post_id', 'pc')
+          .leftJoin('categories', 'pc.category_id = c.id', 'c')
+          .where('u.active = 1 AND p.published = 1')
+          .orderByColumn('p.created_at', true)
+      ))
+      
+      // View with aggregation and joins for user posting statistics - new way
+      .addView(ViewBuilder.create('user_posting_stats').fromQuery((query) =>
+        query
+          .select([
+            ExpressionBuilder.qualifiedColumn('u', 'username'),
+            ExpressionBuilder.qualifiedColumn('u', 'email'),
+            Expressions.count.as('total_posts'),
+            Expressions.sum('p.likes').as('total_likes'),
+            Expressions.avg('p.likes').as('avg_likes_per_post'),
+            Expressions.max('p.created_at').as('latest_post_date'),
+          ])
+          .from('users', 'u')
+          .leftJoin('posts', 'u.id = p.user_id', 'p')
+          .where('u.active = 1')
+          .groupBy(['u.id', 'u.username', 'u.email'])
+          .having('COUNT(p.id) > 0')
+          .orderByColumn('total_likes', true)
+      ))
+      
+      // Popular posts view (posts with more than average likes) - new way
+      .addView(ViewBuilder.create('popular_posts').fromSql('''
+        SELECT p.title, p.content, p.likes, u.username as author
+        FROM posts p
+        INNER JOIN users u ON p.user_id = u.id
+        WHERE p.likes > (SELECT AVG(likes) FROM posts)
+        ORDER BY p.likes DESC
+      '''))
+      
+      // Recent activity view using raw SQL with subquery - new way
+      .addView(ViewBuilder.create('recent_activity').fromSql('''
+        SELECT 
+          'post' as activity_type,
+          u.username,
+          p.title as description,
+          p.created_at
+        FROM posts p
+        INNER JOIN users u ON p.user_id = u.id
+        WHERE p.created_at > datetime('now', '-30 days')
+        ORDER BY p.created_at DESC
+        LIMIT 50
+      '''));
 
-  print('Generated SQL Schema:');
+  // Display schema information
+  print('📊 Schema Summary:');
+  print('Tables: ${schema.tableCount}');
+  print('Views: ${schema.viewCount}');
+  print('Total objects: ${schema.totalCount}');
+  print('\nTable names: ${schema.tableNames.join(', ')}');
+  print('View names: ${schema.viewNames.join(', ')}');
+  
+  print('\n' + '='*60);
+  print('🗄️  Generated SQL Schema:');
+  print('='*60);
   print(schema.toSqlScript());
   
-  print('\n=== Schema Information ===');
-  print('Tables: ${schema.tableNames.join(', ')}');
-  print('Total tables: ${schema.tableCount}');
-
-  // Show table details
-  for (final tableName in schema.tableNames) {
-    final table = schema.getTable(tableName)!;
-    print('\nTable: $tableName');
-    print('  Columns: ${table.columns.map((c) => '${c.name} (${c.dataType})').join(', ')}');
-    print('  Indices: ${table.indices.map((i) => i.name).join(', ')}');
-  }
-
-  print('\n=== Data Access Layer Example ===');
-  print('The DataAccess layer provides type-safe database operations:');
+  print('\n' + '='*60);
+  print('📋 Individual View Examples:');
+  print('='*60);
   
-  // Show example usage (commented out since we don't have a real database here)
-  print('''
-// Initialize database and apply schema
-final database = await openDatabase('example.db');
-final migrator = SchemaMigrator();
-await migrator.migrate(database, schema);
-
-// Create data access layer
-final dataAccess = DataAccess(database: database, schema: schema);
-
-// Insert a user
-final userId = await dataAccess.insert('users', {
-  'username': 'alice',
-  'email': 'alice@example.com',
-  'full_name': 'Alice Smith',
-  'age': 30,
-  'balance': 150.75,
-});
-
-// Get user by primary key
-final user = await dataAccess.getByPrimaryKey('users', userId);
-print('User: \${user?['full_name']}');
-
-// Update specific columns
-await dataAccess.updateByPrimaryKey('users', userId, {
-  'age': 31,
-  'balance': 200.0,
-});
-
-// Get all users with conditions
-final youngUsers = await dataAccess.getAllWhere('users', 
-    where: 'age < ?', 
-    whereArgs: [25],
-    orderBy: 'username');
-
-// Count users
-final totalUsers = await dataAccess.count('users');
-
-// Insert a post
-final postId = await dataAccess.insert('posts', {
-  'title': 'My First Post',
-  'content': 'This is an amazing post about declarative SQLite!',
-  'user_id': userId,
-  'likes': 5,
-});
-
-// Get table metadata
-final metadata = dataAccess.getTableMetadata('users');
-print('Primary key: \${metadata.primaryKeyColumn}');
-print('Required columns: \${metadata.requiredColumns}');
-print('Unique columns: \${metadata.uniqueColumns}');
-
-// Check if user exists
-final exists = await dataAccess.existsByPrimaryKey('users', userId);
-
-// Bulk load large datasets efficiently
-final userData = [
-  {
-    'username': 'bob',
-    'email': 'bob@example.com',
-    'full_name': 'Bob Johnson',
-    'age': 25,
-    'balance': 75.50,
-  },
-  {
-    'username': 'charlie',
-    'email': 'charlie@example.com',
-    'full_name': 'Charlie Brown',
-    'age': 35,
-    'balance': 300.0,
-    'extra_field': 'ignored', // Extra fields are automatically filtered
-  },
-  {
-    'username': 'diana',
-    'email': 'diana@example.com',
-    'full_name': 'Diana Prince',
-    // Missing optional fields are handled gracefully
-  },
-];
-
-final bulkResult = await dataAccess.bulkLoad('users', userData, options: BulkLoadOptions(
-  batchSize: 1000,         // Process in batches of 1000 rows
-  allowPartialData: true,  // Skip invalid rows instead of failing
-  validateData: true,      // Validate against schema constraints
-  collectErrors: true,     // Collect error details for debugging
-));
-
-print('Bulk load result:');
-print('Processed: \${bulkResult.rowsProcessed}');
-print('Inserted: \${bulkResult.rowsInserted}');
-print('Skipped: \${bulkResult.rowsSkipped}');
-if (bulkResult.errors.isNotEmpty) {
-  print('Errors: \${bulkResult.errors}');
-}''');
-
-  print('\n=== Bulk Loading Features ===');
-  print('The DataAccess layer supports efficient bulk loading:');
-  print('• Automatic column filtering (extra columns ignored)');
-  print('• Handles missing optional columns gracefully');
-  print('• Batch processing for optimal performance');
-  print('• Flexible error handling and validation');
-  print('• Support for large datasets (tested with 5000+ rows)');
-  print('• Transaction-based for data consistency');
-
-  print('\n=== Migration Features ===');
-  print('The migrator supports:');
-  print('• Creating new tables and indices');
-  print('• Adding indices to existing tables');  
-  print('• Validation of schema integrity');
-  print('• Migration planning and preview');
+  // Show some specific view examples
+  final activeUsersView = schema.getView('active_users')!;
+  print('\n1. Simple Filtered View:');
+  print(activeUsersView.toSql());
   
-  print('\n=== Key Benefits ===');
-  print('✓ Type-safe schema definition');
-  print('✓ Automatic migration handling');
-  print('✓ Built-in constraint validation');
-  print('✓ Comprehensive CRUD operations');
-  print('✓ Primary key and condition-based queries');
-  print('✓ Metadata-driven operations');
-  print('✓ Efficient bulk data loading with flexible validation');
+  final userSummaryView = schema.getView('user_summary')!;
+  print('\n2. View with Expressions and Aliases:');
+  print(userSummaryView.toSql());
+  
+  final joinedView = schema.getView('published_posts_with_categories')!;
+  print('\n3. Complex View with Multiple Joins:');
+  print(joinedView.toSql());
+  
+  final aggregateView = schema.getView('user_posting_stats')!;
+  print('\n4. View with Aggregation and GROUP BY:');
+  print(aggregateView.toSql());
+  
+  print('\n' + '='*60);
+  print('✨ View Features Demonstrated:');
+  print('='*60);
+  print('✅ Simple table filtering with WHERE conditions');
+  print('✅ Column selection and aliasing'); 
+  print('✅ Expression building with functions (UPPER, COUNT, etc.)');
+  print('✅ Various JOIN types (INNER, LEFT, RIGHT, etc.)');
+  print('✅ Complex WHERE clauses with AND/OR conditions');
+  print('✅ GROUP BY and HAVING clauses');
+  print('✅ ORDER BY with ASC/DESC');
+  print('✅ LIMIT and OFFSET for pagination');
+  print('✅ Subqueries and raw SQL for complex cases');
+  print('✅ Aggregate functions (COUNT, SUM, AVG, MIN, MAX)');
+  print('✅ Qualified column references (table.column)');
+  print('✅ Integration with schema builder and migrations');
+  
+  /*
+  // To use with an actual database (uncomment and add sqflite_common_ffi dependency):
+  
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+  
+  final database = await openDatabase(inMemoryDatabasePath);
+  final migrator = SchemaMigrator();
+  
+  print('\n🔄 Applying schema to database...');
+  await migrator.migrate(database, schema);
+  print('✅ Schema applied successfully!');
+  
+  // Create data access layer
+  final dataAccess = DataAccess(database: database, schema: schema);
+  
+  // Insert sample data
+  await dataAccess.insert('users', {
+    'username': 'alice',
+    'email': 'alice@example.com', 
+    'age': 28,
+    'active': 1,
+  });
+  
+  // Query views would work like regular tables
+  final activeUsers = await database.rawQuery('SELECT * FROM active_users');
+  print('\nActive users: $activeUsers');
+  */
 }
