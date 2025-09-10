@@ -8,13 +8,13 @@ void main() {
           .text('name', (col) => col.notNull())
           .text('email', (col) => col.unique())
           .integer('age')
-          .index('idx_email', 'email'))
+          .index('idx_email', ['email']))
       .table('posts', (table) => table
           .autoIncrementPrimaryKey('id')
           .text('title', (col) => col.notNull())
           .text('content')
           .integer('user_id', (col) => col.notNull())
-          .index('idx_user_id', 'user_id'));
+          .index('idx_user_id', ['user_id']));
 
   print('Generated SQL Schema:');
   print(schema.toSqlScript());

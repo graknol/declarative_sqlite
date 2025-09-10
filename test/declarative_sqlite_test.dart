@@ -33,7 +33,7 @@ void main() {
       final table = TableBuilder('users')
           .autoIncrementPrimaryKey('id')
           .text('email', (col) => col.unique())
-          .index('idx_email', 'email');
+          .index('idx_email', ['email']);
 
       final indexSql = table.indexSqlStatements();
       expect(indexSql, hasLength(1));
@@ -58,7 +58,7 @@ void main() {
       final table = TableBuilder('users')
           .text('first_name')
           .text('last_name')
-          .compositeIndex('idx_full_name', ['first_name', 'last_name'], unique: true);
+          .index('idx_full_name', ['first_name', 'last_name'], unique: true);
 
       final indexSql = table.indexSqlStatements();
       expect(indexSql.first, contains('CREATE UNIQUE INDEX idx_full_name ON users (first_name, last_name)'));

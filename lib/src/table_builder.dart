@@ -102,17 +102,8 @@ class TableBuilder {
     );
   }
 
-  /// Creates a single-column index on this table
-  TableBuilder index(String indexName, String columnName, {bool unique = false}) {
-    var indexBuilder = IndexBuilder.single(indexName, name, columnName);
-    if (unique) {
-      indexBuilder = indexBuilder.makeUnique();
-    }
-    return addIndex(indexBuilder);
-  }
-
-  /// Creates a composite index on this table
-  TableBuilder compositeIndex(String indexName, List<String> columnNames, {bool unique = false}) {
+  /// Creates an index on this table with one or more columns
+  TableBuilder index(String indexName, List<String> columnNames, {bool unique = false}) {
     var indexBuilder = IndexBuilder(indexName, name, columnNames);
     if (unique) {
       indexBuilder = indexBuilder.makeUnique();

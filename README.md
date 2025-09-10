@@ -43,8 +43,8 @@ final schema = SchemaBuilder()
         .text('title', (col) => col.notNull())
         .text('content')
         .integer('user_id', (col) => col.notNull())
-        .index('idx_user_id', 'user_id')
-        .compositeIndex('idx_title_user', ['title', 'user_id'], unique: true));
+        .index('idx_user_id', ['user_id'])
+        .index('idx_title_user', ['title', 'user_id'], unique: true));
 ```
 
 ### Applying Schema to Database
@@ -95,9 +95,9 @@ final table = TableBuilder('posts')
     .text('category')
     .integer('user_id')
     // Single column index
-    .index('idx_user_id', 'user_id')
+    .index('idx_user_id', ['user_id'])
     // Composite unique index
-    .compositeIndex('idx_title_category', ['title', 'category'], unique: true);
+    .index('idx_title_category', ['title', 'category'], unique: true);
 ```
 
 ### Migration Planning
@@ -153,8 +153,7 @@ Builder for defining table structure.
 - `text(String name, [configure])` - Add TEXT column
 - `blob(String name, [configure])` - Add BLOB column
 - `autoIncrementPrimaryKey(String name)` - Add auto-increment primary key
-- `index(String name, String column, {bool unique})` - Add single-column index
-- `compositeIndex(String name, List<String> columns, {bool unique})` - Add composite index
+- `index(String name, List<String> columns, {bool unique})` - Add single-column or composite index
 
 ### ColumnBuilder
 

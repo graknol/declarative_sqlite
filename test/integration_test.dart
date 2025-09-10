@@ -57,8 +57,8 @@ void main() {
               .autoIncrementPrimaryKey('id')
               .text('title', (col) => col.notNull())
               .integer('user_id')
-              .index('idx_user_id', 'user_id')
-              .compositeIndex('idx_title_user', ['title', 'user_id'], unique: true));
+              .index('idx_user_id', ['user_id'])
+              .index('idx_title_user', ['title', 'user_id'], unique: true));
 
       await migrator.migrate(database, schema);
 
@@ -75,7 +75,7 @@ void main() {
           .table('users', (table) => table
               .autoIncrementPrimaryKey('id')
               .text('name')
-              .index('idx_name', 'name'));
+              .index('idx_name', ['name']));
 
       final plan = await migrator.planMigration(database, schema);
       
@@ -92,7 +92,7 @@ void main() {
           .table('existing_table', (table) => table
               .autoIncrementPrimaryKey('id')
               .text('name')
-              .index('new_index', 'name'));
+              .index('new_index', ['name']));
 
       // Migration should not fail and should add the missing index
       await migrator.migrate(database, schema);
