@@ -226,6 +226,126 @@ class DataAccess {
     return count > 0;
   }
 
+  /// Efficiently loads a large dataset into a table using bulk operations.
+  /// 
+  /// This method uses database transactions and batch inserts for optimal performance.
+  /// It automatically handles cases where the dataset has more or fewer columns
+  /// than the database table, filtering appropriately based on the schema.
+  /// 
+  /// [tableName] The name of the table to load data into
+  /// [dataset] List of maps representing rows to insert
+  /// [options] Configuration options for the bulk load operation
+  /// 
+  /// Returns [BulkLoadResult] with statistics about the operation.
+  /// 
+  /// Throws [ArgumentError] if required columns are missing from the dataset
+  /// when no default values are defined.
+  Future<BulkLoadResult> bulkLoad(
+    String tableName,
+    List<Map<String, dynamic>> dataset, {
+    BulkLoadOptions options = const BulkLoadOptions(),
+  }) async {
+    if (dataset.isEmpty) {
+      return BulkLoadResult(
+        rowsProcessed: 0,
+        rowsInserted: 0,
+        rowsSkipped: 0,
+        errors: const [],
+      );
+    }
+    
+    final table = _getTableOrThrow(tableName);
+    final metadata = getTableMetadata(tableName);
+    
+    // Analyze dataset columns vs table columns
+    final datasetColumns = dataset.first.keys.toSet();
+    final tableColumns = metadata.columns.keys.toSet();
+    final validColumns = datasetColumns.intersection(tableColumns);
+    
+    final errors = <String>[];
+    var rowsProcessed = 0;
+    var rowsInserted = 0;
+    var rowsSkipped = 0;
+    
+    // Pre-validate that required columns can be satisfied
+    final missingRequiredColumns = metadata.requiredColumns.toSet()
+        .difference(validColumns);
+    
+    if (missingRequiredColumns.isNotEmpty && !options.allowPartialData) {
+      throw ArgumentError(
+        'Required columns are missing from dataset: ${missingRequiredColumns.join(', ')}. '
+        'Set allowPartialData to true to skip rows missing required columns.'
+      );
+    }
+    
+    await database.transaction((txn) async {
+      final batchSize = options.batchSize;
+      
+      for (var i = 0; i < dataset.length; i += batchSize) {
+        final batch = txn.batch();
+        final endIndex = (i + batchSize < dataset.length) ? i + batchSize : dataset.length;
+        
+        for (var j = i; j < endIndex; j++) {
+          final row = dataset[j];
+          rowsProcessed++;
+          
+          try {
+            // Filter row to only include valid table columns
+            final filteredRow = <String, dynamic>{};
+            for (final column in validColumns) {
+              if (row.containsKey(column)) {
+                filteredRow[column] = row[column];
+              }
+            }
+            
+            // Check if required columns are satisfied for this specific row
+            final rowMissingRequired = metadata.requiredColumns.toSet()
+                .difference(filteredRow.keys.toSet());
+            
+            if (rowMissingRequired.isNotEmpty) {
+              if (options.allowPartialData) {
+                rowsSkipped++;
+                if (options.collectErrors) {
+                  errors.add('Row $j: Missing required columns: ${rowMissingRequired.join(', ')}');
+                }
+                continue;
+              } else {
+                throw ArgumentError('Row $j: Missing required columns: ${rowMissingRequired.join(', ')}');
+              }
+            }
+            
+            // Validate the filtered row data if validation is enabled
+            if (options.validateData) {
+              _validateInsertValues(table, filteredRow);
+            }
+            
+            batch.insert(tableName, filteredRow);
+            rowsInserted++;
+            
+          } catch (e) {
+            if (options.allowPartialData) {
+              rowsSkipped++;
+              if (options.collectErrors) {
+                errors.add('Row $j: ${e.toString()}');
+              }
+            } else {
+              rethrow;
+            }
+          }
+        }
+        
+        await batch.commit(noResult: true);
+      }
+    });
+    
+    return BulkLoadResult(
+      rowsProcessed: rowsProcessed,
+      rowsInserted: rowsInserted,
+      rowsSkipped: rowsSkipped,
+      errors: errors,
+    );
+  }
+
   /// Gets metadata about a table from the schema.
   /// 
   /// [tableName] The name of the table
@@ -371,4 +491,64 @@ class TableMetadata {
 /// Extension to add firstOrNull helper method
 extension FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+/// Configuration options for bulk loading operations.
+@immutable
+class BulkLoadOptions {
+  const BulkLoadOptions({
+    this.batchSize = 1000,
+    this.allowPartialData = false,
+    this.validateData = true,
+    this.collectErrors = false,
+  });
+
+  /// Number of rows to insert in each batch (default: 1000)
+  final int batchSize;
+  
+  /// Whether to continue processing if some rows fail validation (default: false)
+  /// When true, invalid rows are skipped and reported in the result.
+  final bool allowPartialData;
+  
+  /// Whether to validate data against schema constraints (default: true)
+  final bool validateData;
+  
+  /// Whether to collect error messages for failed rows (default: false)
+  /// Only relevant when allowPartialData is true.
+  final bool collectErrors;
+}
+
+/// Result information from a bulk load operation.
+@immutable
+class BulkLoadResult {
+  const BulkLoadResult({
+    required this.rowsProcessed,
+    required this.rowsInserted,
+    required this.rowsSkipped,
+    required this.errors,
+  });
+
+  /// Total number of rows processed from the dataset
+  final int rowsProcessed;
+  
+  /// Number of rows successfully inserted
+  final int rowsInserted;
+  
+  /// Number of rows skipped due to validation errors
+  final int rowsSkipped;
+  
+  /// List of error messages for failed rows (if collectErrors was enabled)
+  final List<String> errors;
+  
+  /// Whether the bulk load operation was completely successful
+  bool get isComplete => rowsSkipped == 0;
+  
+  /// Whether the bulk load operation had any insertions
+  bool get hasInsertions => rowsInserted > 0;
+  
+  @override
+  String toString() {
+    return 'BulkLoadResult(processed: $rowsProcessed, inserted: $rowsInserted, '
+           'skipped: $rowsSkipped, errors: ${errors.length})';
+  }
 }

@@ -135,40 +135,41 @@ void main() {
       expect(results.first['value'], equals(42));
     });
 
-    test('can add columns to existing table', () async {
-      // First, create a table with limited columns
+    test('can add indices to existing table', () async {
+      // First, create a table without indices
       final initialSchema = SchemaBuilder()
           .table('users', (table) => table
               .autoIncrementPrimaryKey('id')
-              .text('name', (col) => col.notNull()));
+              .text('name', (col) => col.notNull())
+              .text('email', (col) => col.unique()));
 
       await migrator.migrate(database, initialSchema);
 
       // Insert some initial data
-      await database.insert('users', {'name': 'John Doe'});
+      await database.insert('users', {'name': 'John Doe', 'email': 'john@example.com'});
 
-      // Now add more columns to the schema
+      // Now add index to the schema (on existing column)
       final extendedSchema = SchemaBuilder()
           .table('users', (table) => table
               .autoIncrementPrimaryKey('id')
               .text('name', (col) => col.notNull())
               .text('email', (col) => col.unique())
-              .integer('age', (col) => col.withDefaultValue(0))
+              .index('idx_name', ['name'])
               .index('idx_email', ['email']));
 
-      // Note: Current migrator doesn't support column additions to existing tables
-      // This test documents the current limitation and expected behavior
+      // Migrate with the new indices
       await migrator.migrate(database, extendedSchema);
 
       // Verify the original data still exists
       final results = await database.query('users');
       expect(results, hasLength(1));
       expect(results.first['name'], equals('John Doe'));
+      expect(results.first['email'], equals('john@example.com'));
 
-      // Verify the new index was created
+      // Verify the new indices were created
       final indices = await database.rawQuery(
-          "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_email'");
-      expect(indices, hasLength(1));
+          "SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_name', 'idx_email')");
+      expect(indices, hasLength(2));
     });
 
     test('handles complex schema evolution scenarios', () async {

@@ -103,7 +103,55 @@ print('Unique columns: \${metadata.uniqueColumns}');
 
 // Check if user exists
 final exists = await dataAccess.existsByPrimaryKey('users', userId);
-''');
+
+// Bulk load large datasets efficiently
+final userData = [
+  {
+    'username': 'bob',
+    'email': 'bob@example.com',
+    'full_name': 'Bob Johnson',
+    'age': 25,
+    'balance': 75.50,
+  },
+  {
+    'username': 'charlie',
+    'email': 'charlie@example.com',
+    'full_name': 'Charlie Brown',
+    'age': 35,
+    'balance': 300.0,
+    'extra_field': 'ignored', // Extra fields are automatically filtered
+  },
+  {
+    'username': 'diana',
+    'email': 'diana@example.com',
+    'full_name': 'Diana Prince',
+    // Missing optional fields are handled gracefully
+  },
+];
+
+final bulkResult = await dataAccess.bulkLoad('users', userData, options: BulkLoadOptions(
+  batchSize: 1000,         // Process in batches of 1000 rows
+  allowPartialData: true,  // Skip invalid rows instead of failing
+  validateData: true,      // Validate against schema constraints
+  collectErrors: true,     // Collect error details for debugging
+));
+
+print('Bulk load result:');
+print('Processed: \${bulkResult.rowsProcessed}');
+print('Inserted: \${bulkResult.rowsInserted}');
+print('Skipped: \${bulkResult.rowsSkipped}');
+if (bulkResult.errors.isNotEmpty) {
+  print('Errors: \${bulkResult.errors}');
+}''');
+
+  print('\n=== Bulk Loading Features ===');
+  print('The DataAccess layer supports efficient bulk loading:');
+  print('• Automatic column filtering (extra columns ignored)');
+  print('• Handles missing optional columns gracefully');
+  print('• Batch processing for optimal performance');
+  print('• Flexible error handling and validation');
+  print('• Support for large datasets (tested with 5000+ rows)');
+  print('• Transaction-based for data consistency');
 
   print('\n=== Migration Features ===');
   print('The migrator supports:');
@@ -119,4 +167,5 @@ final exists = await dataAccess.existsByPrimaryKey('users', userId);
   print('✓ Comprehensive CRUD operations');
   print('✓ Primary key and condition-based queries');
   print('✓ Metadata-driven operations');
+  print('✓ Efficient bulk data loading with flexible validation');
 }

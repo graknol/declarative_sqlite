@@ -6,6 +6,8 @@ A Dart package for declaratively creating SQLite tables and automatically migrat
 
 - **Declarative Schema Definition**: Use a fluent builder pattern to define your database schema
 - **Automatic Migration**: Create missing tables and indices automatically
+- **Data Access Abstraction**: Type-safe CRUD operations with schema metadata integration
+- **Bulk Data Loading**: Efficiently load large datasets with flexible validation and error handling
 - **SQLite Data Types**: Full support for SQLite affinities (INTEGER, REAL, TEXT, BLOB)
 - **Constraints**: Support for Primary Key, Unique, and Not Null constraints
 - **Indices**: Single-column and composite indices with unique option
@@ -131,6 +133,137 @@ if (errors.isNotEmpty) {
 } else {
     await migrator.migrate(database, schema);
 }
+```
+
+## Data Access Layer
+
+The library includes a comprehensive data access abstraction layer that provides type-safe database operations using your schema metadata.
+
+### Basic CRUD Operations
+
+```dart
+// Create data access layer
+final dataAccess = DataAccess(database: database, schema: schema);
+
+// Insert a new record
+final userId = await dataAccess.insert('users', {
+  'name': 'Alice Smith',
+  'email': 'alice@example.com',
+  'age': 30,
+  'balance': 150.75,
+});
+
+// Get a record by primary key
+final user = await dataAccess.getByPrimaryKey('users', userId);
+print('User: ${user?['name']}');
+
+// Update specific columns by primary key
+await dataAccess.updateByPrimaryKey('users', userId, {
+  'age': 31,
+  'balance': 200.0,
+});
+
+// Delete a record by primary key
+await dataAccess.deleteByPrimaryKey('users', userId);
+```
+
+### Query Operations
+
+```dart
+// Get all records
+final allUsers = await dataAccess.getAll('users', orderBy: 'name');
+
+// Get records with conditions
+final youngUsers = await dataAccess.getAllWhere('users',
+    where: 'age < ?',
+    whereArgs: [25],
+    orderBy: 'name',
+    limit: 10);
+
+// Count records
+final userCount = await dataAccess.count('users');
+final activeCount = await dataAccess.count('users', 
+    where: 'balance > ?', 
+    whereArgs: [0]);
+
+// Check if record exists
+final exists = await dataAccess.existsByPrimaryKey('users', userId);
+```
+
+### Bulk Operations
+
+```dart
+// Update multiple records
+final updatedRows = await dataAccess.updateWhere('users',
+    {'status': 'active'},
+    where: 'balance > ?',
+    whereArgs: [0]);
+
+// Delete multiple records
+final deletedRows = await dataAccess.deleteWhere('users',
+    where: 'age < ?',
+    whereArgs: [18]);
+```
+
+### Bulk Data Loading
+
+Efficiently load large datasets with automatic column filtering and validation:
+
+```dart
+final dataset = [
+  {
+    'name': 'John Doe',
+    'email': 'john@example.com',
+    'age': 25,
+    'balance': 100.0,
+  },
+  {
+    'name': 'Jane Smith',
+    'email': 'jane@example.com',
+    'age': 30,
+    'extra_field': 'ignored', // Extra columns are automatically filtered
+  },
+  // ... thousands more records
+];
+
+final result = await dataAccess.bulkLoad('users', dataset, options: BulkLoadOptions(
+  batchSize: 1000,         // Process in batches of 1000 rows
+  allowPartialData: true,  // Skip invalid rows instead of failing
+  validateData: true,      // Validate against schema constraints
+  collectErrors: true,     // Collect error details for debugging
+));
+
+print('Bulk load result:');
+print('Processed: ${result.rowsProcessed}');
+print('Inserted: ${result.rowsInserted}');
+print('Skipped: ${result.rowsSkipped}');
+if (result.errors.isNotEmpty) {
+  print('Errors: ${result.errors}');
+}
+```
+
+The bulk loader automatically handles:
+- **Column Filtering**: Extra columns in the dataset are ignored
+- **Missing Columns**: Optional columns can be missing from individual rows
+- **Validation**: Schema constraints are enforced (can be disabled for performance)
+- **Error Handling**: Failed rows can be skipped with detailed error reporting
+- **Performance**: Transaction-based batch processing for large datasets
+
+### Schema Metadata
+
+Access table structure information programmatically:
+
+```dart
+final metadata = dataAccess.getTableMetadata('users');
+print('Primary key: ${metadata.primaryKeyColumn}');
+print('Required columns: ${metadata.requiredColumns}');
+print('Unique columns: ${metadata.uniqueColumns}');
+print('All columns: ${metadata.columns.keys}');
+
+// Check column properties
+print('Is email required? ${metadata.isColumnRequired('email')}');
+print('Is email unique? ${metadata.isColumnUnique('email')}');
+print('Email data type: ${metadata.getColumnType('email')}');
 ```
 
 ## API Reference

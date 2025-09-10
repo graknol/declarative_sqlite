@@ -433,4 +433,346 @@ void main() {
       });
     });
   });
+
+  group('Bulk Loading Operations', () {
+    late Database database;
+    late SchemaBuilder schema;
+    late DataAccess dataAccess;
+
+    setUpAll(() {
+      // Initialize sqflite_ffi for testing
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    });
+
+    setUp(() async {
+      database = await openDatabase(inMemoryDatabasePath);
+      
+      // Create schema for bulk loading tests
+      schema = SchemaBuilder()
+        .table('products', (table) => table
+            .autoIncrementPrimaryKey('id')
+            .text('name', (col) => col.notNull())
+            .text('description')
+            .real('price', (col) => col.notNull())
+            .integer('stock', (col) => col.withDefaultValue(0))
+            .text('category', (col) => col.notNull())
+            .index('idx_category', ['category'])
+            .index('idx_name', ['name']))
+        .table('users', (table) => table
+            .autoIncrementPrimaryKey('id')
+            .text('email', (col) => col.unique().notNull())
+            .text('name', (col) => col.notNull())
+            .integer('age')
+            .text('city'));
+
+      final migrator = SchemaMigrator();
+      await migrator.migrate(database, schema);
+      
+      dataAccess = DataAccess(database: database, schema: schema);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('can bulk load dataset with matching columns', () async {
+      final dataset = [
+        {
+          'name': 'Laptop',
+          'description': 'Gaming laptop',
+          'price': 999.99,
+          'stock': 10,
+          'category': 'Electronics'
+        },
+        {
+          'name': 'Mouse',
+          'description': 'Wireless mouse',
+          'price': 29.99,
+          'stock': 50,
+          'category': 'Electronics'
+        },
+        {
+          'name': 'Desk',
+          'description': 'Standing desk',
+          'price': 199.99,
+          'stock': 5,
+          'category': 'Furniture'
+        },
+      ];
+
+      final result = await dataAccess.bulkLoad('products', dataset);
+      
+      expect(result.rowsProcessed, equals(3));
+      expect(result.rowsInserted, equals(3));
+      expect(result.rowsSkipped, equals(0));
+      expect(result.isComplete, isTrue);
+      expect(result.hasInsertions, isTrue);
+      
+      // Verify data was inserted correctly
+      final products = await dataAccess.getAll('products');
+      expect(products, hasLength(3));
+      expect(products.first['name'], equals('Laptop'));
+      expect(products.last['name'], equals('Desk'));
+    });
+
+    test('can handle dataset with extra columns', () async {
+      final dataset = [
+        {
+          'name': 'Book',
+          'description': 'Programming book',
+          'price': 39.99,
+          'category': 'Books',
+          'isbn': '978-0123456789', // Extra column not in table
+          'pages': 500, // Extra column not in table
+          'author': 'John Doe', // Extra column not in table
+        },
+        {
+          'name': 'Pen',
+          'price': 4.99,
+          'category': 'Stationery',
+          'color': 'Blue', // Extra column not in table
+        },
+      ];
+
+      final result = await dataAccess.bulkLoad('products', dataset);
+      
+      expect(result.rowsProcessed, equals(2));
+      expect(result.rowsInserted, equals(2));
+      expect(result.rowsSkipped, equals(0));
+      expect(result.isComplete, isTrue);
+      
+      // Verify data was inserted correctly (extra columns ignored)
+      final products = await dataAccess.getAll('products');
+      expect(products, hasLength(2));
+      expect(products.first['name'], equals('Book'));
+      expect(products.first['price'], equals(39.99));
+      expect(products.first['stock'], equals(0)); // Default value
+      expect(products.first.containsKey('isbn'), isFalse); // Extra column ignored
+    });
+
+    test('can handle dataset with missing optional columns', () async {
+      final dataset = [
+        {
+          'name': 'Chair',
+          'price': 89.99,
+          'category': 'Furniture',
+          // missing description and stock (optional columns)
+        },
+        {
+          'name': 'Table',
+          'price': 149.99,
+          'category': 'Furniture',
+          'description': 'Wooden table',
+          // missing stock (optional with default)
+        },
+      ];
+
+      final result = await dataAccess.bulkLoad('products', dataset);
+      
+      expect(result.rowsProcessed, equals(2));
+      expect(result.rowsInserted, equals(2));
+      expect(result.rowsSkipped, equals(0));
+      
+      final products = await dataAccess.getAll('products');
+      expect(products, hasLength(2));
+      expect(products.first['description'], isNull);
+      expect(products.first['stock'], equals(0)); // Default value
+      expect(products.last['stock'], equals(0)); // Default value
+    });
+
+    test('throws error for missing required columns by default', () async {
+      final dataset = [
+        {
+          'name': 'Incomplete Product',
+          'price': 9.99,
+          // missing required 'category' column
+        },
+      ];
+
+      expect(
+        () => dataAccess.bulkLoad('products', dataset),
+        throwsA(isA<ArgumentError>().having(
+          (e) => e.message,
+          'message',
+          contains('Required columns are missing')
+        ))
+      );
+    });
+
+    test('can skip rows with missing required columns when allowed', () async {
+      final dataset = [
+        {
+          'name': 'Valid Product',
+          'price': 19.99,
+          'category': 'Valid'
+        },
+        {
+          'name': 'Invalid Product',
+          'price': 9.99,
+          // missing required 'category' column
+        },
+        {
+          'name': 'Another Valid Product',
+          'price': 29.99,
+          'category': 'Valid'
+        },
+      ];
+
+      final result = await dataAccess.bulkLoad(
+        'products',
+        dataset,
+        options: const BulkLoadOptions(
+          allowPartialData: true,
+          collectErrors: true,
+        ),
+      );
+      
+      expect(result.rowsProcessed, equals(3));
+      expect(result.rowsInserted, equals(2));
+      expect(result.rowsSkipped, equals(1));
+      expect(result.isComplete, isFalse);
+      expect(result.hasInsertions, isTrue);
+      expect(result.errors, hasLength(1));
+      expect(result.errors.first, contains('Missing required columns'));
+      
+      final products = await dataAccess.getAll('products');
+      expect(products, hasLength(2));
+      expect(products.every((p) => p['category'] == 'Valid'), isTrue);
+    });
+
+    test('can use custom batch size', () async {
+      final dataset = List.generate(10, (i) => {
+        'name': 'Product $i',
+        'price': (i + 1) * 10.0,
+        'category': 'Test',
+      });
+
+      final result = await dataAccess.bulkLoad(
+        'products',
+        dataset,
+        options: const BulkLoadOptions(batchSize: 3),
+      );
+      
+      expect(result.rowsProcessed, equals(10));
+      expect(result.rowsInserted, equals(10));
+      expect(result.rowsSkipped, equals(0));
+      
+      final products = await dataAccess.getAll('products');
+      expect(products, hasLength(10));
+    });
+
+    test('returns empty result for empty dataset', () async {
+      final result = await dataAccess.bulkLoad('products', []);
+      
+      expect(result.rowsProcessed, equals(0));
+      expect(result.rowsInserted, equals(0));
+      expect(result.rowsSkipped, equals(0));
+      expect(result.isComplete, isTrue);
+      expect(result.hasInsertions, isFalse);
+    });
+
+    test('works with large datasets efficiently', () async {
+      // Generate a moderately large dataset
+      final dataset = List.generate(5000, (i) => {
+        'name': 'Product $i',
+        'description': 'Description for product $i',
+        'price': (i % 100 + 1) * 1.99,
+        'stock': i % 50,
+        'category': 'Category ${i % 10}',
+      });
+
+      final stopwatch = Stopwatch()..start();
+      final result = await dataAccess.bulkLoad('products', dataset);
+      stopwatch.stop();
+      
+      expect(result.rowsProcessed, equals(5000));
+      expect(result.rowsInserted, equals(5000));
+      expect(result.rowsSkipped, equals(0));
+      expect(result.isComplete, isTrue);
+      
+      // Verify performance (should complete reasonably quickly)
+      expect(stopwatch.elapsedMilliseconds, lessThan(5000)); // Less than 5 seconds
+      
+      // Spot check some data
+      final count = await dataAccess.count('products');
+      expect(count, equals(5000));
+      
+      final product = await dataAccess.getByPrimaryKey('products', 1);
+      expect(product!['name'], equals('Product 0'));
+    });
+
+    test('validates data when validation is enabled', () async {
+      final dataset = [
+        {
+          'name': 'Valid Product',
+          'price': 19.99,
+          'category': 'Valid',
+        },
+      ];
+
+      // First test that validation works for invalid column existence
+      final invalidDataset = [
+        {
+          'name': 'Product',
+          'price': 19.99, 
+          'category': 'Valid',
+          'description': null, // Valid column with null value - should work
+        },
+      ];
+
+      // This should work - null is allowed for optional columns
+      final result = await dataAccess.bulkLoad(
+        'products',
+        invalidDataset,
+        options: const BulkLoadOptions(validateData: true),
+      );
+      
+      expect(result.rowsProcessed, equals(1));
+      expect(result.rowsInserted, equals(1));
+      expect(result.rowsSkipped, equals(0));
+      
+      // Test validation with missing required columns causes error
+      final missingRequiredDataset = [
+        {
+          'name': 'Product',
+          'price': 19.99,
+          // missing required 'category'
+        },
+      ];
+
+      expect(
+        () => dataAccess.bulkLoad(
+          'products',
+          missingRequiredDataset,
+          options: const BulkLoadOptions(validateData: true),
+        ),
+        throwsA(isA<ArgumentError>().having(
+          (e) => e.message,
+          'message',
+          contains('Required columns are missing from dataset')
+        ))
+      );
+    });
+
+    test('skips validation when disabled', () async {
+      final dataset = [
+        {
+          'name': 'Product',
+          'price': 19.99,
+          'category': 'Valid',
+        },
+      ];
+
+      final result = await dataAccess.bulkLoad(
+        'products',
+        dataset,
+        options: const BulkLoadOptions(validateData: false),
+      );
+      
+      expect(result.rowsProcessed, equals(1));
+      expect(result.rowsInserted, equals(1));
+      expect(result.rowsSkipped, equals(0));
+    });
+  });
 }
