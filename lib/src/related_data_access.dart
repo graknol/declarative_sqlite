@@ -125,12 +125,15 @@ class RelatedDataAccess extends DataAccess {
     for (final relationship in parentRelationships) {
       switch (relationship.onDelete) {
         case CascadeAction.cascade:
-          // Get all child records
-          final children = await getRelated(relationship.name, primaryKeyValue);
+          // Get all child records using the transaction
+          final childResults = await txn.rawQuery(
+            'SELECT * FROM ${relationship.childTable} WHERE ${relationship.getChildWhereCondition()}',
+            [primaryKeyValue],
+          );
           
           // Recursively delete each child and its descendants
-          for (final child in children) {
-            final childPrimaryKey = _extractPrimaryKeyValue(relationship.childTable, child);
+          for (final childRow in childResults) {
+            final childPrimaryKey = _extractPrimaryKeyValue(relationship.childTable, childRow);
             if (childPrimaryKey != null) {
               totalDeleted += await _deleteWithChildrenRecursive(
                 txn, relationship.childTable, childPrimaryKey, force, Set.from(visitedTables)
@@ -141,13 +144,34 @@ class RelatedDataAccess extends DataAccess {
 
         case CascadeAction.restrict:
           if (!force) {
-            // Check if any children exist
-            final children = await getRelated(relationship.name, primaryKeyValue);
-            if (children.isNotEmpty) {
+            // Check if any children exist using the transaction
+            final childResults = await txn.rawQuery(
+              'SELECT COUNT(*) as count FROM ${relationship.childTable} WHERE ${relationship.getChildWhereCondition()}',
+              [primaryKeyValue],
+            );
+            
+            final count = childResults.first['count'] as int;
+            if (count > 0) {
               throw StateError(
-                'Cannot delete record from "$tableName": ${children.length} dependent record(s) exist in "${relationship.childTable}" '
+                'Cannot delete record from "$tableName": $count dependent record(s) exist in "${relationship.childTable}" '
                 '(relationship: ${relationship.name}). Use force=true to override.'
               );
+            }
+          } else {
+            // When force=true, treat RESTRICT like CASCADE
+            final childResults = await txn.rawQuery(
+              'SELECT * FROM ${relationship.childTable} WHERE ${relationship.getChildWhereCondition()}',
+              [primaryKeyValue],
+            );
+            
+            // Recursively delete each child and its descendants
+            for (final childRow in childResults) {
+              final childPrimaryKey = _extractPrimaryKeyValue(relationship.childTable, childRow);
+              if (childPrimaryKey != null) {
+                totalDeleted += await _deleteWithChildrenRecursive(
+                  txn, relationship.childTable, childPrimaryKey, force, Set.from(visitedTables)
+                );
+              }
             }
           }
           break;
@@ -155,7 +179,7 @@ class RelatedDataAccess extends DataAccess {
         case CascadeAction.setNull:
           // Set the foreign key column to null for all children
           final childColumn = relationship.childColumn;
-          final updateCount = await DataAccess(database: txn, schema: schema).updateWhere(
+          final updateCount = await txn.update(
             relationship.childTable,
             {childColumn: null},
             where: relationship.getChildWhereCondition(),
@@ -167,8 +191,23 @@ class RelatedDataAccess extends DataAccess {
     }
 
     // Finally delete the parent record itself
-    final deleteCount = await DataAccess(database: txn, schema: schema)
-        .deleteByPrimaryKey(tableName, primaryKeyValue);
+    final table = schema.getTable(tableName);
+    if (table == null) {
+      throw ArgumentError('Table "$tableName" not found in schema');
+    }
+
+    final primaryKeyColumns = table.getPrimaryKeyColumns();
+    if (primaryKeyColumns.isEmpty) {
+      throw ArgumentError('Table "$tableName" has no primary key');
+    }
+
+    final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue);
+    
+    final deleteCount = await txn.delete(
+      tableName,
+      where: whereClause,
+      whereArgs: whereArgs,
+    );
     totalDeleted += deleteCount;
 
     visitedTables.remove(tableName);
@@ -346,5 +385,43 @@ class RelatedDataAccess extends DataAccess {
     }
     
     return results;
+  }
+
+  /// Builds a WHERE clause and arguments for primary key matching
+  /// Returns a tuple of (whereClause, whereArgs)
+  (String, List<dynamic>) _buildPrimaryKeyWhereClause(List<String> primaryKeyColumns, dynamic primaryKeyValue) {
+    if (primaryKeyColumns.length == 1) {
+      // Single primary key
+      return ('${primaryKeyColumns.first} = ?', [primaryKeyValue]);
+    } else {
+      // Composite primary key
+      if (primaryKeyValue is Map<String, dynamic>) {
+        final whereConditions = <String>[];
+        final whereArgs = <dynamic>[];
+        
+        for (final columnName in primaryKeyColumns) {
+          if (!primaryKeyValue.containsKey(columnName)) {
+            throw ArgumentError('Primary key value map is missing column: $columnName');
+          }
+          whereConditions.add('$columnName = ?');
+          whereArgs.add(primaryKeyValue[columnName]);
+        }
+        
+        return (whereConditions.join(' AND '), whereArgs);
+      } else if (primaryKeyValue is List) {
+        if (primaryKeyValue.length != primaryKeyColumns.length) {
+          throw ArgumentError('Primary key value list length (${primaryKeyValue.length}) does not match number of primary key columns (${primaryKeyColumns.length})');
+        }
+        
+        final whereConditions = <String>[];
+        for (int i = 0; i < primaryKeyColumns.length; i++) {
+          whereConditions.add('${primaryKeyColumns[i]} = ?');
+        }
+        
+        return (whereConditions.join(' AND '), primaryKeyValue);
+      } else {
+        throw ArgumentError('Composite primary key requires Map<String, dynamic> or List for primaryKeyValue, got ${primaryKeyValue.runtimeType}');
+      }
+    }
   }
 }

@@ -110,27 +110,27 @@ class ViewBuilder {
   
   /// Creates a simple view that selects all columns from a table
   static ViewBuilder simple(String viewName, String tableName, [String? whereCondition]) {
-    return ViewBuilder.create(viewName).fromTable(tableName, whereCondition: whereCondition);
+    return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromTable(tableName, whereCondition: whereCondition);
   }
 
   /// Creates a view with specific columns from a table
   static ViewBuilder withColumns(String viewName, String tableName, List<String> columns, [String? whereCondition]) {
-    return ViewBuilder.create(viewName).fromTable(tableName, columns: columns, whereCondition: whereCondition);
+    return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromTable(tableName, columns: columns, whereCondition: whereCondition);
   }
 
   /// Creates a view with expressions and aliases
   static ViewBuilder withExpressions(String viewName, String tableName, List<ExpressionBuilder> expressions, [String? whereCondition]) {
-    return ViewBuilder.create(viewName).fromTable(tableName, expressions: expressions, whereCondition: whereCondition);
+    return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromTable(tableName, expressions: expressions, whereCondition: whereCondition);
   }
 
   /// Creates a view with joins
   static ViewBuilder withJoins(String viewName, QueryBuilder Function(QueryBuilder) queryBuilder) {
-    return ViewBuilder.create(viewName).fromQuery(queryBuilder);
+    return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromQuery(queryBuilder);
   }
 
   /// Creates a view from a raw SQL query string
   static ViewBuilder fromSql(String viewName, String sqlQuery) {
-    return ViewBuilder.create(viewName).fromSql(sqlQuery);
+    return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromSql(sqlQuery);
   }
 }
 
@@ -210,22 +210,22 @@ class _RawQueryBuilder {
 class Views {
   /// Creates a simple view that shows all rows from a table
   static ViewBuilder all(String viewName, String tableName) {
-    return ViewBuilder.create(viewName).fromTable(tableName);
+    return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromTable(tableName);
   }
 
   /// Creates a filtered view
   static ViewBuilder filtered(String viewName, String tableName, String whereCondition) {
-    return ViewBuilder.create(viewName).fromTable(tableName, whereCondition: whereCondition);
+    return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromTable(tableName, whereCondition: whereCondition);
   }
 
   /// Creates a view with specific columns
   static ViewBuilder columns(String viewName, String tableName, List<String> columns) {
-    return ViewBuilder.create(viewName).fromTable(tableName, columns: columns);
+    return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromTable(tableName, columns: columns);
   }
 
   /// Creates a view with aggregated data
   static ViewBuilder aggregated(String viewName, String tableName, List<ExpressionBuilder> aggregates, List<String>? groupByColumns) {
-    return ViewBuilder.create(viewName).fromQuery((query) {
+    return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromQuery((query) {
       var q = query.select(aggregates).from(tableName);
       if (groupByColumns != null && groupByColumns.isNotEmpty) {
         q = q.groupBy(groupByColumns);
@@ -236,7 +236,7 @@ class Views {
 
   /// Creates a view with a join between two tables
   static ViewBuilder joined(String viewName, String leftTable, String rightTable, String onCondition, [List<ExpressionBuilder>? selectExpressions]) {
-    return ViewBuilder.create(viewName).fromQuery((query) {
+    return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromQuery((query) {
       var q = query.from(leftTable).innerJoin(rightTable, onCondition);
       if (selectExpressions != null) {
         q = q.select(selectExpressions);
@@ -249,6 +249,6 @@ class Views {
 
   /// Creates a view from raw SQL
   static ViewBuilder fromSql(String viewName, String sqlQuery) {
-    return ViewBuilder.create(viewName).fromSql(sqlQuery);
+    return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromSql(sqlQuery);
   }
 }

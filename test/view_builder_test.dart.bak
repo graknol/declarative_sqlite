@@ -3,6 +3,128 @@ import 'package:test/test.dart';
 
 void main() {
   group('ViewBuilder Tests', () {
+    group('Unified API - New Approach', () {
+      test('can create a simple view from table using static methods', () {
+        final view = ViewBuilder.simple('user_view', 'users');
+        
+        expect(view.name, equals('user_view'));
+        expect(view.queryBuilder, isNotNull);
+        expect(view.isRawSql, isFalse);
+        
+        final sql = view.toSql();
+        expect(sql, contains('CREATE VIEW user_view AS'));
+        expect(sql, contains('SELECT *'));
+        expect(sql, contains('FROM users'));
+      });
+
+      test('can create a filtered view using static methods', () {
+        final view = ViewBuilder.simple('active_users', 'users', 'active = 1');
+        
+        final sql = view.toSql();
+        expect(sql, contains('CREATE VIEW active_users AS'));
+        expect(sql, contains('WHERE active = 1'));
+      });
+
+      test('can create view with specific columns using static methods', () {
+        final view = ViewBuilder.withColumns('user_summary', 'users', ['id', 'username', 'email']);
+        
+        final sql = view.toSql();
+        expect(sql, contains('CREATE VIEW user_summary AS'));
+        expect(sql, contains('SELECT id, username, email'));
+        expect(sql, contains('FROM users'));
+      });
+            .fromTable('users', columns: ['id', 'username', 'email']);
+        
+        final sql = view.toSql();
+        expect(sql, contains('CREATE VIEW user_summary AS'));
+        expect(sql, contains('SELECT id, username, email'));
+        expect(sql, contains('FROM users'));
+      });
+
+      test('can create view with expressions and aliases', () {
+        final expressions = [
+          ExpressionBuilder.column('id'),
+          ExpressionBuilder.column('username').as('name'),
+          ExpressionBuilder.function('UPPER', ['email']).as('email_upper'),
+          ExpressionBuilder.literal('Active').as('status'),
+        ];
+
+        final view = ViewBuilder.create('user_enhanced')
+            .fromTable('users', expressions: expressions);
+        
+        final sql = view.toSql();
+        expect(sql, contains('CREATE VIEW user_enhanced AS'));
+        expect(sql, contains('SELECT id, username AS name, UPPER(email) AS email_upper, \'Active\' AS status'));
+      });
+
+      test('can create view with complex query', () {
+        final view = (ViewBuilder.create('complex_view') as _ViewBuilderStep1).fromQuery((query) =>
+          query
+            .select([
+              ExpressionBuilder.qualifiedColumn('users', 'username'),
+              ExpressionBuilder.qualifiedColumn('posts', 'title'),
+            ])
+            .from('users')
+            .innerJoin('posts', 'users.id = posts.user_id')
+            .where('users.active = 1')
+            .orderByColumn('posts.created_at', true)
+        );
+
+        final sql = view.toSql();
+        expect(sql, contains('users.username, posts.title'));
+        expect(sql, contains('INNER JOIN posts ON users.id = posts.user_id'));
+        expect(sql, contains('WHERE users.active = 1'));
+        expect(sql, contains('ORDER BY posts.created_at DESC'));
+      });
+
+      test('can create view from raw SQL', () {
+        final view = ViewBuilder.create('custom_view')
+            .fromSql('SELECT * FROM users WHERE age > 18');
+        
+        expect(view.isRawSql, isTrue);
+        expect(view.queryBuilder, isNull);
+        
+        final sql = view.toSql();
+        expect(sql, contains('CREATE VIEW custom_view AS'));
+        expect(sql, contains('SELECT * FROM users WHERE age > 18'));
+      });
+    });
+
+    group('Backward Compatibility - Legacy API', () {
+      test('legacy simple() method still works', () {
+        final view = ViewBuilder.simple('user_view', 'users');
+        
+        expect(view.name, equals('user_view'));
+        expect(view.queryBuilder, isNotNull);
+        expect(view.isRawSql, isFalse);
+        
+        final sql = view.toSql();
+        expect(sql, contains('CREATE VIEW user_view AS'));
+        expect(sql, contains('SELECT *'));
+        expect(sql, contains('FROM users'));
+      });
+
+      test('legacy withColumns() method still works', () {
+        final view = ViewBuilder.withColumns('user_summary', 'users', ['id', 'username', 'email']);
+        
+        final sql = view.toSql();
+        expect(sql, contains('CREATE VIEW user_summary AS'));
+        expect(sql, contains('SELECT id, username, email'));
+        expect(sql, contains('FROM users'));
+      });
+
+      test('legacy fromSql() method still works', () {
+        final view = ViewBuilder.fromSql('custom_view', 'SELECT * FROM users WHERE age > 18');
+        
+        expect(view.isRawSql, isTrue);
+        expect(view.queryBuilder, isNull);
+        
+        final sql = view.toSql();
+        expect(sql, contains('CREATE VIEW custom_view AS'));
+        expect(sql, contains('SELECT * FROM users WHERE age > 18'));
+      });
+    });
+
     group('Basic View Creation', () {
       test('can create a simple view from table', () {
         final view = ViewBuilder.simple('user_view', 'users');
@@ -123,7 +245,7 @@ void main() {
 
     group('Complex Query Features', () {
       test('can create view with subquery-like structure using QueryBuilder', () {
-        final view = ViewBuilder('popular_posts', 
+        final view = ViewBuilder._withQuery('popular_posts', 
           QueryBuilder()
             .select([
               ExpressionBuilder.column('id'),
@@ -143,7 +265,7 @@ void main() {
       });
 
       test('can create view with HAVING clause', () {
-        final view = ViewBuilder('frequent_posters',
+        final view = ViewBuilder._withQuery('frequent_posters',
           QueryBuilder()
             .select([
               ExpressionBuilder.column('user_id'),
@@ -179,7 +301,7 @@ void main() {
     group('Error Handling', () {
       test('throws error for empty SELECT in QueryBuilder', () {
         final emptyQuery = QueryBuilder().from('users');
-        final view = ViewBuilder('empty_view', emptyQuery);
+        final view = ViewBuilder._withQuery('empty_view', emptyQuery);
         
         expect(() => view.toSql(), throwsStateError);
       });
