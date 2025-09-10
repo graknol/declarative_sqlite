@@ -1,11 +1,12 @@
 # Declarative SQLite
 
-A Dart package for declaratively creating SQLite tables and automatically migrating them.
+A Dart package for declaratively creating SQLite tables, views, and automatically migrating them.
 
 ## Features
 
 - **Declarative Schema Definition**: Use a fluent builder pattern to define your database schema
-- **Automatic Migration**: Create missing tables and indices automatically
+- **SQL Views Support**: Create views with complex queries, joins, aggregations, and subqueries  
+- **Automatic Migration**: Create missing tables, views, and indices automatically
 - **Data Access Abstraction**: Type-safe CRUD operations with schema metadata integration
 - **Bulk Data Loading**: Efficiently load large datasets with flexible validation and error handling
 - **SQLite Data Types**: Full support for SQLite affinities (INTEGER, REAL, TEXT, BLOB)
@@ -47,6 +48,75 @@ final schema = SchemaBuilder()
         .integer('user_id', (col) => col.notNull())
         .index('idx_user_id', ['user_id'])
         .index('idx_title_user', ['title', 'user_id'], unique: true));
+```
+
+### SQL Views
+
+Create powerful SQL views with the fluent API:
+
+```dart
+import 'package:declarative_sqlite/declarative_sqlite.dart';
+
+final schema = SchemaBuilder()
+    .table('users', (table) => table
+        .autoIncrementPrimaryKey('id')
+        .text('username', (col) => col.notNull())
+        .text('email', (col) => col.notNull())
+        .integer('active', (col) => col.withDefaultValue(1)))
+    .table('posts', (table) => table
+        .autoIncrementPrimaryKey('id')
+        .text('title', (col) => col.notNull())
+        .text('content')
+        .integer('user_id', (col) => col.notNull())
+        .integer('likes', (col) => col.withDefaultValue(0)))
+    
+    // Simple filtered view
+    .addView(Views.filtered('active_users', 'users', 'active = 1'))
+    
+    // View with expressions and aliases
+    .addView(ViewBuilder.withExpressions('user_summary', 'users', [
+      ExpressionBuilder.column('username').as('name'),
+      ExpressionBuilder.function('UPPER', ['email']).as('email_upper'),
+      ExpressionBuilder.literal('Member').as('user_type'),
+    ]))
+    
+    // Complex view with joins and aggregation
+    .addView(ViewBuilder.withJoins('user_post_stats', (query) =>
+      query
+        .select([
+          ExpressionBuilder.qualifiedColumn('u', 'username'),
+          Expressions.count.as('post_count'),
+          Expressions.sum('p.likes').as('total_likes'),
+        ])
+        .from('users', 'u')
+        .leftJoin('posts', 'u.id = p.user_id', 'p') 
+        .groupBy(['u.id', 'u.username'])
+        .having('COUNT(p.id) > 0')
+        .orderByColumn('total_likes', true)
+    ))
+    
+    // Raw SQL for complex cases
+    .addView(Views.fromSql('popular_posts', '''
+      SELECT p.title, p.likes, u.username as author
+      FROM posts p
+      INNER JOIN users u ON p.user_id = u.id
+      WHERE p.likes > (SELECT AVG(likes) FROM posts)
+      ORDER BY p.likes DESC
+    '''));
+```
+
+#### View Features Supported
+
+- ✅ **Filtered Views**: Simple WHERE conditions to filter table data
+- ✅ **Column Selection**: Choose specific columns with optional aliases
+- ✅ **Expressions**: Functions, calculations, and transformations
+- ✅ **Joins**: INNER, LEFT, RIGHT, FULL OUTER, CROSS joins
+- ✅ **Aggregation**: COUNT, SUM, AVG, MIN, MAX functions
+- ✅ **Grouping**: GROUP BY and HAVING clauses
+- ✅ **Ordering**: ORDER BY with ASC/DESC
+- ✅ **Pagination**: LIMIT and OFFSET support
+- ✅ **Subqueries**: Raw SQL support for complex cases
+- ✅ **Qualified References**: table.column syntax for joins
 ```
 
 ### Applying Schema to Database
@@ -274,8 +344,13 @@ The main entry point for defining database schemas.
 
 - `table(String name, TableBuilder Function(TableBuilder) builder)` - Add a table to the schema
 - `addTable(TableBuilder table)` - Add a pre-built table
+- `view(String name, ViewBuilder Function(String) builder)` - Add a view to the schema
+- `addView(ViewBuilder view)` - Add a pre-built view
 - `toSqlScript()` - Generate complete SQL script for the schema
 - `tableNames` - Get list of table names in the schema
+- `viewNames` - Get list of view names in the schema
+- `hasTable(String name)` - Check if table exists
+- `hasView(String name)` - Check if view exists
 
 ### TableBuilder
 
@@ -297,6 +372,63 @@ Builder for defining column constraints.
 - `notNull()` - Add not null constraint
 - `withDefaultValue(dynamic value)` - Set default value
 
+### ViewBuilder
+
+Builder for defining SQL views.
+
+- `ViewBuilder.simple(name, tableName, [whereCondition])` - Create simple filtered view
+- `ViewBuilder.withColumns(name, tableName, columns, [whereCondition])` - View with specific columns
+- `ViewBuilder.withExpressions(name, tableName, expressions, [whereCondition])` - View with expressions and aliases
+- `ViewBuilder.withJoins(name, queryBuilder)` - Complex view with joins and conditions
+- `ViewBuilder.fromSql(name, sqlQuery)` - View from raw SQL
+- `toSql()` - Generate CREATE VIEW statement
+- `dropSql()` - Generate DROP VIEW statement
+
+### QueryBuilder
+
+Builder for constructing SELECT queries.
+
+- `select(expressions)` - Add SELECT expressions
+- `selectAll()` - Select all columns (*)
+- `selectColumns(columnNames)` - Select specific columns
+- `from(tableName, [alias])` - Set FROM table
+- `join(joinClause)` - Add JOIN clause
+- `innerJoin(table, onCondition, [alias])` - Add INNER JOIN
+- `leftJoin(table, onCondition, [alias])` - Add LEFT JOIN
+- `where(condition)` - Set WHERE condition
+- `andWhere(condition)` - Add AND condition
+- `orWhere(condition)` - Add OR condition
+- `groupBy(columnNames)` - Set GROUP BY columns
+- `having(condition)` - Set HAVING condition
+- `orderBy(columnSpecs)` - Set ORDER BY columns
+- `limit(count, [offset])` - Set LIMIT and OFFSET
+
+### ExpressionBuilder
+
+Builder for SQL expressions and aliases.
+
+- `ExpressionBuilder.column(name)` - Column reference
+- `ExpressionBuilder.qualifiedColumn(table, column)` - Qualified column (table.column)
+- `ExpressionBuilder.literal(value)` - Literal value
+- `ExpressionBuilder.function(name, [args])` - Function call
+- `ExpressionBuilder.raw(sql)` - Raw SQL expression
+- `as(alias)` - Add alias to expression
+
+### JoinBuilder
+
+Builder for JOIN clauses.
+
+- `JoinBuilder(joinType, tableName)` - Create JOIN clause
+- `as(alias)` - Add table alias
+- `on(condition)` - Set ON condition
+- `onEquals(leftColumn, rightColumn)` - Equi-join condition
+
+### Helper Classes
+
+- **Views**: `all()`, `filtered()`, `columns()`, `aggregated()`, `joined()`, `fromSql()`
+- **Expressions**: `count`, `sum()`, `avg()`, `min()`, `max()`, `distinct()`, `all`
+- `Joins`: `inner()`, `left()`, `right()`, `fullOuter()`, `cross()`
+
 ### SchemaMigrator
 
 Handles database schema migration.
@@ -309,15 +441,18 @@ Handles database schema migration.
 
 - Column modifications (ALTER COLUMN) are not supported - SQLite has limited ALTER TABLE support
 - Foreign key constraints are not yet implemented
-- Only additive migrations (new tables/indices) are currently supported
+- Only additive migrations (new tables/indices/views) are currently supported
+- View modifications require dropping and recreating the view
 
 ## Best Practices
 
-1. **Use descriptive names**: Choose clear, consistent names for tables, columns, and indices
+1. **Use descriptive names**: Choose clear, consistent names for tables, columns, views, and indices
 2. **Define constraints**: Always specify NOT NULL, UNIQUE, and PRIMARY KEY constraints where appropriate
 3. **Index strategically**: Add indices on columns used in WHERE clauses and JOINs
-4. **Test migrations**: Use the migration planning feature to preview changes
-5. **Validate schemas**: Always validate schemas before applying to production databases
+4. **Design views thoughtfully**: Use views to encapsulate complex queries and provide consistent data access patterns
+5. **Test migrations**: Use the migration planning feature to preview changes
+6. **Validate schemas**: Always validate schemas before applying to production databases
+7. **Consider performance**: Views with complex joins or aggregations may impact query performance
 
 ## Contributing
 
