@@ -25,10 +25,10 @@ enum CascadeAction {
 /// 
 /// Uses logical relationships based on column matching rather than database-level
 /// foreign keys, allowing for flexible relationship management and custom cascade behavior.
+/// Relationships are identified by their table pair rather than requiring explicit names.
 @immutable
 class RelationshipBuilder {
   const RelationshipBuilder._({
-    required this.name,
     required this.parentTable,
     required this.childTable,
     required this.parentColumn,
@@ -42,21 +42,18 @@ class RelationshipBuilder {
 
   /// Creates a one-to-many relationship between two tables
   /// 
-  /// [name] Unique identifier for this relationship
   /// [parentTable] Name of the parent table
   /// [childTable] Name of the child table
   /// [parentColumn] Column in parent table that acts as the primary key
   /// [childColumn] Column in child table that references the parent
   /// [onDelete] Action to take when parent record is deleted
   const RelationshipBuilder.oneToMany({
-    required String name,
     required String parentTable,
     required String childTable,
     required String parentColumn,
     required String childColumn,
     CascadeAction onDelete = CascadeAction.cascade,
   }) : this._(
-    name: name,
     parentTable: parentTable,
     childTable: childTable,
     parentColumn: parentColumn,
@@ -70,7 +67,6 @@ class RelationshipBuilder {
 
   /// Creates a many-to-many relationship between two tables using a junction table
   /// 
-  /// [name] Unique identifier for this relationship
   /// [parentTable] Name of the first table in the relationship
   /// [childTable] Name of the second table in the relationship
   /// [junctionTable] Name of the junction/linking table
@@ -80,7 +76,6 @@ class RelationshipBuilder {
   /// [junctionChildColumn] Column in junction table referencing child
   /// [onDelete] Action to take when parent record is deleted
   const RelationshipBuilder.manyToMany({
-    required String name,
     required String parentTable,
     required String childTable,
     required String junctionTable,
@@ -90,7 +85,6 @@ class RelationshipBuilder {
     required String junctionChildColumn,
     CascadeAction onDelete = CascadeAction.cascade,
   }) : this._(
-    name: name,
     parentTable: parentTable,
     childTable: childTable,
     parentColumn: parentColumn,
@@ -102,8 +96,15 @@ class RelationshipBuilder {
     junctionChildColumn: junctionChildColumn,
   );
 
-  /// Unique name for this relationship
-  final String name;
+  /// Creates a unique identifier for this relationship based on table names and type
+  String get relationshipId {
+    switch (type) {
+      case RelationshipType.oneToMany:
+        return '${parentTable}_to_${childTable}_oneToMany';
+      case RelationshipType.manyToMany:
+        return '${parentTable}_to_${childTable}_manyToMany_via_${junctionTable}';
+    }
+  }
 
   /// Name of the parent table
   final String parentTable;
@@ -166,10 +167,6 @@ class RelationshipBuilder {
   List<String> validate() {
     final errors = <String>[];
 
-    if (name.isEmpty) {
-      errors.add('Relationship name cannot be empty');
-    }
-
     if (parentTable.isEmpty) {
       errors.add('Parent table name cannot be empty');
     }
@@ -205,9 +202,9 @@ class RelationshipBuilder {
   String toString() {
     switch (type) {
       case RelationshipType.oneToMany:
-        return 'RelationshipBuilder.oneToMany(name: $name, $parentTable.$parentColumn -> $childTable.$childColumn, onDelete: $onDelete)';
+        return 'RelationshipBuilder.oneToMany($parentTable.$parentColumn -> $childTable.$childColumn, onDelete: $onDelete)';
       case RelationshipType.manyToMany:
-        return 'RelationshipBuilder.manyToMany(name: $name, $parentTable.$parentColumn <-> $childTable.$childColumn via $junctionTable, onDelete: $onDelete)';
+        return 'RelationshipBuilder.manyToMany($parentTable.$parentColumn <-> $childTable.$childColumn via $junctionTable, onDelete: $onDelete)';
     }
   }
 
@@ -216,7 +213,6 @@ class RelationshipBuilder {
       identical(this, other) ||
       other is RelationshipBuilder &&
           runtimeType == other.runtimeType &&
-          name == other.name &&
           parentTable == other.parentTable &&
           childTable == other.childTable &&
           parentColumn == other.parentColumn &&
@@ -229,7 +225,6 @@ class RelationshipBuilder {
 
   @override
   int get hashCode =>
-      name.hashCode ^
       parentTable.hashCode ^
       childTable.hashCode ^
       parentColumn.hashCode ^

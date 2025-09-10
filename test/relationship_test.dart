@@ -44,19 +44,19 @@ void main() {
               .integer('post_id', (col) => col.notNull())
               .integer('user_id', (col) => col.notNull()))
           // Define relationships
-          .oneToMany('user_posts', 'users', 'posts',
+          .oneToMany('users', 'posts',
               parentColumn: 'id', 
               childColumn: 'user_id', 
               onDelete: CascadeAction.cascade)
-          .oneToMany('post_comments', 'posts', 'comments',
+          .oneToMany('posts', 'comments',
               parentColumn: 'id', 
               childColumn: 'post_id', 
               onDelete: CascadeAction.cascade)
-          .oneToMany('user_comments', 'users', 'comments',
+          .oneToMany('users', 'comments',
               parentColumn: 'id', 
               childColumn: 'user_id', 
               onDelete: CascadeAction.cascade)
-          .manyToMany('post_categories_rel', 'posts', 'categories', 'post_categories',
+          .manyToMany('posts', 'categories', 'post_categories',
               parentColumn: 'id',
               childColumn: 'id',
               junctionParentColumn: 'post_id',
@@ -77,9 +77,9 @@ void main() {
     group('Schema Relationship Definition', () {
       test('can define one-to-many relationships', () {
         expect(schema.relationshipCount, equals(4));
-        expect(schema.hasRelationship('user_posts'), isTrue);
+        expect(schema.hasRelationship('users', 'posts'), isTrue);
         
-        final relationship = schema.getRelationship('user_posts');
+        final relationship = schema.getRelationship('users', 'posts');
         expect(relationship, isNotNull);
         expect(relationship!.type, equals(RelationshipType.oneToMany));
         expect(relationship.parentTable, equals('users'));
@@ -90,7 +90,7 @@ void main() {
       });
 
       test('can define many-to-many relationships', () {
-        final relationship = schema.getRelationship('post_categories_rel');
+        final relationship = schema.getRelationship('posts', 'categories', junctionTable: 'post_categories');
         expect(relationship, isNotNull);
         expect(relationship!.type, equals(RelationshipType.manyToMany));
         expect(relationship.parentTable, equals('posts'));
@@ -103,14 +103,14 @@ void main() {
       test('can query relationships by table', () {
         final userParentRels = schema.getParentRelationships('users');
         expect(userParentRels.length, equals(2));
-        expect(userParentRels.map((r) => r.name), containsAll(['user_posts', 'user_comments']));
+        expect(userParentRels.map((r) => r.childTable), containsAll(['posts', 'comments']));
         
         final postChildRels = schema.getChildRelationships('posts');
         expect(postChildRels.length, equals(1));
-        expect(postChildRels.first.name, equals('user_posts'));
+        expect(postChildRels.first.parentTable, equals('users'));
         
         final allPostRels = schema.getTableRelationships('posts');
-        expect(allPostRels.length, equals(3)); // user_posts, post_comments, post_categories_rel
+        expect(allPostRels.length, equals(3)); // users->posts, posts->comments, posts<->categories
       });
     });
 
@@ -135,7 +135,7 @@ void main() {
         });
 
         // Get related posts
-        final posts = await dataAccess.getRelated('user_posts', userId);
+        final posts = await dataAccess.getRelated('users', 'posts', userId);
         
         expect(posts.length, equals(2));
         expect(posts.map((p) => p['title']), containsAll(['First Post', 'Second Post']));
@@ -156,7 +156,7 @@ void main() {
         });
 
         // Get parent user from post
-        final parents = await dataAccess.getRelatedParents('user_posts', userId);
+        final parents = await dataAccess.getRelatedParents('users', 'posts', userId);
         
         expect(parents.length, equals(1));
         expect(parents.first['username'], equals('bob'));
@@ -187,11 +187,11 @@ void main() {
         });
 
         // Create many-to-many links
-        await dataAccess.linkManyToMany('post_categories_rel', postId, category1Id);
-        await dataAccess.linkManyToMany('post_categories_rel', postId, category2Id);
+        await dataAccess.linkManyToMany('posts', 'categories', 'post_categories', postId, category1Id);
+        await dataAccess.linkManyToMany('posts', 'categories', 'post_categories', postId, category2Id);
 
         // Get related categories
-        final categories = await dataAccess.getRelated('post_categories_rel', postId);
+        final categories = await dataAccess.getRelated('posts', 'categories', postId, junctionTable: 'post_categories');
         
         expect(categories.length, equals(2));
         expect(categories.map((c) => c['name']), containsAll(['Technology', 'Programming']));
@@ -215,15 +215,15 @@ void main() {
         });
 
         // Create and then remove link
-        await dataAccess.linkManyToMany('post_categories_rel', postId, categoryId);
+        await dataAccess.linkManyToMany('posts', 'categories', 'post_categories', postId, categoryId);
         
-        var categories = await dataAccess.getRelated('post_categories_rel', postId);
+        var categories = await dataAccess.getRelated('posts', 'categories', postId, junctionTable: 'post_categories');
         expect(categories.length, equals(1));
 
-        final unlinkCount = await dataAccess.unlinkManyToMany('post_categories_rel', postId, categoryId);
+        final unlinkCount = await dataAccess.unlinkManyToMany('posts', 'categories', 'post_categories', postId, categoryId);
         expect(unlinkCount, equals(1));
 
-        categories = await dataAccess.getRelated('post_categories_rel', postId);
+        categories = await dataAccess.getRelated('posts', 'categories', postId, junctionTable: 'post_categories');
         expect(categories.length, equals(0));
       });
     });
@@ -262,7 +262,7 @@ void main() {
         });
 
         // Verify initial state
-        var posts = await dataAccess.getRelated('user_posts', userId);
+        var posts = await dataAccess.getRelated('users', 'posts', userId);
         var comments = await dataAccess.getAll('comments');
         expect(posts.length, equals(2));
         expect(comments.length, equals(2));
@@ -293,7 +293,7 @@ void main() {
                 .autoIncrementPrimaryKey('id')
                 .text('name', (col) => col.notNull())
                 .integer('parent_id', (col) => col.notNull()))
-            .oneToMany('parent_children', 'parents', 'children',
+            .oneToMany('parents', 'children',
                 parentColumn: 'id',
                 childColumn: 'parent_id',
                 onDelete: CascadeAction.restrict);
@@ -323,18 +323,18 @@ void main() {
         expect(
           () => SchemaBuilder()
               .table('users', (table) => table.autoIncrementPrimaryKey('id'))
-              .oneToMany('invalid_rel', 'users', 'nonexistent_table'),
+              .oneToMany('users', 'nonexistent_table'),
           throwsA(isA<ArgumentError>()),
         );
       });
 
-      test('prevents duplicate relationship names', () {
+      test('prevents duplicate relationships', () {
         expect(
           () => SchemaBuilder()
               .table('users', (table) => table.autoIncrementPrimaryKey('id'))
               .table('posts', (table) => table.autoIncrementPrimaryKey('id'))
-              .oneToMany('duplicate', 'users', 'posts')
-              .oneToMany('duplicate', 'users', 'posts'),
+              .oneToMany('users', 'posts')
+              .oneToMany('users', 'posts'),
           throwsA(isA<ArgumentError>()),
         );
       });

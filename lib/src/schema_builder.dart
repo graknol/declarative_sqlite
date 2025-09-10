@@ -74,26 +74,33 @@ class SchemaBuilder {
 
   /// Adds a relationship to this schema
   SchemaBuilder addRelationship(RelationshipBuilder relationship) {
-    // Check for duplicate relationship names
-    if (relationships.any((r) => r.name == relationship.name)) {
-      throw ArgumentError('Relationship "${relationship.name}" already exists in schema');
+    // Check for duplicate relationships (same parent-child-junction combo)
+    final existingRelationship = relationships.where((r) => 
+      r.parentTable == relationship.parentTable &&
+      r.childTable == relationship.childTable &&
+      r.type == relationship.type &&
+      (r.junctionTable == relationship.junctionTable || (r.junctionTable == null && relationship.junctionTable == null))
+    ).firstOrNull;
+
+    if (existingRelationship != null) {
+      throw ArgumentError('Relationship between "${relationship.parentTable}" and "${relationship.childTable}" already exists');
     }
     
     // Validate the relationship
     final validationErrors = relationship.validate();
     if (validationErrors.isNotEmpty) {
-      throw ArgumentError('Invalid relationship "${relationship.name}": ${validationErrors.join(', ')}');
+      throw ArgumentError('Invalid relationship: ${validationErrors.join(', ')}');
     }
     
     // Check that referenced tables exist in the schema
     if (!hasTable(relationship.parentTable)) {
-      throw ArgumentError('Relationship "${relationship.name}" references non-existent parent table "${relationship.parentTable}"');
+      throw ArgumentError('Relationship references non-existent parent table "${relationship.parentTable}"');
     }
     if (!hasTable(relationship.childTable)) {
-      throw ArgumentError('Relationship "${relationship.name}" references non-existent child table "${relationship.childTable}"');
+      throw ArgumentError('Relationship references non-existent child table "${relationship.childTable}"');
     }
     if (relationship.junctionTable != null && !hasTable(relationship.junctionTable!)) {
-      throw ArgumentError('Relationship "${relationship.name}" references non-existent junction table "${relationship.junctionTable}"');
+      throw ArgumentError('Relationship references non-existent junction table "${relationship.junctionTable}"');
     }
     
     return SchemaBuilder._(
@@ -105,18 +112,16 @@ class SchemaBuilder {
 
   /// Creates and adds a new one-to-many relationship to this schema
   SchemaBuilder oneToMany(
-    String relationshipName,
     String parentTable,
     String childTable, {
     String parentColumn = 'id',
     String? childColumn,
     CascadeAction onDelete = CascadeAction.cascade,
   }) {
-    // Use systemId as default child column if not specified
+    // Use parentTable_id as default child column if not specified
     final actualChildColumn = childColumn ?? '${parentTable.toLowerCase()}_id';
     
     final relationship = RelationshipBuilder.oneToMany(
-      name: relationshipName,
       parentTable: parentTable,
       childTable: childTable,
       parentColumn: parentColumn,
@@ -129,7 +134,6 @@ class SchemaBuilder {
 
   /// Creates and adds a new many-to-many relationship to this schema
   SchemaBuilder manyToMany(
-    String relationshipName,
     String parentTable,
     String childTable,
     String junctionTable, {
@@ -144,7 +148,6 @@ class SchemaBuilder {
     final actualJunctionChildColumn = junctionChildColumn ?? '${childTable.toLowerCase()}_id';
     
     final relationship = RelationshipBuilder.manyToMany(
-      name: relationshipName,
       parentTable: parentTable,
       childTable: childTable,
       junctionTable: junctionTable,
@@ -176,13 +179,21 @@ class SchemaBuilder {
     }
   }
 
-  /// Gets a relationship by name, or null if it doesn't exist
-  RelationshipBuilder? getRelationship(String relationshipName) {
-    try {
-      return relationships.firstWhere((r) => r.name == relationshipName);
-    } catch (e) {
-      return null;
-    }
+  /// Gets a relationship by parent and child table names, or null if it doesn't exist
+  RelationshipBuilder? getRelationship(String parentTable, String childTable, {String? junctionTable}) {
+    return relationships.where((r) => 
+      r.parentTable == parentTable && 
+      r.childTable == childTable &&
+      (junctionTable == null || r.junctionTable == junctionTable)
+    ).firstOrNull;
+  }
+
+  /// Gets all relationships for a specific table pair (both directions)
+  List<RelationshipBuilder> getRelationshipsBetween(String table1, String table2) {
+    return relationships.where((r) => 
+      (r.parentTable == table1 && r.childTable == table2) ||
+      (r.parentTable == table2 && r.childTable == table1)
+    ).toList();
   }
 
   /// Checks if a table exists in this schema
@@ -195,9 +206,9 @@ class SchemaBuilder {
     return views.any((v) => v.name == viewName);
   }
 
-  /// Checks if a relationship exists in this schema
-  bool hasRelationship(String relationshipName) {
-    return relationships.any((r) => r.name == relationshipName);
+  /// Checks if a relationship exists between two tables
+  bool hasRelationship(String parentTable, String childTable, {String? junctionTable}) {
+    return getRelationship(parentTable, childTable, junctionTable: junctionTable) != null;
   }
 
   /// Gets all relationships where the specified table is a parent
@@ -246,8 +257,11 @@ class SchemaBuilder {
   /// Gets all view names in this schema
   List<String> get viewNames => views.map((v) => v.name).toList();
 
-  /// Gets all relationship names in this schema
-  List<String> get relationshipNames => relationships.map((r) => r.name).toList();
+  /// Gets all relationship IDs in this schema  
+  List<String> get relationshipIds => relationships.map((r) => r.relationshipId).toList();
+
+  /// Gets count of relationships in this schema
+  int get relationshipCount => relationships.length;
 
   /// Gets all object names (tables and views) in this schema
   List<String> get allNames => [...tableNames, ...viewNames];

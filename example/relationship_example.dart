@@ -51,22 +51,22 @@ void main() async {
           .integer('category_id', (col) => col.notNull()))
       
       // Define relationships (no database foreign keys required!)
-      .oneToMany('user_posts', 'users', 'posts',
+      .oneToMany('users', 'posts',
           parentColumn: 'id',
           childColumn: 'user_id',
           onDelete: CascadeAction.cascade)
       
-      .oneToMany('user_comments', 'users', 'comments', 
+      .oneToMany('users', 'comments', 
           parentColumn: 'id',
           childColumn: 'user_id',
           onDelete: CascadeAction.cascade)
       
-      .oneToMany('post_comments', 'posts', 'comments',
+      .oneToMany('posts', 'comments',
           parentColumn: 'id', 
           childColumn: 'post_id',
           onDelete: CascadeAction.cascade)
       
-      .manyToMany('post_categories_rel', 'posts', 'categories', 'post_categories',
+      .manyToMany('posts', 'categories', 'post_categories',
           parentColumn: 'id',
           childColumn: 'id', 
           junctionParentColumn: 'post_id',
@@ -129,7 +129,7 @@ void main() async {
   print('2. Navigating relationships without manual joins...');
   
   // Get all posts by a user (one-to-many relationship)
-  final userPosts = await dataAccess.getRelated('user_posts', userId);
+  final userPosts = await dataAccess.getRelated('users', 'posts', userId);
   print('User has ${userPosts.length} posts:');
   for (final post in userPosts) {
     print('  - ${post['title']}');
@@ -137,7 +137,7 @@ void main() async {
   print("");
   
   // Get all comments on a post (one-to-many relationship)
-  final postComments = await dataAccess.getRelated('post_comments', postId);
+  final postComments = await dataAccess.getRelated('posts', 'comments', postId);
   print('Post has ${postComments.length} comments:');
   for (final comment in postComments) {
     print('  - ${comment['content']}');
@@ -148,11 +148,11 @@ void main() async {
   print('3. Managing many-to-many relationships...');
   
   // Link post to categories
-  await dataAccess.linkManyToMany('post_categories_rel', postId, category1Id);
-  await dataAccess.linkManyToMany('post_categories_rel', postId, category2Id);
+  await dataAccess.linkManyToMany('posts', 'categories', 'post_categories', postId, category1Id);
+  await dataAccess.linkManyToMany('posts', 'categories', 'post_categories', postId, category2Id);
   
   // Get categories for a post
-  final postCategories = await dataAccess.getRelated('post_categories_rel', postId);
+  final postCategories = await dataAccess.getRelated('posts', 'categories', postId, junctionTable: 'post_categories');
   print('Post is in ${postCategories.length} categories:');
   for (final category in postCategories) {
     print('  - ${category['name']}: ${category['description']}');
@@ -205,7 +205,7 @@ void main() async {
           .autoIncrementPrimaryKey('id')
           .text('name', (col) => col.notNull())
           .integer('department_id', (col) => col.notNull()))
-      .oneToMany('dept_employees', 'departments', 'employees',
+      .oneToMany('departments', 'employees',
           parentColumn: 'id',
           childColumn: 'department_id', 
           onDelete: CascadeAction.restrict);
