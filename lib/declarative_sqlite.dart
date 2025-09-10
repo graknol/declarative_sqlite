@@ -115,6 +115,8 @@ export 'src/view_builder.dart';
 export 'src/query_builder.dart';
 export 'src/expression_builder.dart';
 export 'src/join_builder.dart';
+export 'src/relationship_builder.dart';
 export 'src/data_types.dart';
 export 'src/migrator.dart';
 export 'src/data_access.dart';
+export 'src/related_data_access.dart';
