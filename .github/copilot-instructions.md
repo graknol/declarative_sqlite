@@ -190,6 +190,7 @@ group('ComponentName', () {
 3. Add SQL generation and validation logic
 4. Write comprehensive tests (unit and integration)
 5. Update library exports and documentation
+6. Install dart sdk then run all tests
 
 ### Code Review Checklist
 
