@@ -52,7 +52,7 @@ final schema = SchemaBuilder()
 
 ### SQL Views
 
-Create powerful SQL views with the fluent API:
+Create powerful SQL views with the unified fluent API:
 
 ```dart
 import 'package:declarative_sqlite/declarative_sqlite.dart';
@@ -70,40 +70,51 @@ final schema = SchemaBuilder()
         .integer('user_id', (col) => col.notNull())
         .integer('likes', (col) => col.withDefaultValue(0)))
     
-    // Simple filtered view
-    .addView(Views.filtered('active_users', 'users', 'active = 1'))
+    // Simple filtered view - unified API
+    .addView(ViewBuilder.create('active_users')
+        .fromTable('users', whereCondition: 'active = 1'))
     
-    // View with expressions and aliases
-    .addView(ViewBuilder.withExpressions('user_summary', 'users', [
-      ExpressionBuilder.column('username').as('name'),
-      ExpressionBuilder.function('UPPER', ['email']).as('email_upper'),
-      ExpressionBuilder.literal('Member').as('user_type'),
-    ]))
+    // View with expressions and aliases - unified API  
+    .addView(ViewBuilder.create('user_summary')
+        .fromTable('users', expressions: [
+          ExpressionBuilder.column('username').as('name'),
+          ExpressionBuilder.function('UPPER', ['email']).as('email_upper'),
+          ExpressionBuilder.literal('Member').as('user_type'),
+        ]))
     
-    // Complex view with joins and aggregation
-    .addView(ViewBuilder.withJoins('user_post_stats', (query) =>
-      query
-        .select([
-          ExpressionBuilder.qualifiedColumn('u', 'username'),
-          Expressions.count.as('post_count'),
-          Expressions.sum('p.likes').as('total_likes'),
-        ])
-        .from('users', 'u')
-        .leftJoin('posts', 'u.id = p.user_id', 'p') 
-        .groupBy(['u.id', 'u.username'])
-        .having('COUNT(p.id) > 0')
-        .orderByColumn('total_likes', true)
-    ))
+    // Complex view with joins and aggregation - unified API
+    .addView(ViewBuilder.create('user_post_stats')
+        .fromQuery((query) => query
+          .select([
+            ExpressionBuilder.qualifiedColumn('u', 'username'),
+            Expressions.count.as('post_count'),
+            Expressions.sum('p.likes').as('total_likes'),
+          ])
+          .from('users', 'u')
+          .leftJoin('posts', 'u.id = p.user_id', 'p') 
+          .groupBy(['u.id', 'u.username'])
+          .having('COUNT(p.id) > 0')
+          .orderByColumn('total_likes', true)
+        ))
     
-    // Raw SQL for complex cases
-    .addView(Views.fromSql('popular_posts', '''
-      SELECT p.title, p.likes, u.username as author
-      FROM posts p
-      INNER JOIN users u ON p.user_id = u.id
-      WHERE p.likes > (SELECT AVG(likes) FROM posts)
-      ORDER BY p.likes DESC
-    '''));
+    // Raw SQL for complex cases - unified API
+    .addView(ViewBuilder.create('popular_posts')
+        .fromSql('''
+          SELECT p.title, p.likes, u.username as author
+          FROM posts p
+          INNER JOIN users u ON p.user_id = u.id
+          WHERE p.likes > (SELECT AVG(likes) FROM posts)
+          ORDER BY p.likes DESC
+        '''));
 ```
+
+#### Single Entry Point API
+
+The `ViewBuilder.create(name)` method provides a unified entry point for creating any type of view:
+
+- **`fromTable(...)`** - For simple views based on a single table
+- **`fromQuery(...)`** - For complex views using QueryBuilder with joins, aggregation, etc.
+- **`fromSql(...)`** - For views requiring raw SQL (subqueries, window functions, etc.)
 
 #### View Features Supported
 

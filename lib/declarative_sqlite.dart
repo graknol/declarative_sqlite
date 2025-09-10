@@ -34,19 +34,21 @@
 /// 
 /// ## View Examples
 /// ```dart
-/// // Simple filtered view
-/// final activeUsersView = Views.filtered('active_users', 'users', 'active = 1');
+/// // Simple filtered view - unified API
+/// final activeUsersView = ViewBuilder.create('active_users')
+///   .fromTable('users', whereCondition: 'active = 1');
 /// 
-/// // View with specific columns and aliases
-/// final userSummaryView = ViewBuilder.withExpressions('user_summary', 'users', [
-///   ExpressionBuilder.column('id'),
-///   ExpressionBuilder.column('username').as('name'),
-///   ExpressionBuilder.function('UPPER', ['email']).as('email_upper'),
-/// ]);
+/// // View with specific columns and aliases - unified API
+/// final userSummaryView = ViewBuilder.create('user_summary')
+///   .fromTable('users', expressions: [
+///     ExpressionBuilder.column('id'),
+///     ExpressionBuilder.column('username').as('name'),
+///     ExpressionBuilder.function('UPPER', ['email']).as('email_upper'),
+///   ]);
 /// 
-/// // Complex view with joins and aggregation
-/// final userStatsView = ViewBuilder.withJoins('user_post_stats', (query) =>
-///   query
+/// // Complex view with joins and aggregation - unified API
+/// final userStatsView = ViewBuilder.create('user_post_stats')
+///   .fromQuery((query) => query
 ///     .select([
 ///       ExpressionBuilder.qualifiedColumn('u', 'username'),
 ///       Expressions.count.as('post_count'),
@@ -57,16 +59,17 @@
 ///     .groupBy(['u.id', 'u.username'])
 ///     .having('COUNT(p.id) > 0')
 ///     .orderByColumn('post_count', true)
-/// );
+///   );
 /// 
-/// // View from raw SQL for complex cases
-/// final customView = Views.fromSql('recent_activity', '''
-///   SELECT u.username, p.title, p.created_at
-///   FROM users u
-///   INNER JOIN posts p ON u.id = p.user_id
-///   WHERE p.created_at > datetime('now', '-7 days')
-///   ORDER BY p.created_at DESC
-/// ''');
+/// // View from raw SQL for complex cases - unified API
+/// final customView = ViewBuilder.create('recent_activity')
+///   .fromSql('''
+///     SELECT u.username, p.title, p.created_at
+///     FROM users u
+///     INNER JOIN posts p ON u.id = p.user_id
+///     WHERE p.created_at > datetime('now', '-7 days')
+///     ORDER BY p.created_at DESC
+///   ''');
 /// ```
 /// ```
 /// 

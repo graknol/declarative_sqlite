@@ -37,32 +37,33 @@ void main() async {
           .integer('category_id', (col) => col.notNull())
           .index('idx_post_category', ['post_id', 'category_id'], unique: true))
       
-      // Add various types of views
+      // Add various types of views using the new unified API
       
-      // Simple filtered view
-      .addView(Views.filtered('active_users', 'users', 'active = 1'))
+      // Simple filtered view - new way
+      .addView(ViewBuilder.create('active_users')
+          .fromTable('users', whereCondition: 'active = 1'))
       
-      // View with specific columns and aliases
-      .addView(ViewBuilder.withExpressions('user_summary', 'users', [
+      // View with specific columns and aliases - new way  
+      .addView(ViewBuilder.create('user_summary').fromTable('users', expressions: [
         ExpressionBuilder.column('id'),
         ExpressionBuilder.column('username').as('name'),
         ExpressionBuilder.function('UPPER', ['email']).as('email_upper'),
         ExpressionBuilder.literal('Member').as('user_type'),
       ]))
       
-      // Aggregated view with user statistics
-      .addView(Views.aggregated('user_stats', 'users', [
-        Expressions.count.as('total_users'),
-        Expressions.avg('age').as('average_age'),
-        Expressions.min('age').as('youngest_user'),
-        Expressions.max('age').as('oldest_user'),
-        Expressions.sum('balance').as('total_balance'),
-      ], null))
+      // Aggregated view with user statistics - new way
+      .addView(ViewBuilder.create('user_stats').fromQuery((query) =>
+        query.select([
+          Expressions.count.as('total_users'),
+          Expressions.avg('age').as('average_age'),
+          Expressions.min('age').as('youngest_user'),
+          Expressions.max('age').as('oldest_user'),
+          Expressions.sum('balance').as('total_balance'),
+        ]).from('users')))
       
-      // View with GROUP BY for department statistics
-      .addView(ViewBuilder('users_by_age_group', 
-        QueryBuilder()
-          .select([
+      // View with GROUP BY for department statistics - new way
+      .addView(ViewBuilder.create('users_by_age_group').fromQuery((query) =>
+        query.select([
             ExpressionBuilder.raw('CASE WHEN age < 25 THEN "Young" WHEN age < 50 THEN "Middle" ELSE "Senior" END').as('age_group'),
             Expressions.count.as('user_count'),
             Expressions.avg('balance').as('avg_balance'),
@@ -74,17 +75,21 @@ void main() async {
           .orderByColumn('user_count', true)
       ))
       
-      // View with INNER JOIN
-      .addView(Views.joined('user_posts', 'users', 'posts', 'users.id = posts.user_id', [
-        ExpressionBuilder.qualifiedColumn('users', 'username'),
-        ExpressionBuilder.qualifiedColumn('users', 'email'),
-        ExpressionBuilder.qualifiedColumn('posts', 'title'),
-        ExpressionBuilder.qualifiedColumn('posts', 'likes'),
-        ExpressionBuilder.qualifiedColumn('posts', 'created_at'),
-      ]))
+      // View with INNER JOIN - new way
+      .addView(ViewBuilder.create('user_posts').fromQuery((query) =>
+        query.select([
+            ExpressionBuilder.qualifiedColumn('users', 'username'),
+            ExpressionBuilder.qualifiedColumn('users', 'email'),
+            ExpressionBuilder.qualifiedColumn('posts', 'title'),
+            ExpressionBuilder.qualifiedColumn('posts', 'likes'),
+            ExpressionBuilder.qualifiedColumn('posts', 'created_at'),
+          ])
+          .from('users')
+          .innerJoin('posts', 'users.id = posts.user_id')
+      ))
       
-      // Complex view with multiple joins and conditions
-      .addView(ViewBuilder.withJoins('published_posts_with_categories', (query) =>
+      // Complex view with multiple joins and conditions - new way
+      .addView(ViewBuilder.create('published_posts_with_categories').fromQuery((query) =>
         query
           .select([
             ExpressionBuilder.qualifiedColumn('u', 'username').as('author'),
@@ -101,8 +106,8 @@ void main() async {
           .orderByColumn('p.created_at', true)
       ))
       
-      // View with aggregation and joins for user posting statistics
-      .addView(ViewBuilder.withJoins('user_posting_stats', (query) =>
+      // View with aggregation and joins for user posting statistics - new way
+      .addView(ViewBuilder.create('user_posting_stats').fromQuery((query) =>
         query
           .select([
             ExpressionBuilder.qualifiedColumn('u', 'username'),
@@ -120,8 +125,8 @@ void main() async {
           .orderByColumn('total_likes', true)
       ))
       
-      // Popular posts view (posts with more than average likes)
-      .addView(ViewBuilder.fromSql('popular_posts', '''
+      // Popular posts view (posts with more than average likes) - new way
+      .addView(ViewBuilder.create('popular_posts').fromSql('''
         SELECT p.title, p.content, p.likes, u.username as author
         FROM posts p
         INNER JOIN users u ON p.user_id = u.id
@@ -129,8 +134,8 @@ void main() async {
         ORDER BY p.likes DESC
       '''))
       
-      // Recent activity view using raw SQL with subquery
-      .addView(Views.fromSql('recent_activity', '''
+      // Recent activity view using raw SQL with subquery - new way
+      .addView(ViewBuilder.create('recent_activity').fromSql('''
         SELECT 
           'post' as activity_type,
           u.username,
