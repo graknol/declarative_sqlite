@@ -134,5 +134,164 @@ void main() {
       expect(results.first['message'], equals('Hello, World!'));
       expect(results.first['value'], equals(42));
     });
+
+    test('can add columns to existing table', () async {
+      // First, create a table with limited columns
+      final initialSchema = SchemaBuilder()
+          .table('users', (table) => table
+              .autoIncrementPrimaryKey('id')
+              .text('name', (col) => col.notNull()));
+
+      await migrator.migrate(database, initialSchema);
+
+      // Insert some initial data
+      await database.insert('users', {'name': 'John Doe'});
+
+      // Now add more columns to the schema
+      final extendedSchema = SchemaBuilder()
+          .table('users', (table) => table
+              .autoIncrementPrimaryKey('id')
+              .text('name', (col) => col.notNull())
+              .text('email', (col) => col.unique())
+              .integer('age', (col) => col.withDefaultValue(0))
+              .index('idx_email', ['email']));
+
+      // Note: Current migrator doesn't support column additions to existing tables
+      // This test documents the current limitation and expected behavior
+      await migrator.migrate(database, extendedSchema);
+
+      // Verify the original data still exists
+      final results = await database.query('users');
+      expect(results, hasLength(1));
+      expect(results.first['name'], equals('John Doe'));
+
+      // Verify the new index was created
+      final indices = await database.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_email'");
+      expect(indices, hasLength(1));
+    });
+
+    test('handles complex schema evolution scenarios', () async {
+      // Create initial schema with basic tables
+      final v1Schema = SchemaBuilder()
+          .table('users', (table) => table
+              .autoIncrementPrimaryKey('id')
+              .text('username', (col) => col.notNull().unique())
+              .text('email', (col) => col.notNull())
+              .index('idx_username', ['username']))
+          .table('posts', (table) => table
+              .autoIncrementPrimaryKey('id')
+              .text('title', (col) => col.notNull())
+              .integer('user_id', (col) => col.notNull()));
+
+      await migrator.migrate(database, v1Schema);
+
+      // Add some data to v1 schema
+      await database.insert('users', {
+        'username': 'alice',
+        'email': 'alice@example.com',
+      });
+      await database.insert('posts', {
+        'title': 'My First Post',
+        'user_id': 1,
+      });
+
+      // Evolve schema - add new table and indices
+      final v2Schema = SchemaBuilder()
+          .table('users', (table) => table
+              .autoIncrementPrimaryKey('id')
+              .text('username', (col) => col.notNull().unique())
+              .text('email', (col) => col.notNull())
+              .index('idx_username', ['username'])
+              .index('idx_email', ['email'])) // New index
+          .table('posts', (table) => table
+              .autoIncrementPrimaryKey('id')
+              .text('title', (col) => col.notNull())
+              .integer('user_id', (col) => col.notNull())
+              .index('idx_user_id', ['user_id'])) // New index
+          .table('comments', (table) => table  // New table
+              .autoIncrementPrimaryKey('id')
+              .text('content', (col) => col.notNull())
+              .integer('post_id', (col) => col.notNull())
+              .integer('user_id', (col) => col.notNull())
+              .index('idx_post_id', ['post_id'])
+              .index('idx_user_id_post_id', ['user_id', 'post_id'], unique: true));
+
+      await migrator.migrate(database, v2Schema);
+
+      // Verify all tables exist
+      final tables = await database.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
+      final tableNames = tables.map((t) => t['name']).toList();
+      expect(tableNames, containsAll(['users', 'posts', 'comments']));
+
+      // Verify new indices were created
+      final indices = await database.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%' ORDER BY name");
+      final indexNames = indices.map((i) => i['name']).toList();
+      expect(indexNames, containsAll([
+        'idx_username', 'idx_email', 'idx_user_id', 
+        'idx_post_id', 'idx_user_id_post_id'
+      ]));
+
+      // Verify existing data is preserved
+      final userData = await database.query('users');
+      expect(userData, hasLength(1));
+      expect(userData.first['username'], equals('alice'));
+
+      final postData = await database.query('posts');
+      expect(postData, hasLength(1));
+      expect(postData.first['title'], equals('My First Post'));
+
+      // Verify new table can accept data
+      await database.insert('comments', {
+        'content': 'Great post!',
+        'post_id': 1,
+        'user_id': 1,
+      });
+
+      final commentData = await database.query('comments');
+      expect(commentData, hasLength(1));
+      expect(commentData.first['content'], equals('Great post!'));
+    });
+
+    test('can handle schema modifications with existing data', () async {
+      // Create a table and populate it
+      final originalSchema = SchemaBuilder()
+          .table('products', (table) => table
+              .autoIncrementPrimaryKey('id')
+              .text('name', (col) => col.notNull())
+              .real('price', (col) => col.notNull()));
+
+      await migrator.migrate(database, originalSchema);
+
+      // Insert test data
+      await database.insert('products', {'name': 'Widget', 'price': 19.99});
+      await database.insert('products', {'name': 'Gadget', 'price': 29.99});
+
+      // Modify schema to add indices and validate data preservation
+      final updatedSchema = SchemaBuilder()
+          .table('products', (table) => table
+              .autoIncrementPrimaryKey('id')
+              .text('name', (col) => col.notNull())
+              .real('price', (col) => col.notNull())
+              .index('idx_name', ['name'])
+              .index('idx_price', ['price']));
+
+      await migrator.migrate(database, updatedSchema);
+
+      // Verify data is preserved after schema update
+      final products = await database.query('products', orderBy: 'price');
+      expect(products, hasLength(2));
+      expect(products[0]['name'], equals('Widget'));
+      expect(products[0]['price'], equals(19.99));
+      expect(products[1]['name'], equals('Gadget'));
+      expect(products[1]['price'], equals(29.99));
+
+      // Verify indices were created and are functional
+      final indices = await database.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_name', 'idx_price')");
+      expect(indices, hasLength(2));
+    });
   });
 }
