@@ -90,7 +90,8 @@ class RelatedDataAccess extends DataAccess {
 
   /// Deletes a record and all its children following relationship cascade rules
   /// 
-  /// Uses optimized SQL with JOINs and depth-first traversal to minimize database round trips.
+  /// Uses optimized SQL with nested WHERE EXISTS and depth-first traversal to minimize database round trips.
+  /// Generates O(n) queries where n is the number of tables in hierarchy - one DELETE per table.
   /// 
   /// [tableName] Name of the table containing the parent record
   /// [primaryKeyValue] Primary key value of the record to delete
@@ -103,15 +104,28 @@ class RelatedDataAccess extends DataAccess {
     bool force = false,
   }) async {
     return await database.transaction((txn) async {
-      // Build dependency graph and deletion order
+      // Build dependency graph and deletion order using depth-first traversal
       final deletionOrder = _buildDeletionOrder(tableName);
       
       int totalDeleted = 0;
       
+      // Check for restrict cascade violations before doing any deletes
+      if (!force) {
+        for (final tableToDelete in deletionOrder) {
+          if (tableToDelete != tableName) {
+            // Check if there are any records to delete with restrict cascade
+            final restrictCount = await _countRestrictCascadeViolations(txn, tableName, primaryKeyValue, tableToDelete);
+            if (restrictCount > 0) {
+              throw StateError('Cannot delete record from "$tableName" because it would violate cascade restrictions in "$tableToDelete"');
+            }
+          }
+        }
+      }
+      
       // Delete in depth-first order (children before parents)
-      for (final tableToDelete in deletionOrder.reversed) {
-        final deleteCount = await _deleteRecordsForTable(
-          txn, tableToDelete, tableName, primaryKeyValue, force
+      for (final tableToDelete in deletionOrder) {
+        final deleteCount = await _deleteRecordsWithNestedExists(
+          txn, tableToDelete, tableName, primaryKeyValue
         );
         totalDeleted += deleteCount;
       }
@@ -153,13 +167,41 @@ class RelatedDataAccess extends DataAccess {
     return order;
   }
 
-  /// Deletes all records for a specific table that are related to the root deletion
-  Future<int> _deleteRecordsForTable(
+  /// Counts records that would violate restrict cascade rules
+  Future<int> _countRestrictCascadeViolations(
     Transaction txn,
-    String tableToDelete, 
     String rootTable,
     dynamic rootPrimaryKey,
-    bool force,
+    String tableToCheck,
+  ) async {
+    if (tableToCheck == rootTable) {
+      return 0; // Root table is not a violation
+    }
+
+    // Find the relationship path from root to this table
+    final pathToTable = _findDeletionPath(rootTable, tableToCheck);
+    if (pathToTable.isEmpty) {
+      return 0; // No relationship path
+    }
+
+    // Check if any relationship in the path has restrict cascade
+    final hasRestrict = pathToTable.any((r) => r.onDelete == CascadeAction.restrict);
+    if (!hasRestrict) {
+      return 0; // No restrict cascade in this path
+    }
+
+    // Count records that would be affected
+    final countQuery = _buildNestedExistsCountQuery(pathToTable, rootPrimaryKey);
+    final result = await txn.rawQuery(countQuery.sql, countQuery.parameters);
+    return (result.first['count'] as int?) ?? 0;
+  }
+
+  /// Deletes records using a nested WHERE EXISTS approach
+  Future<int> _deleteRecordsWithNestedExists(
+    Transaction txn,
+    String tableToDelete,
+    String rootTable,
+    dynamic rootPrimaryKey,
   ) async {
     if (tableToDelete == rootTable) {
       // Delete the root record itself
@@ -167,24 +209,119 @@ class RelatedDataAccess extends DataAccess {
     }
 
     // Find the relationship path from root to this table
-    final deletionPath = _findDeletionPath(rootTable, tableToDelete);
-    if (deletionPath.isEmpty) {
+    final pathToTable = _findDeletionPath(rootTable, tableToDelete);
+    if (pathToTable.isEmpty) {
       return 0; // No path found, nothing to delete
     }
 
-    // Build optimized DELETE with JOINs based on the path
-    final deleteQuery = _buildOptimizedDeleteQuery(deletionPath, rootPrimaryKey);
+    // Build the nested EXISTS DELETE query
+    final deleteQuery = _buildNestedExistsDeleteQuery(pathToTable, rootPrimaryKey);
     if (deleteQuery.sql.isEmpty) {
       return 0;
     }
 
-    try {
-      final result = await txn.rawDelete(deleteQuery.sql, deleteQuery.parameters);
-      return result;
-    } catch (e) {
-      // If the optimized query fails, fall back to the old approach
-      return await _fallbackDelete(txn, tableToDelete, rootTable, rootPrimaryKey, force);
+    // Execute the optimized DELETE query
+    return await txn.rawDelete(deleteQuery.sql, deleteQuery.parameters);
+  }
+
+  /// Builds a COUNT query using nested EXISTS to count affected records
+  ({String sql, List<dynamic> parameters}) _buildNestedExistsCountQuery(
+    List<RelationshipBuilder> path,
+    dynamic rootPrimaryKey,
+  ) {
+    if (path.isEmpty) {
+      return (sql: '', parameters: <dynamic>[]);
     }
+
+    final targetTable = path.last.childTable;
+    final parameters = <dynamic>[rootPrimaryKey];
+
+    // Build: SELECT COUNT(*) FROM target_table WHERE EXISTS (nested conditions)
+    final sql = 'SELECT COUNT(*) as count FROM $targetTable WHERE ${_buildNestedExistsChain(path, rootPrimaryKey != null)}';
+    
+    return (sql: sql, parameters: parameters);
+  }
+
+  /// Builds a DELETE query using nested EXISTS pattern like user's example
+  ({String sql, List<dynamic> parameters}) _buildNestedExistsDeleteQuery(
+    List<RelationshipBuilder> path,
+    dynamic rootPrimaryKey,
+  ) {
+    if (path.isEmpty) {
+      return (sql: '', parameters: <dynamic>[]);
+    }
+
+    final targetTable = path.last.childTable;
+    final parameters = <dynamic>[rootPrimaryKey];
+
+    // Start building the DELETE with nested EXISTS
+    final buffer = StringBuffer();
+    buffer.write('DELETE FROM $targetTable WHERE ');
+    
+    // Build the nested EXISTS chain from the target table back to the root
+    // Each EXISTS clause connects one level to the next
+    buffer.write(_buildNestedExistsChain(path, rootPrimaryKey != null));
+    
+    return (sql: buffer.toString(), parameters: parameters);
+  }
+
+  /// Builds the nested EXISTS condition chain
+  String _buildNestedExistsChain(List<RelationshipBuilder> path, bool hasRootParameter) {
+    if (path.isEmpty) return '';
+
+    final buffer = StringBuffer();
+    final targetTable = path.last.childTable;
+    
+    // Work backwards through the path to build nested EXISTS
+    for (int i = path.length - 1; i >= 0; i--) {
+      final relationship = path[i];
+      final isRoot = (i == 0);
+      
+      if (i == path.length - 1) {
+        // First EXISTS: from target table to its immediate parent
+        buffer.write('EXISTS (SELECT 1 FROM ${relationship.parentTable} ');
+        
+        if (relationship.type == RelationshipType.oneToMany) {
+          buffer.write('WHERE ${relationship.parentTable}.${relationship.parentColumn} = $targetTable.${relationship.childColumn}');
+        } else if (relationship.type == RelationshipType.manyToMany) {
+          // For many-to-many, join through junction table
+          final junctionTable = relationship.junctionTable!;
+          final junctionParentCol = relationship.junctionParentColumn!; 
+          final junctionChildCol = relationship.junctionChildColumn!;
+          buffer.write('INNER JOIN $junctionTable ON ${relationship.parentTable}.${relationship.parentColumn} = $junctionTable.$junctionParentCol ');
+          buffer.write('WHERE $junctionTable.$junctionChildCol = $targetTable.${relationship.childColumn}');
+        }
+      } else {
+        // Subsequent nested EXISTS - connect this parent to the child from the previous level
+        buffer.write(' AND EXISTS (SELECT 1 FROM ${relationship.parentTable} ');
+        
+        final previousRelationship = path[i + 1]; // Previous level in the chain
+        
+        if (relationship.type == RelationshipType.oneToMany) {
+          // Connect this relationship's parent column to the previous relationship's child column
+          // For example: users.id = posts.user_id (where posts.user_id comes from the previous relationship)
+          buffer.write('WHERE ${relationship.parentTable}.${relationship.parentColumn} = ${previousRelationship.parentTable}.${relationship.childColumn}');
+        } else if (relationship.type == RelationshipType.manyToMany) {
+          final junctionTable = relationship.junctionTable!;
+          final junctionParentCol = relationship.junctionParentColumn!;
+          final junctionChildCol = relationship.junctionChildColumn!;
+          buffer.write('INNER JOIN $junctionTable ON ${relationship.parentTable}.${relationship.parentColumn} = $junctionTable.$junctionParentCol ');
+          buffer.write('WHERE $junctionTable.$junctionChildCol = ${previousRelationship.parentTable}.${relationship.childColumn}');
+        }
+      }
+      
+      // If this is the root level, add the parameter condition
+      if (isRoot && hasRootParameter) {
+        buffer.write(' AND ${relationship.parentTable}.${relationship.parentColumn} = ?');
+      }
+    }
+    
+    // Close all the EXISTS parentheses
+    for (int i = 0; i < path.length; i++) {
+      buffer.write(')');
+    }
+    
+    return buffer.toString();
   }
 
   /// Finds the relationship path from source table to target table
@@ -226,76 +363,6 @@ class RelatedDataAccess extends DataAccess {
     return path;
   }
 
-  /// Builds an optimized DELETE query using JOINs/WHERE EXISTS
-  ({String sql, List<dynamic> parameters}) _buildOptimizedDeleteQuery(
-    List<RelationshipBuilder> path, 
-    dynamic rootPrimaryKey
-  ) {
-    if (path.isEmpty) {
-      return (sql: '', parameters: <dynamic>[]);
-    }
-
-    final targetTable = path.last.childTable;
-    final sqlBuffer = StringBuffer();
-    final parameters = <dynamic>[];
-
-    sqlBuffer.write('DELETE FROM $targetTable WHERE EXISTS (');
-    
-    // Build nested EXISTS clauses for each step in the path
-    String currentTable = path.first.parentTable;
-    
-    for (int i = 0; i < path.length; i++) {
-      final relationship = path[i];
-      
-      if (i > 0) {
-        sqlBuffer.write(' AND EXISTS (');
-      }
-      
-      switch (relationship.type) {
-        case RelationshipType.oneToMany:
-          if (i == 0) {
-            // First level: connect to root record
-            sqlBuffer.write('SELECT 1 FROM ${relationship.parentTable} p$i WHERE ');
-            sqlBuffer.write('p$i.${relationship.parentColumn} = ? AND ');
-            sqlBuffer.write('$targetTable.${relationship.childColumn} = p$i.${relationship.parentColumn}');
-            parameters.add(rootPrimaryKey);
-          } else {
-            // Subsequent levels: connect to previous level
-            sqlBuffer.write('SELECT 1 FROM ${relationship.parentTable} p$i WHERE ');
-            sqlBuffer.write('p$i.${relationship.parentColumn} = p${i-1}.${path[i-1].childColumn} AND ');
-            sqlBuffer.write('$targetTable.${relationship.childColumn} = p$i.${relationship.parentColumn}');
-          }
-          break;
-          
-        case RelationshipType.manyToMany:
-          final junctionTable = relationship.junctionTable!;
-          final junctionParentCol = relationship.junctionParentColumn!;
-          final junctionChildCol = relationship.junctionChildColumn!;
-          
-          if (i == 0) {
-            sqlBuffer.write('SELECT 1 FROM ${relationship.parentTable} p$i ');
-            sqlBuffer.write('INNER JOIN $junctionTable j$i ON p$i.${relationship.parentColumn} = j$i.$junctionParentCol '); 
-            sqlBuffer.write('WHERE p$i.${relationship.parentColumn} = ? AND ');
-            sqlBuffer.write('$targetTable.${relationship.childColumn} = j$i.$junctionChildCol');
-            parameters.add(rootPrimaryKey);
-          } else {
-            sqlBuffer.write('SELECT 1 FROM ${relationship.parentTable} p$i ');
-            sqlBuffer.write('INNER JOIN $junctionTable j$i ON p$i.${relationship.parentColumn} = j$i.$junctionParentCol ');
-            sqlBuffer.write('WHERE p$i.${relationship.parentColumn} = p${i-1}.${path[i-1].childColumn} AND ');
-            sqlBuffer.write('$targetTable.${relationship.childColumn} = j$i.$junctionChildCol');
-          }
-          break;
-      }
-    }
-    
-    // Close all the EXISTS clauses
-    for (int i = 0; i < path.length; i++) {
-      sqlBuffer.write(')');
-    }
-
-    return (sql: sqlBuffer.toString(), parameters: parameters);
-  }
-
   /// Deletes the root record itself
   Future<int> _deleteRootRecord(Transaction txn, String tableName, dynamic primaryKeyValue) async {
     final table = schema.getTable(tableName);
@@ -317,33 +384,7 @@ class RelatedDataAccess extends DataAccess {
     );
   }
 
-  /// Fallback deletion method using the old recursive approach
-  Future<int> _fallbackDelete(
-    Transaction txn,
-    String tableName,
-    String rootTable,
-    dynamic rootPrimaryKey,
-    bool force,
-  ) async {
-    // This is simplified fallback - in practice you'd want the full recursive logic
-    // For now, just delete direct children
-    final relationships = schema.getParentRelationships(rootTable)
-      .where((r) => r.childTable == tableName)
-      .toList();
-    
-    int totalDeleted = 0;
-    
-    for (final relationship in relationships) {
-      final deleteCount = await txn.delete(
-        tableName,
-        where: relationship.getChildWhereCondition(),
-        whereArgs: [rootPrimaryKey],
-      );
-      totalDeleted += deleteCount;
-    }
-    
-    return totalDeleted;
-  }
+
 
   /// Gets the primary key value from a record map
   dynamic _extractPrimaryKeyValue(String tableName, Map<String, dynamic> record) {
