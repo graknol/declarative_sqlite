@@ -11,12 +11,26 @@ import 'lww_types.dart';
 /// - In-memory cache for immediate UI updates
 /// - Pending operations queue for offline sync
 /// - Server update conflict resolution
+/// - Per-column timestamp tracking in database
 class LWWDataAccess extends DataAccess {
   /// Creates a new LWWDataAccess instance
-  LWWDataAccess({
+  LWWDataAccess._({
     required super.database,
     required super.schema,
   });
+  
+  /// Factory method to create and initialize LWWDataAccess
+  static Future<LWWDataAccess> create({
+    required Database database,
+    required SchemaBuilder schema,
+  }) async {
+    final instance = LWWDataAccess._(database: database, schema: schema);
+    await instance._initializeLWWTables();
+    return instance;
+  }
+
+  /// Name of the internal table that stores LWW column timestamps
+  static const String _lwwTimestampsTable = '_lww_column_timestamps';
 
   /// In-memory cache of current LWW column values
   /// Map of tableName -> primaryKey -> columnName -> LWWColumnValue
@@ -25,8 +39,61 @@ class LWWDataAccess extends DataAccess {
   /// Queue of pending operations waiting to be synced to server
   final Map<String, PendingOperation> _pendingOperations = {};
 
-  /// Gets the effective value for a LWW column, considering both DB and cache
-  /// Returns the cached value if available, otherwise the DB value
+  /// Initializes the LWW metadata table for storing per-column timestamps
+  Future<void> _initializeLWWTables() async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS $_lwwTimestampsTable (
+        table_name TEXT NOT NULL,
+        primary_key_value TEXT NOT NULL,
+        column_name TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        is_from_server INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (table_name, primary_key_value, column_name)
+      )
+    ''');
+  }
+
+  /// Stores a timestamp for a specific LWW column
+  Future<void> _storeLWWTimestamp(
+    String tableName,
+    dynamic primaryKeyValue,
+    String columnName,
+    String timestamp, {
+    bool isFromServer = false,
+  }) async {
+    await database.execute(
+      '''INSERT OR REPLACE INTO $_lwwTimestampsTable 
+         (table_name, primary_key_value, column_name, timestamp, is_from_server)
+         VALUES (?, ?, ?, ?, ?)''',
+      [tableName, primaryKeyValue.toString(), columnName, timestamp, isFromServer ? 1 : 0],
+    );
+  }
+
+  /// Gets the stored timestamp and source info for a specific LWW column
+  Future<(String, bool)?> _getLWWTimestampInfo(
+    String tableName,
+    dynamic primaryKeyValue,
+    String columnName,
+  ) async {
+    final result = await database.query(
+      _lwwTimestampsTable,
+      columns: ['timestamp', 'is_from_server'],
+      where: 'table_name = ? AND primary_key_value = ? AND column_name = ?',
+      whereArgs: [tableName, primaryKeyValue.toString(), columnName],
+    );
+    
+    if (result.isNotEmpty) {
+      final row = result.first;
+      final timestamp = row['timestamp'] as String;
+      final isFromServer = (row['is_from_server'] as int) == 1;
+      return (timestamp, isFromServer);
+    }
+    
+    return null;
+  }
+
+  /// Gets the effective value for a LWW column, considering cache, DB, and stored timestamps
+  /// Returns the cached value if available, otherwise determines from DB + timestamp
   Future<dynamic> getLWWColumnValue(String tableName, dynamic primaryKeyValue, String columnName) async {
     final table = schema.getTable(tableName);
     if (table == null) {
@@ -44,15 +111,19 @@ class LWWDataAccess extends DataAccess {
       return row?[columnName];
     }
 
-    // Check cache first for LWW columns
+    // For LWW columns, check cache first
     final cachedValue = _getCachedLWWValue(tableName, primaryKeyValue, columnName);
     if (cachedValue != null) {
       return cachedValue.value;
     }
     
-    // Fall back to DB value if no cached value
+    // No cached value, get from DB
     final row = await getByPrimaryKey(tableName, primaryKeyValue);
-    return row?[columnName];
+    if (row == null) {
+      return null;
+    }
+    
+    return row[columnName];
   }
 
   /// Updates a LWW column with conflict resolution
@@ -87,29 +158,52 @@ class LWWDataAccess extends DataAccess {
       isFromServer: isFromServer,
     );
 
-    // Get current cached value if any
-    final currentCachedValue = _getCachedLWWValue(tableName, primaryKeyValue, columnName);
-    
-    // Resolve conflict with cached value
+    // Check cache first
+    final cachedValue = _getCachedLWWValue(tableName, primaryKeyValue, columnName);
+    LWWColumnValue? currentValue = cachedValue;
+
+    // If no cached value, try to reconstruct from DB + stored timestamp
+    if (currentValue == null) {
+      final row = await getByPrimaryKey(tableName, primaryKeyValue);
+      if (row != null) {
+        final timestampInfo = await _getLWWTimestampInfo(tableName, primaryKeyValue, columnName);
+        if (timestampInfo != null) {
+          final (storedTimestamp, isFromServer) = timestampInfo;
+          currentValue = LWWColumnValue(
+            value: row[columnName],
+            timestamp: storedTimestamp,
+            columnName: columnName,
+            isFromServer: isFromServer,
+          );
+        }
+      }
+    }
+
+    // Resolve conflict
     LWWColumnValue finalValue = newLWWValue;
-    if (currentCachedValue != null) {
-      finalValue = newLWWValue.resolveConflict(currentCachedValue);
+    if (currentValue != null) {
+      finalValue = newLWWValue.resolveConflict(currentValue);
     }
 
-    // Always update cache with the new value (winner of conflict resolution)
-    _setCachedLWWValue(tableName, primaryKeyValue, finalValue);
+    // Update cache and DB if our value won
+    if (finalValue == newLWWValue) {
+      _setCachedLWWValue(tableName, primaryKeyValue, finalValue);
+      await _storeLWWTimestamp(tableName, primaryKeyValue, columnName, finalValue.timestamp, 
+                              isFromServer: finalValue.isFromServer);
+      
+      try {
+        await updateByPrimaryKey(tableName, primaryKeyValue, {columnName: finalValue.value});
+      } catch (e) {
+        // If DB update fails, keep in cache and timestamp store
+      }
 
-    // If this is not a server update and our value won, add to pending operations
-    if (!isFromServer && finalValue == newLWWValue) {
-      _addPendingOperation(tableName, primaryKeyValue, columnName, finalValue);
-    }
-
-    // Always try to update database (for persistence)
-    try {
-      await updateByPrimaryKey(tableName, primaryKeyValue, {columnName: finalValue.value});
-    } catch (e) {
-      // If DB update fails (e.g., offline), keep in cache for later sync
-      // The pending operation will handle the eventual sync
+      // Add to pending operations if it's a user update
+      if (!isFromServer) {
+        _addPendingOperation(tableName, primaryKeyValue, columnName, finalValue);
+      }
+    } else {
+      // Our value lost, but update cache with winner
+      _setCachedLWWValue(tableName, primaryKeyValue, finalValue);
     }
 
     return finalValue.value;
@@ -215,6 +309,40 @@ class LWWDataAccess extends DataAccess {
   /// Clears all pending operations (for testing)
   void clearAllPendingOperations() {
     _pendingOperations.clear();
+  }
+
+  /// Override insert to store initial LWW timestamps
+  @override
+  Future<int> insert(String tableName, Map<String, dynamic> values) async {
+    final table = schema.getTable(tableName);
+    if (table == null) {
+      throw ArgumentError('Table "$tableName" not found in schema');
+    }
+
+    // Do the regular insert
+    final rowId = await super.insert(tableName, values);
+
+    // Get the primary key value for the inserted row
+    final primaryKeyColumns = table.getPrimaryKeyColumns();
+    dynamic primaryKeyValue = rowId;
+    
+    // For composite primary keys, we need to extract the key from values
+    if (primaryKeyColumns.length > 1) {
+      primaryKeyValue = primaryKeyColumns.map((col) => values[col]).join('|');
+    } else if (primaryKeyColumns.length == 1 && primaryKeyColumns.first != 'id') {
+      primaryKeyValue = values[primaryKeyColumns.first];
+    }
+
+    // Store initial timestamps for LWW columns
+    final currentTimestamp = SystemColumnUtils.generateHLCTimestamp();
+    for (final column in table.columns) {
+      if (column.isLWW && values.containsKey(column.name)) {
+        await _storeLWWTimestamp(tableName, primaryKeyValue, column.name, currentTimestamp,
+                                isFromServer: false); // Initial inserts are considered user operations
+      }
+    }
+
+    return rowId;
   }
 
   /// Helper method to get cached LWW value
