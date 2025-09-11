@@ -61,11 +61,12 @@ class LWWDataAccess extends DataAccess {
     String timestamp, {
     bool isFromServer = false,
   }) async {
+    final serializedPrimaryKey = _serializePrimaryKey(tableName, primaryKeyValue);
     await database.execute(
       '''INSERT OR REPLACE INTO $_lwwTimestampsTable 
          (table_name, primary_key_value, column_name, timestamp, is_from_server)
          VALUES (?, ?, ?, ?, ?)''',
-      [tableName, primaryKeyValue.toString(), columnName, timestamp, isFromServer ? 1 : 0],
+      [tableName, serializedPrimaryKey, columnName, timestamp, isFromServer ? 1 : 0],
     );
   }
 
@@ -75,11 +76,12 @@ class LWWDataAccess extends DataAccess {
     dynamic primaryKeyValue,
     String columnName,
   ) async {
+    final serializedPrimaryKey = _serializePrimaryKey(tableName, primaryKeyValue);
     final result = await database.query(
       _lwwTimestampsTable,
       columns: ['timestamp', 'is_from_server'],
       where: 'table_name = ? AND primary_key_value = ? AND column_name = ?',
-      whereArgs: [tableName, primaryKeyValue.toString(), columnName],
+      whereArgs: [tableName, serializedPrimaryKey, columnName],
     );
     
     if (result.isNotEmpty) {
@@ -324,13 +326,20 @@ class LWWDataAccess extends DataAccess {
 
     // Get the primary key value for the inserted row
     final primaryKeyColumns = table.getPrimaryKeyColumns();
-    dynamic primaryKeyValue = rowId;
+    dynamic primaryKeyValue;
     
-    // For composite primary keys, we need to extract the key from values
+    // For composite primary keys, we need to extract the key from values  
     if (primaryKeyColumns.length > 1) {
-      primaryKeyValue = primaryKeyColumns.map((col) => values[col]).join('|');
+      // Build a map of primary key values for composite keys
+      primaryKeyValue = <String, dynamic>{};
+      for (final col in primaryKeyColumns) {
+        primaryKeyValue[col] = values[col];
+      }
     } else if (primaryKeyColumns.length == 1 && primaryKeyColumns.first != 'id') {
       primaryKeyValue = values[primaryKeyColumns.first];
+    } else {
+      // Default to rowId for auto-increment primary key
+      primaryKeyValue = rowId;
     }
 
     // Store initial timestamps for LWW columns
@@ -370,5 +379,59 @@ class LWWDataAccess extends DataAccess {
     );
     
     _pendingOperations[operationId] = operation;
+  }
+
+  /// Serializes a primary key value for storage in the LWW timestamp table
+  /// Handles single primary keys, composite primary keys, and different data types
+  String _serializePrimaryKey(String tableName, dynamic primaryKeyValue) {
+    final table = schema.getTable(tableName);
+    if (table == null) {
+      throw ArgumentError('Table "$tableName" not found in schema');
+    }
+
+    final primaryKeyColumns = table.getPrimaryKeyColumns();
+    if (primaryKeyColumns.isEmpty) {
+      throw ArgumentError('Table "$tableName" has no primary key');
+    }
+
+    if (primaryKeyColumns.length == 1) {
+      // Single primary key - encode the value directly
+      final columnName = primaryKeyColumns.first;
+      final column = table.columns.firstWhere((col) => col.name == columnName);
+      final encodedValue = DataTypeUtils.encodeValue(primaryKeyValue, column.dataType);
+      return encodedValue?.toString() ?? 'NULL';
+    } else {
+      // Composite primary key - serialize as JSON-like structure
+      final keyParts = <String>[];
+      
+      if (primaryKeyValue is Map<String, dynamic>) {
+        // Map format: encode each column value
+        for (final columnName in primaryKeyColumns) {
+          if (!primaryKeyValue.containsKey(columnName)) {
+            throw ArgumentError('Primary key value map is missing column: $columnName');
+          }
+          final column = table.columns.firstWhere((col) => col.name == columnName);
+          final rawValue = primaryKeyValue[columnName];
+          final encodedValue = DataTypeUtils.encodeValue(rawValue, column.dataType);
+          keyParts.add('$columnName:${encodedValue ?? 'NULL'}');
+        }
+      } else if (primaryKeyValue is List) {
+        // List format: encode values in order
+        if (primaryKeyValue.length != primaryKeyColumns.length) {
+          throw ArgumentError('Primary key value list length (${primaryKeyValue.length}) does not match number of primary key columns (${primaryKeyColumns.length})');
+        }
+        for (int i = 0; i < primaryKeyColumns.length; i++) {
+          final columnName = primaryKeyColumns[i];
+          final column = table.columns.firstWhere((col) => col.name == columnName);
+          final rawValue = primaryKeyValue[i];
+          final encodedValue = DataTypeUtils.encodeValue(rawValue, column.dataType);
+          keyParts.add('$columnName:${encodedValue ?? 'NULL'}');
+        }
+      } else {
+        throw ArgumentError('Composite primary key requires Map<String, dynamic> or List for primaryKeyValue, got ${primaryKeyValue.runtimeType}');
+      }
+      
+      return keyParts.join('|');
+    }
   }
 }

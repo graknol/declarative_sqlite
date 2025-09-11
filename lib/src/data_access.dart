@@ -165,7 +165,7 @@ class DataAccess {
       throw ArgumentError('Table "$tableName" has no primary key');
     }
     
-    final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue);
+    final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue, table);
     
     final results = await database.query(
       tableName,
@@ -287,7 +287,7 @@ class DataAccess {
     
     _validateUpdateValues(table, processedValues);
     
-    final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue);
+    final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue, table);
     
     return await database.update(
       tableName,
@@ -351,7 +351,7 @@ class DataAccess {
       throw ArgumentError('Table "$tableName" has no primary key');
     }
     
-    final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue);
+    final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue, table);
     
     return await database.delete(
       tableName,
@@ -414,7 +414,7 @@ class DataAccess {
       throw ArgumentError('Table "$tableName" has no primary key');
     }
     
-    final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue);
+    final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue, table);
     
     final count = await this.count(
       tableName,
@@ -567,7 +567,7 @@ class DataAccess {
               dynamic pkValue = primaryKeyColumns.length == 1 
                   ? primaryKeyValues[primaryKeyColumns.first]
                   : primaryKeyValues;
-              final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, pkValue);
+              final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, pkValue, table);
               final existingRows = await txn.query(
                 tableName,
                 where: whereClause,
@@ -684,10 +684,15 @@ class DataAccess {
 
   /// Builds a WHERE clause and arguments for primary key matching
   /// Returns a tuple of (whereClause, whereArgs)
-  (String, List<dynamic>) _buildPrimaryKeyWhereClause(List<String> primaryKeyColumns, dynamic primaryKeyValue) {
+  (String, List<dynamic>) _buildPrimaryKeyWhereClause(List<String> primaryKeyColumns, dynamic primaryKeyValue, [TableBuilder? table]) {
     if (primaryKeyColumns.length == 1) {
       // Single primary key
-      return ('${primaryKeyColumns.first} = ?', [primaryKeyValue]);
+      dynamic encodedValue = primaryKeyValue;
+      if (table != null) {
+        final column = table.columns.firstWhere((col) => col.name == primaryKeyColumns.first);
+        encodedValue = DataTypeUtils.encodeValue(primaryKeyValue, column.dataType);
+      }
+      return ('${primaryKeyColumns.first} = ?', [encodedValue]);
     } else {
       // Composite primary key
       if (primaryKeyValue is Map<String, dynamic>) {
@@ -699,7 +704,13 @@ class DataAccess {
             throw ArgumentError('Primary key value map is missing column: $columnName');
           }
           whereConditions.add('$columnName = ?');
-          whereArgs.add(primaryKeyValue[columnName]);
+          
+          dynamic encodedValue = primaryKeyValue[columnName];
+          if (table != null) {
+            final column = table.columns.firstWhere((col) => col.name == columnName);
+            encodedValue = DataTypeUtils.encodeValue(primaryKeyValue[columnName], column.dataType);
+          }
+          whereArgs.add(encodedValue);
         }
         
         return (whereConditions.join(' AND '), whereArgs);
@@ -709,11 +720,20 @@ class DataAccess {
         }
         
         final whereConditions = <String>[];
+        final encodedArgs = <dynamic>[];
         for (int i = 0; i < primaryKeyColumns.length; i++) {
           whereConditions.add('${primaryKeyColumns[i]} = ?');
+          
+          dynamic encodedValue = primaryKeyValue[i];
+          if (table != null) {
+            final columnName = primaryKeyColumns[i];
+            final column = table.columns.firstWhere((col) => col.name == columnName);
+            encodedValue = DataTypeUtils.encodeValue(primaryKeyValue[i], column.dataType);
+          }
+          encodedArgs.add(encodedValue);
         }
         
-        return (whereConditions.join(' AND '), primaryKeyValue);
+        return (whereConditions.join(' AND '), encodedArgs);
       } else {
         throw ArgumentError('Composite primary key requires Map<String, dynamic> or List for primaryKeyValue, got ${primaryKeyValue.runtimeType}');
       }
