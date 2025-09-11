@@ -176,3 +176,5 @@ export 'src/data_types.dart';
 export 'src/migrator.dart';
 export 'src/data_access.dart';
 export 'src/related_data_access.dart';
+export 'src/lww_types.dart';
+export 'src/lww_data_access.dart';
