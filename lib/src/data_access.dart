@@ -848,6 +848,8 @@ class BulkLoadOptions {
     this.collectErrors = false,
     this.upsertMode = false,
     this.clearTableFirst = false,
+    this.lwwTimestamps,
+    this.isFromServer = false,
   });
 
   /// Number of rows to insert in each batch (default: 1000)
@@ -872,6 +874,14 @@ class BulkLoadOptions {
   /// Whether to clear the table before loading data (default: false)
   /// When true, all existing rows are deleted before inserting new data.
   final bool clearTableFirst;
+  
+  /// Map of column names to HLC timestamps for LWW conflict resolution
+  /// Required for any columns marked with .lww() constraint
+  final Map<String, String>? lwwTimestamps;
+  
+  /// Whether the data being loaded is from server (default: false)
+  /// Used for LWW conflict resolution tracking
+  final bool isFromServer;
 }
 
 /// Result information from a bulk load operation.

@@ -1,5 +1,7 @@
 import 'package:sqflite_common/sqflite.dart';
 import 'schema_builder.dart';
+import 'table_builder.dart';
+import 'column_builder.dart';
 import 'data_access.dart';
 import 'data_types.dart';
 import 'lww_types.dart';
@@ -70,7 +72,23 @@ class LWWDataAccess extends DataAccess {
     );
   }
 
-  /// Gets the stored timestamp and source info for a specific LWW column
+  /// Stores a timestamp for a specific LWW column using transaction
+  Future<void> _storeLWWTimestampTxn(
+    DatabaseExecutor txn,
+    String tableName,
+    dynamic primaryKeyValue,
+    String columnName,
+    String timestamp, {
+    bool isFromServer = false,
+  }) async {
+    final serializedPrimaryKey = _serializePrimaryKey(tableName, primaryKeyValue);
+    await txn.execute(
+      '''INSERT OR REPLACE INTO $_lwwTimestampsTable 
+         (table_name, primary_key_value, column_name, timestamp, is_from_server)
+         VALUES (?, ?, ?, ?, ?)''',
+      [tableName, serializedPrimaryKey, columnName, timestamp, isFromServer ? 1 : 0],
+    );
+  }
   Future<(String, bool)?> _getLWWTimestampInfo(
     String tableName,
     dynamic primaryKeyValue,
@@ -432,6 +450,460 @@ class LWWDataAccess extends DataAccess {
       }
       
       return keyParts.join('|');
+    }
+  }
+
+  /// Override bulkLoad to add LWW conflict resolution support
+  @override
+  Future<BulkLoadResult> bulkLoad(
+    String tableName,
+    List<Map<String, dynamic>> dataset, {
+    BulkLoadOptions options = const BulkLoadOptions(),
+  }) async {
+    if (dataset.isEmpty) {
+      return BulkLoadResult(
+        rowsProcessed: 0,
+        rowsInserted: 0,
+        rowsUpdated: 0,
+        rowsSkipped: 0,
+        errors: const [],
+      );
+    }
+
+    final table = schema.getTable(tableName);
+    if (table == null) {
+      throw ArgumentError('Table "$tableName" not found in schema');
+    }
+
+    // Check for LWW columns and validate timestamps
+    final lwwColumns = table.columns.where((col) => col.isLWW).toList();
+    if (lwwColumns.isNotEmpty) {
+      _validateLWWTimestamps(tableName, dataset, lwwColumns, options);
+    }
+
+    // If there are no LWW columns, use the regular bulkLoad
+    if (lwwColumns.isEmpty) {
+      return super.bulkLoad(tableName, dataset, options: options);
+    }
+
+    // Process LWW-enabled bulk load
+    return _bulkLoadWithLWW(tableName, dataset, options, lwwColumns);
+  }
+
+  /// Validates that LWW timestamps are provided for all LWW columns
+  void _validateLWWTimestamps(
+    String tableName,
+    List<Map<String, dynamic>> dataset,
+    List<ColumnBuilder> lwwColumns,
+    BulkLoadOptions options,
+  ) {
+    // If no LWW timestamps provided, reject LWW column updates
+    if (options.lwwTimestamps == null || options.lwwTimestamps!.isEmpty) {
+      final lwwColumnNames = lwwColumns.map((col) => col.name).toSet();
+      final datasetColumns = dataset.first.keys.toSet();
+      final lwwColumnsInDataset = lwwColumnNames.intersection(datasetColumns);
+      
+      if (lwwColumnsInDataset.isNotEmpty) {
+        throw ArgumentError(
+          'Table "$tableName" has LWW columns ${lwwColumnsInDataset.join(', ')} '
+          'but no HLC timestamps were provided. Use options.lwwTimestamps to specify timestamps for LWW columns.'
+        );
+      }
+    } else {
+      // Validate that timestamps are provided for all LWW columns in the dataset
+      final providedTimestamps = options.lwwTimestamps!.keys.toSet();
+      
+      for (final row in dataset) {
+        for (final lwwColumn in lwwColumns) {
+          if (row.containsKey(lwwColumn.name) && !providedTimestamps.contains(lwwColumn.name)) {
+            throw ArgumentError(
+              'Row contains LWW column "${lwwColumn.name}" but no HLC timestamp provided for it. '
+              'All LWW columns must have timestamps in options.lwwTimestamps.'
+            );
+          }
+        }
+      }
+    }
+  }
+
+  /// Performs bulk load with LWW conflict resolution
+  Future<BulkLoadResult> _bulkLoadWithLWW(
+    String tableName,
+    List<Map<String, dynamic>> dataset,
+    BulkLoadOptions options,
+    List<ColumnBuilder> lwwColumns,
+  ) async {
+    final table = schema.getTable(tableName)!;
+    final metadata = getTableMetadata(tableName);
+    final primaryKeyColumns = table.getPrimaryKeyColumns();
+    
+    // Analyze dataset columns vs table columns
+    final datasetColumns = dataset.first.keys.toSet();
+    final tableColumns = metadata.columns.keys.toSet();
+    final validColumns = datasetColumns.intersection(tableColumns);
+    
+    final errors = <String>[];
+    var rowsProcessed = 0;
+    var rowsInserted = 0;
+    var rowsUpdated = 0;
+    var rowsSkipped = 0;
+    
+    // Check if upsert mode is possible (requires primary key)
+    if (options.upsertMode && primaryKeyColumns.isEmpty) {
+      throw ArgumentError('Upsert mode requires a primary key, but table "$tableName" has no primary key');
+    }
+    
+    // Pre-validate that required columns can be satisfied
+    final missingRequiredColumns = metadata.requiredColumns.toSet()
+        .difference(validColumns);
+    
+    if (missingRequiredColumns.isNotEmpty && !options.allowPartialData) {
+      throw ArgumentError(
+        'Required columns are missing from dataset: ${missingRequiredColumns.join(', ')}. '
+        'Set allowPartialData to true to skip rows missing required columns.'
+      );
+    }
+    
+    await database.transaction((txn) async {
+      // Clear table if requested
+      if (options.clearTableFirst) {
+        await txn.delete(tableName);
+      }
+      
+      final batchSize = options.batchSize;
+      
+      for (var i = 0; i < dataset.length; i += batchSize) {
+        final endIndex = (i + batchSize < dataset.length) ? i + batchSize : dataset.length;
+        
+        for (var j = i; j < endIndex; j++) {
+          final row = dataset[j];
+          rowsProcessed++;
+          
+          try {
+            // Filter row to only include valid table columns
+            final filteredRow = <String, dynamic>{};
+            for (final column in validColumns) {
+              if (row.containsKey(column)) {
+                filteredRow[column] = row[column];
+              }
+            }
+            
+            // Check if required columns are satisfied for this specific row
+            final rowMissingRequired = metadata.requiredColumns.toSet()
+                .difference(filteredRow.keys.toSet());
+            
+            if (rowMissingRequired.isNotEmpty) {
+              if (options.allowPartialData) {
+                rowsSkipped++;
+                if (options.collectErrors) {
+                  errors.add('Row $j: Missing required columns: ${rowMissingRequired.join(', ')}');
+                }
+                continue;
+              } else {
+                throw ArgumentError('Row $j: Missing required columns: ${rowMissingRequired.join(', ')}');
+              }
+            }
+            
+            // Encode date columns (but not LWW columns yet)
+            final nonLWWColumns = <String, ColumnBuilder>{};
+            for (final entry in metadata.columns.entries) {
+              if (!entry.value.isLWW) {
+                nonLWWColumns[entry.key] = entry.value;
+              }
+            }
+            final encodedRow = DataTypeUtils.encodeRow(filteredRow, nonLWWColumns);
+            
+            // Validate the encoded row data if validation is enabled
+            if (options.validateData) {
+              _validateInsertValues(table, encodedRow);
+            }
+            
+            if (options.upsertMode && primaryKeyColumns.isNotEmpty) {
+              // Upsert mode with LWW conflict resolution
+              final result = await _upsertRowWithLWW(
+                txn, tableName, table, encodedRow, options, lwwColumns, j
+              );
+              
+              if (result == 'inserted') {
+                rowsInserted++;
+              } else if (result == 'updated') {
+                rowsUpdated++;
+              } else if (result == 'skipped') {
+                rowsSkipped++;
+                if (options.collectErrors) {
+                  errors.add('Row $j: Missing primary key values for upsert mode');
+                }
+              }
+            } else {
+              // Insert-only mode with LWW timestamps
+              await _insertRowWithLWW(txn, tableName, encodedRow, options, lwwColumns);
+              rowsInserted++;
+            }
+          } catch (e) {
+            if (options.allowPartialData) {
+              rowsSkipped++;
+              if (options.collectErrors) {
+                errors.add('Row $j: ${e.toString()}');
+              }
+            } else {
+              rethrow;
+            }
+          }
+        }
+      }
+    });
+    
+    return BulkLoadResult(
+      rowsProcessed: rowsProcessed,
+      rowsInserted: rowsInserted,
+      rowsUpdated: rowsUpdated,
+      rowsSkipped: rowsSkipped,
+      errors: errors,
+    );
+  }
+
+  /// Inserts a row with LWW timestamp tracking
+  Future<void> _insertRowWithLWW(
+    DatabaseExecutor txn,
+    String tableName,
+    Map<String, dynamic> encodedRow,
+    BulkLoadOptions options,
+    List<ColumnBuilder> lwwColumns,
+  ) async {
+    // Add system columns
+    final insertValues = SystemColumnUtils.ensureSystemColumns(encodedRow);
+    await txn.insert(tableName, insertValues);
+    
+    // Store LWW timestamps for any LWW columns present
+    if (options.lwwTimestamps != null) {
+      final table = schema.getTable(tableName)!;
+      final primaryKeyColumns = table.getPrimaryKeyColumns();
+      
+      // Determine primary key value from inserted row
+      dynamic primaryKeyValue;
+      if (primaryKeyColumns.length == 1) {
+        primaryKeyValue = insertValues[primaryKeyColumns.first];
+      } else {
+        primaryKeyValue = <String, dynamic>{};
+        for (final col in primaryKeyColumns) {
+          primaryKeyValue[col] = insertValues[col];
+        }
+      }
+      
+      // Store timestamps for LWW columns
+      for (final lwwColumn in lwwColumns) {
+        if (encodedRow.containsKey(lwwColumn.name) && 
+            options.lwwTimestamps!.containsKey(lwwColumn.name)) {
+          await _storeLWWTimestampTxn(
+            txn,
+            tableName,
+            primaryKeyValue,
+            lwwColumn.name,
+            options.lwwTimestamps![lwwColumn.name]!,
+            isFromServer: options.isFromServer,
+          );
+        }
+      }
+    }
+  }
+
+  /// Upserts a row with LWW conflict resolution
+  Future<String> _upsertRowWithLWW(
+    DatabaseExecutor txn,
+    String tableName,
+    TableBuilder table,
+    Map<String, dynamic> encodedRow,
+    BulkLoadOptions options,
+    List<ColumnBuilder> lwwColumns,
+    int rowIndex,
+  ) async {
+    final primaryKeyColumns = table.getPrimaryKeyColumns();
+    final primaryKeyValues = <String, dynamic>{};
+    var hasPrimaryKeyValues = true;
+    
+    for (final pkColumn in primaryKeyColumns) {
+      if (encodedRow.containsKey(pkColumn)) {
+        primaryKeyValues[pkColumn] = encodedRow[pkColumn];
+      } else {
+        hasPrimaryKeyValues = false;
+        break;
+      }
+    }
+    
+    if (!hasPrimaryKeyValues) {
+      return 'skipped';
+    }
+    
+    // Check if row exists
+    dynamic pkValue = primaryKeyColumns.length == 1 
+        ? primaryKeyValues[primaryKeyColumns.first]
+        : primaryKeyValues;
+    final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, pkValue, table);
+    final existingRows = await txn.query(
+      tableName,
+      where: whereClause,
+      whereArgs: whereArgs,
+      limit: 1,
+    );
+    
+    if (existingRows.isNotEmpty) {
+      // Row exists, update with LWW conflict resolution
+      await _updateRowWithLWW(txn, tableName, pkValue, encodedRow, options, lwwColumns);
+      return 'updated';
+    } else {
+      // Row doesn't exist, insert it
+      await _insertRowWithLWW(txn, tableName, encodedRow, options, lwwColumns);
+      return 'inserted';
+    }
+  }
+
+  /// Validates that insert values meet table constraints.
+  void _validateInsertValues(TableBuilder table, Map<String, dynamic> values) {
+    // Check that all NOT NULL columns without defaults are provided
+    // Skip system columns as they are automatically populated
+    for (final column in table.columns) {
+      if (column.constraints.contains(ConstraintType.notNull) && 
+          column.defaultValue == null &&
+          !SystemColumns.isSystemColumn(column.name) &&
+          !values.containsKey(column.name)) {
+        throw ArgumentError('Required column "${column.name}" is missing from insert values');
+      }
+    }
+    
+    // Validate that provided columns exist in the table
+    for (final columnName in values.keys) {
+      if (!table.columns.any((col) => col.name == columnName)) {
+        throw ArgumentError('Column "$columnName" does not exist in table "${table.name}"');
+      }
+    }
+  }
+
+  /// Builds a WHERE clause and arguments for primary key matching
+  (String, List<dynamic>) _buildPrimaryKeyWhereClause(List<String> primaryKeyColumns, dynamic primaryKeyValue, TableBuilder table) {
+    if (primaryKeyColumns.length == 1) {
+      // Single primary key
+      final column = table.columns.firstWhere((col) => col.name == primaryKeyColumns.first);
+      final encodedValue = DataTypeUtils.encodeValue(primaryKeyValue, column.dataType);
+      return ('${primaryKeyColumns.first} = ?', [encodedValue]);
+    } else {
+      // Composite primary key
+      if (primaryKeyValue is Map<String, dynamic>) {
+        final whereConditions = <String>[];
+        final whereArgs = <dynamic>[];
+        
+        for (final columnName in primaryKeyColumns) {
+          if (!primaryKeyValue.containsKey(columnName)) {
+            throw ArgumentError('Primary key value map is missing column: $columnName');
+          }
+          whereConditions.add('$columnName = ?');
+          
+          final column = table.columns.firstWhere((col) => col.name == columnName);
+          final encodedValue = DataTypeUtils.encodeValue(primaryKeyValue[columnName], column.dataType);
+          whereArgs.add(encodedValue);
+        }
+        
+        return (whereConditions.join(' AND '), whereArgs);
+      } else if (primaryKeyValue is List) {
+        if (primaryKeyValue.length != primaryKeyColumns.length) {
+          throw ArgumentError('Primary key value list length (${primaryKeyValue.length}) does not match number of primary key columns (${primaryKeyColumns.length})');
+        }
+        
+        final whereConditions = <String>[];
+        final encodedArgs = <dynamic>[];
+        for (int i = 0; i < primaryKeyColumns.length; i++) {
+          whereConditions.add('${primaryKeyColumns[i]} = ?');
+          
+          final columnName = primaryKeyColumns[i];
+          final column = table.columns.firstWhere((col) => col.name == columnName);
+          final encodedValue = DataTypeUtils.encodeValue(primaryKeyValue[i], column.dataType);
+          encodedArgs.add(encodedValue);
+        }
+        
+        return (whereConditions.join(' AND '), encodedArgs);
+      } else {
+        throw ArgumentError('Composite primary key requires Map<String, dynamic> or List for primaryKeyValue, got ${primaryKeyValue.runtimeType}');
+      }
+    }
+  }
+
+  /// Update a row with LWW conflict resolution
+  Future<void> _updateRowWithLWW(
+    DatabaseExecutor txn,
+    String tableName,
+    dynamic primaryKeyValue,
+    Map<String, dynamic> encodedRow,
+    BulkLoadOptions options,
+    List<ColumnBuilder> lwwColumns,
+  ) async {
+    final updateValues = <String, dynamic>{};
+    
+    // Process non-LWW columns normally
+    for (final entry in encodedRow.entries) {
+      final columnName = entry.key;
+      final isLWWColumn = lwwColumns.any((col) => col.name == columnName);
+      
+      if (!isLWWColumn) {
+        updateValues[columnName] = entry.value;
+      }
+    }
+    
+    // Process LWW columns with conflict resolution
+    if (options.lwwTimestamps != null) {
+      for (final lwwColumn in lwwColumns) {
+        if (encodedRow.containsKey(lwwColumn.name) && 
+            options.lwwTimestamps!.containsKey(lwwColumn.name)) {
+          
+          final newValue = encodedRow[lwwColumn.name];
+          final newTimestamp = options.lwwTimestamps![lwwColumn.name]!;
+          
+          // Get current timestamp for this LWW column
+          final currentTimestampInfo = await _getLWWTimestampInfo(
+            tableName,
+            primaryKeyValue,
+            lwwColumn.name,
+          );
+          
+          bool shouldUpdate = true;
+          if (currentTimestampInfo != null) {
+            final (currentTimestamp, _) = currentTimestampInfo;
+            final currentTimestampInt = int.tryParse(currentTimestamp) ?? 0;
+            final newTimestampInt = int.tryParse(newTimestamp) ?? 0;
+            
+            // Only update if new timestamp is newer or equal (Last-Writer-Wins)
+            shouldUpdate = newTimestampInt >= currentTimestampInt;
+          }
+          
+          if (shouldUpdate) {
+            updateValues[lwwColumn.name] = newValue;
+            
+            // Store the new timestamp
+            await _storeLWWTimestampTxn(
+              txn,
+              tableName,
+              primaryKeyValue,
+              lwwColumn.name,
+              newTimestamp,
+              isFromServer: options.isFromServer,
+            );
+          }
+        }
+      }
+    }
+    
+    // Only update if there are actual changes
+    if (updateValues.isNotEmpty) {
+      updateValues[SystemColumns.systemVersion] = SystemColumnUtils.generateHLCTimestamp();
+      
+      final table = schema.getTable(tableName)!;
+      final primaryKeyColumns = table.getPrimaryKeyColumns();
+      final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue, table);
+      
+      await txn.update(
+        tableName,
+        updateValues,
+        where: whereClause,
+        whereArgs: whereArgs,
+      );
     }
   }
 }
