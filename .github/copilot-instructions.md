@@ -1,206 +1,201 @@
-# Copilot Instructions for Declarative SQLite
+# Declarative SQLite Development Instructions
 
-## Project Overview
+Always reference these instructions first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.
 
 This is a Dart package that provides a declarative approach to SQLite schema management and data access. The library implements a fluent builder pattern for defining database schemas and automatically handles migrations and CRUD operations.
 
-## Architecture
+## Working Effectively
+
+### Prerequisites and Setup
+- Install Dart SDK 3.5.3 or later:
+  - Download: `wget -O /tmp/dart-sdk.zip https://storage.googleapis.com/dart-archive/channels/stable/release/latest/sdk/dartsdk-linux-x64-release.zip`
+  - Install: `cd /tmp && unzip -q dart-sdk.zip && sudo mv dart-sdk /opt/`
+  - Add to PATH: `export PATH="/opt/dart-sdk/bin:$PATH"`
+  - Verify: `dart --version`
+
+### Build and Test Commands (FAST EXECUTION)
+- Install dependencies: `dart pub get` -- takes 3-4 seconds. NEVER CANCEL.
+- Run all tests: `dart test` -- takes 6-8 seconds total. NEVER CANCEL.
+- Run specific test: `dart test test/integration_test.dart` -- takes 1-2 seconds. NEVER CANCEL.
+- Run linter: `dart analyze` -- takes 2-3 seconds. NEVER CANCEL.
+- Validate library functionality: `dart scripts/validate.dart` -- takes 1 second. NEVER CANCEL.
+
+**IMPORTANT**: This is a pure Dart library with very fast build and test times. All commands complete in seconds, not minutes. Use short timeouts (60 seconds max) for all operations.
+
+### Validation
+- ALWAYS run `dart pub get && dart test` after making changes to core library code.
+- ALWAYS run the validation scenario below to ensure your changes work correctly.
+- ALWAYS run `dart analyze` before finalizing changes to catch linting issues.
+- The build process is simple - no compilation or complex setup required.
+
+#### Validation Scenario
+After making changes, run this complete scenario to verify functionality:
+```bash
+dart scripts/validate.dart
+```
+This script:
+1. Creates a schema with tables, columns, constraints, indices
+2. Applies schema to in-memory database using SchemaMigrator  
+3. Uses DataAccess for insert/retrieve/update operations
+4. Tests bulk operations and migration planning
+5. Verifies all operations work correctly
+
+Should print success messages and complete in ~1 second.
+
+## Project Structure
+
+### Key Directories
+- `lib/src/`: Core library implementation
+  - `schema_builder.dart`: Main entry point for defining schemas
+  - `table_builder.dart`: Individual table structure definitions  
+  - `migrator.dart`: Database migration and validation logic
+  - `data_access.dart`: Type-safe CRUD operations and bulk loading
+  - `view_builder.dart`: SQL views support
+- `test/`: Comprehensive test suite with integration tests
+- `example/`: Example usage (some API compatibility issues exist)
+- `.github/`: GitHub workflows and documentation
 
 ### Core Components
-
 1. **SchemaBuilder**: Main entry point for defining database schemas
 2. **TableBuilder**: Defines individual table structures with columns and indices
 3. **ColumnBuilder**: Specifies column properties, constraints, and data types
-4. **IndexBuilder**: Defines table indices (single and composite)
-5. **SchemaMigrator**: Handles database migration and validation
-6. **DataAccess**: Provides type-safe CRUD operations and bulk data loading
+4. **SchemaMigrator**: Handles database migration and validation
+5. **DataAccess**: Provides type-safe CRUD operations and bulk data loading
 
-### Design Patterns
+## Common Development Tasks
 
-- **Immutable Builder Pattern**: All builders are immutable and return new instances
-- **Fluent Interface**: Chainable method calls for readable schema definitions
-- **Declarative Configuration**: Schema is defined, not executed step-by-step
-
-## Dart Language Guidelines
-
-### Code Style
-
-- Use `@immutable` annotations for all builder classes
-- Prefer `const` constructors where possible
-- Use named parameters for optional configuration
-- Follow Dart naming conventions (camelCase for variables/methods, PascalCase for classes)
-- Use trailing commas for better formatting and git diffs
-
-### Error Handling
-
-- Throw `ArgumentError` for invalid configuration (duplicate names, invalid constraints)
-- Use descriptive error messages that help developers understand what went wrong
-- Validate input at the builder level before SQL generation
-
-### Documentation
-
-- Use triple-slash (`///`) comments for public API documentation
-- Include code examples in documentation comments
-- Document parameter constraints and return values
-- Use `@param` and `@returns` tags where helpful
-
-## Code Patterns
-
-### Builder Pattern Implementation
-
+### Creating Schemas
 ```dart
-@immutable
-class ExampleBuilder {
-  const ExampleBuilder._({required this.property});
-  
-  // Public constructor starts with empty/default state
-  const ExampleBuilder() : property = defaultValue;
-  
-  final PropertyType property;
-  
-  // Builder methods return new instances
-  ExampleBuilder withProperty(PropertyType value) {
-    return ExampleBuilder._(property: value);
-  }
-}
+final schema = SchemaBuilder()
+  .table('users', (table) => table
+      .autoIncrementPrimaryKey('id')
+      .text('name', (col) => col.notNull())
+      .text('email', (col) => col.unique())
+      .integer('age')
+      .index('idx_email', ['email']));
 ```
 
-### Fluent Interface Methods
-
-- Methods should return the builder instance for chaining
-- Use descriptive method names that read like natural language
-- Group related configuration methods together
-- Provide both simple and advanced overloads
-
-### SQL Generation
-
-- Generate standards-compliant SQLite DDL statements
-- Handle SQL injection prevention in data access layer
-- Use parameterized queries for all data operations
-- Validate SQL identifiers (table names, column names)
-
-## Testing Guidelines
-
-### Test Structure
-
-- Use `group()` to organize related tests
-- Use descriptive test names that explain the behavior being tested
-- Test both positive and negative cases (valid/invalid inputs)
-- Include integration tests for complete workflows
-
-### Test Patterns
-
-```dart
-group('ComponentName', () {
-  test('can perform basic operation', () {
-    // Arrange
-    final builder = ComponentBuilder();
-    
-    // Act
-    final result = builder.operation();
-    
-    // Assert
-    expect(result.property, equals(expectedValue));
-  });
-  
-  test('throws error for invalid input', () {
-    expect(() => ComponentBuilder().invalidOperation(), 
-           throwsA(isA<ArgumentError>()));
-  });
-});
-```
-
-### Database Testing
-
-- Use in-memory SQLite databases for tests (`':memory:'`)
-- Test schema migration scenarios (empty DB, existing schema)
-- Verify generated SQL statements match expectations
-- Test data access operations with actual database interactions
-
-## Library-Specific Guidelines
-
-### Schema Definition
-
-- Always validate schema consistency (no duplicate table/column names)
-- Support both simple and composite primary keys
-- Handle system columns (systemId, systemVersion) automatically
-- Provide meaningful validation errors for schema conflicts
-
-### Data Types
-
-- Map Dart types to SQLite affinities correctly:
-  - `int` → INTEGER
-  - `double` → REAL  
-  - `String` → TEXT
-  - `Uint8List` → BLOB
-- Support nullable and non-nullable columns appropriately
-- Handle default values and constraints properly
-
-### Migration Safety
-
-- Only support additive migrations (no destructive changes)
-- Validate existing schema before applying changes
-- Provide migration preview functionality
-- Handle edge cases like existing data conflicts
-
-### Data Access Layer
-
-- Provide type-safe methods that use schema metadata
-- Support bulk operations with proper error handling
-- Handle missing/extra columns gracefully in bulk loading
-- Use transactions for batch operations
-
-## API Design Principles
-
-### Consistency
-
-- Use consistent naming patterns across all builders
-- Provide similar method signatures for related operations
-- Handle optional parameters uniformly
-- Use consistent error types and messages
-
-### Discoverability
-
-- Use method names that clearly indicate their purpose
-- Provide multiple ways to achieve common tasks
-- Include comprehensive examples in documentation
-- Design APIs that guide users toward correct usage
-
-### Performance
-
-- Minimize object allocation in hot paths
-- Use efficient SQL generation (avoid string concatenation)
-- Batch database operations where possible
-- Provide configuration options for performance tuning
-
-## Common Pitfalls to Avoid
-
-1. **Mutating Builder State**: All builders must be immutable
-2. **SQL Injection**: Always use parameterized queries for user data
-3. **Schema Validation**: Don't skip validation of table/column names and constraints
-4. **Transaction Management**: Ensure proper transaction handling in bulk operations
-5. **Resource Cleanup**: Close database connections and statements properly
-
-## Development Workflow
+### Running Tests
+- Full test suite: `dart test` (6-8 seconds)
+- Integration tests: `dart test test/integration_test.dart` (1-2 seconds)
+- Data access tests: `dart test test/data_access_test.dart` (1-2 seconds)  
+- View builder tests: `dart test test/view_builder_test.dart` (1-2 seconds)
 
 ### Adding New Features
+1. Write tests first in appropriate test file (`test/*_test.dart`)
+2. Implement feature in `lib/src/` following immutable builder pattern
+3. Run `dart test` to verify all tests pass
+4. Run `dart analyze` to check code quality
+5. Test with `dart test/validate_example.dart` for integration validation
 
-1. Define the public API first with documentation
-2. Implement builder classes with immutable pattern
-3. Add SQL generation and validation logic
-4. Write comprehensive tests (unit and integration)
-5. Update library exports and documentation
-6. Install dart sdk then run all tests
+## Known Issues and Workarounds
 
-### Code Review Checklist
+### Current Issues
+- Some example files (`example/`) have API compatibility issues - avoid using as reference
+- Relationship features (`test/relationship_test.dart`) have parameter naming issues in progress
+- View API has some deprecated methods - use `ViewBuilder.create()` pattern
 
-- [ ] All public APIs are documented
-- [ ] Builder classes are immutable
-- [ ] Error cases are handled with clear messages
-- [ ] Tests cover both success and failure scenarios
-- [ ] SQL generation is safe and standards-compliant
-- [ ] Performance considerations are addressed
+### Working Areas
+- Core schema definition (SchemaBuilder, TableBuilder) - fully functional
+- Database migration (SchemaMigrator) - fully functional  
+- Data access operations (DataAccess) - fully functional
+- Basic view support (ViewBuilder) - core functionality works
 
-## Examples and References
+## Build Troubleshooting
 
-Refer to existing code in `lib/src/` for established patterns and `test/` directory for testing approaches. The library follows standard Dart package conventions and SQLite best practices.
+If you encounter issues:
+1. Ensure Dart SDK 3.5.3+ is installed: `dart --version`
+2. Clean and reinstall dependencies: `dart pub get`
+3. Run tests to check current state: `dart test`
+4. Check for linting issues: `dart analyze`
+
+The library has no complex build dependencies - if basic Dart commands work, the library should work.
+
+## API Reference Quick Start
+
+### Basic Usage Pattern
+```dart
+import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+// 1. Initialize for testing
+sqfliteFfiInit();
+databaseFactory = databaseFactoryFfi;
+
+// 2. Define schema  
+final schema = SchemaBuilder()
+  .table('tablename', (table) => table
+      .autoIncrementPrimaryKey('id')
+      .text('column1', (col) => col.notNull())
+      .integer('column2'));
+
+// 3. Apply to database
+final database = await openDatabase(':memory:');
+final migrator = SchemaMigrator();
+await migrator.migrate(database, schema);
+
+// 4. Use data access
+final dataAccess = DataAccess(database: database, schema: schema);
+final id = await dataAccess.insert('tablename', {'column1': 'value'});
+final row = await dataAccess.getByPrimaryKey('tablename', id);
+```
+
+This pattern works for all core functionality and is the foundation for any development work.
+
+## Common Files and Commands Reference
+
+### Repository Root Structure
+```
+declarative_sqlite/
+├── .github/                 # GitHub workflows and documentation
+├── .gitignore
+├── CHANGELOG.md
+├── LICENSE
+├── README.md               # Main project documentation
+├── analysis_options.yaml  # Dart linter configuration
+├── pubspec.yaml           # Project dependencies and metadata
+├── lib/
+│   ├── declarative_sqlite.dart  # Main library export
+│   └── src/               # Core implementation
+│       ├── schema_builder.dart
+│       ├── table_builder.dart
+│       ├── migrator.dart
+│       ├── data_access.dart
+│       └── view_builder.dart
+├── test/                  # Test files
+│   ├── integration_test.dart
+│   ├── data_access_test.dart
+│   └── view_builder_test.dart
+├── example/               # Usage examples (some API issues)
+└── scripts/               # Utility scripts
+    └── validate.dart      # Library validation script
+```
+
+### Dependencies from pubspec.yaml
+```yaml
+dependencies:
+  sqflite_common: ^2.5.4+3
+  path: ^1.8.0
+  meta: ^1.11.0
+
+dev_dependencies:
+  lints: ^4.0.0
+  test: ^1.24.0
+  sqflite_common_ffi: ^2.3.4+4  # For testing
+```
+
+### Frequently Used Commands Output
+```bash
+# dart --version
+Dart SDK version: 3.9.3 (stable)
+
+# dart pub get (fast - 3-4 seconds)
+Resolving dependencies... 
++ 54 dependencies installed
+
+# dart test (fast - 6-8 seconds total)
+✅ 90 tests passed, 1 failed (relationship test has issues)
+
+# dart analyze (fast - 2-3 seconds)
+Shows linting issues but core functionality works
+```
