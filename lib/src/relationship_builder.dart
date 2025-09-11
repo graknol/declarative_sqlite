@@ -96,48 +96,7 @@ class RelationshipBuilder {
     junctionChildColumns: junctionChildColumns,
   );
 
-  // Backward compatibility constructors for single column relationships
-  
-  /// Creates a one-to-many relationship with single columns (backward compatibility)
-  RelationshipBuilder.singleOneToMany({
-    required String parentTable,
-    required String childTable,
-    required String parentColumn,
-    required String childColumn,
-    CascadeAction onDelete = CascadeAction.cascade,
-  }) : this._(
-    parentTable: parentTable,
-    childTable: childTable,
-    parentColumns: [parentColumn],
-    childColumns: [childColumn],
-    type: RelationshipType.oneToMany,
-    onDelete: onDelete,
-    junctionTable: null,
-    junctionParentColumns: null,
-    junctionChildColumns: null,
-  );
 
-  /// Creates a many-to-many relationship with single columns (backward compatibility)
-  RelationshipBuilder.singleManyToMany({
-    required String parentTable,
-    required String childTable,
-    required String junctionTable,
-    required String parentColumn,
-    required String childColumn,
-    required String junctionParentColumn,
-    required String junctionChildColumn,
-    CascadeAction onDelete = CascadeAction.cascade,
-  }) : this._(
-    parentTable: parentTable,
-    childTable: childTable,
-    parentColumns: [parentColumn],
-    childColumns: [childColumn],
-    type: RelationshipType.manyToMany,
-    onDelete: onDelete,
-    junctionTable: junctionTable,
-    junctionParentColumns: [junctionParentColumn],
-    junctionChildColumns: [junctionChildColumn],
-  );
 
   /// Creates a unique identifier for this relationship based on table names and type
   String get relationshipId {
@@ -164,12 +123,6 @@ class RelationshipBuilder {
   /// Type of relationship
   final RelationshipType type;
 
-  /// Type of relationship
-  final RelationshipType type;
-
-  /// Type of relationship
-  final RelationshipType type;
-
   /// What to do when parent record is deleted
   final CascadeAction onDelete;
 
@@ -182,17 +135,7 @@ class RelationshipBuilder {
   /// Junction table columns referencing child (for many-to-many relationships)  
   final List<String>? junctionChildColumns;
 
-  /// Backward compatibility - gets the first parent column
-  String get parentColumn => parentColumns.first;
-  
-  /// Backward compatibility - gets the first child column
-  String get childColumn => childColumns.first;
-  
-  /// Backward compatibility - gets the first junction parent column
-  String? get junctionParentColumn => junctionParentColumns?.first;
-  
-  /// Backward compatibility - gets the first junction child column
-  String? get junctionChildColumn => junctionChildColumns?.first;
+
 
   /// Checks if this is a one-to-many relationship
   bool get isOneToMany => type == RelationshipType.oneToMany;

@@ -347,14 +347,14 @@ class RelatedDataAccess extends DataAccess {
         buffer.write('EXISTS (SELECT 1 FROM ${relationship.parentTable} ');
         
         if (relationship.type == RelationshipType.oneToMany) {
-          buffer.write('WHERE ${relationship.parentTable}.${relationship.parentColumn} = $targetTable.${relationship.childColumn}');
+          buffer.write('WHERE ${relationship.parentTable}.${relationship.parentColumns.first} = $targetTable.${relationship.childColumns.first}');
         } else if (relationship.type == RelationshipType.manyToMany) {
           // For many-to-many, join through junction table
           final junctionTable = relationship.junctionTable!;
-          final junctionParentCol = relationship.junctionParentColumn!; 
-          final junctionChildCol = relationship.junctionChildColumn!;
-          buffer.write('INNER JOIN $junctionTable ON ${relationship.parentTable}.${relationship.parentColumn} = $junctionTable.$junctionParentCol ');
-          buffer.write('WHERE $junctionTable.$junctionChildCol = $targetTable.${relationship.childColumn}');
+          final junctionParentCol = relationship.junctionParentColumns!.first; 
+          final junctionChildCol = relationship.junctionChildColumns!.first;
+          buffer.write('INNER JOIN $junctionTable ON ${relationship.parentTable}.${relationship.parentColumns.first} = $junctionTable.$junctionParentCol ');
+          buffer.write('WHERE $junctionTable.$junctionChildCol = $targetTable.${relationship.childColumns.first}');
         }
       } else {
         // Subsequent nested EXISTS - connect this parent to the child from the previous level
@@ -365,19 +365,19 @@ class RelatedDataAccess extends DataAccess {
         if (relationship.type == RelationshipType.oneToMany) {
           // Connect this relationship's parent column to the previous relationship's child column
           // For example: users.id = posts.user_id (where posts.user_id comes from the previous relationship)
-          buffer.write('WHERE ${relationship.parentTable}.${relationship.parentColumn} = ${previousRelationship.parentTable}.${relationship.childColumn}');
+          buffer.write('WHERE ${relationship.parentTable}.${relationship.parentColumns.first} = ${previousRelationship.parentTable}.${relationship.childColumns.first}');
         } else if (relationship.type == RelationshipType.manyToMany) {
           final junctionTable = relationship.junctionTable!;
-          final junctionParentCol = relationship.junctionParentColumn!;
-          final junctionChildCol = relationship.junctionChildColumn!;
-          buffer.write('INNER JOIN $junctionTable ON ${relationship.parentTable}.${relationship.parentColumn} = $junctionTable.$junctionParentCol ');
-          buffer.write('WHERE $junctionTable.$junctionChildCol = ${previousRelationship.parentTable}.${relationship.childColumn}');
+          final junctionParentCol = relationship.junctionParentColumns!.first;
+          final junctionChildCol = relationship.junctionChildColumns!.first;
+          buffer.write('INNER JOIN $junctionTable ON ${relationship.parentTable}.${relationship.parentColumns.first} = $junctionTable.$junctionParentCol ');
+          buffer.write('WHERE $junctionTable.$junctionChildCol = ${previousRelationship.parentTable}.${relationship.childColumns.first}');
         }
       }
       
       // If this is the root level, add the parameter condition
       if (isRoot && hasRootParameter) {
-        buffer.write(' AND ${relationship.parentTable}.${relationship.parentColumn} = ?');
+        buffer.write(' AND ${relationship.parentTable}.${relationship.parentColumns.first} = ?');
       }
     }
     
@@ -512,8 +512,8 @@ class RelatedDataAccess extends DataAccess {
       throw ArgumentError('Relationship between "$parentTable" and "$childTable" is not a many-to-many relationship');
     }
 
-    final junctionParentColumn = relationship.junctionParentColumn!;
-    final junctionChildColumn = relationship.junctionChildColumn!;
+    final junctionParentColumn = relationship.junctionParentColumns!.first;
+    final junctionChildColumn = relationship.junctionChildColumns!.first;
 
     await insert(junctionTable, {
       junctionParentColumn: parentValue,
@@ -544,8 +544,8 @@ class RelatedDataAccess extends DataAccess {
       throw ArgumentError('Relationship between "$parentTable" and "$childTable" is not a many-to-many relationship');
     }
 
-    final junctionParentColumn = relationship.junctionParentColumn!;
-    final junctionChildColumn = relationship.junctionChildColumn!;
+    final junctionParentColumn = relationship.junctionParentColumns!.first;
+    final junctionChildColumn = relationship.junctionChildColumns!.first;
 
     return await deleteWhere(
       junctionTable,
@@ -579,10 +579,10 @@ class RelatedDataAccess extends DataAccess {
   }) async {
     // For many-to-many, we need to join through the junction table
     final junctionTable = relationship.junctionTable!;
-    final junctionParentColumn = relationship.junctionParentColumn!;
-    final junctionChildColumn = relationship.junctionChildColumn!;
+    final junctionParentColumn = relationship.junctionParentColumns!.first;
+    final junctionChildColumn = relationship.junctionChildColumns!.first;
     final childTable = relationship.childTable;
-    final childColumn = relationship.childColumn;
+    final childColumn = relationship.childColumns.first;
 
     // Build the SQL query with JOIN
     final sql = StringBuffer();
@@ -618,10 +618,10 @@ class RelatedDataAccess extends DataAccess {
   }) async {
     // For many-to-many, we need to join through the junction table
     final junctionTable = relationship.junctionTable!;
-    final junctionParentColumn = relationship.junctionParentColumn!;
-    final junctionChildColumn = relationship.junctionChildColumn!;
+    final junctionParentColumn = relationship.junctionParentColumns!.first;
+    final junctionChildColumn = relationship.junctionChildColumns!.first;
     final parentTable = relationship.parentTable;
-    final parentColumn = relationship.parentColumn;
+    final parentColumn = relationship.parentColumns.first;
 
     // Build the SQL query with JOIN
     final sql = StringBuffer();

@@ -45,22 +45,22 @@ void main() {
               .integer('user_id', (col) => col.notNull()))
           // Define relationships
           .oneToMany('users', 'posts',
-              parentColumn: 'id', 
-              childColumn: 'user_id', 
+              parentColumns: ['id'], 
+              childColumns: ['user_id'], 
               onDelete: CascadeAction.cascade)
           .oneToMany('posts', 'comments',
-              parentColumn: 'id', 
-              childColumn: 'post_id', 
+              parentColumns: ['id'], 
+              childColumns: ['post_id'], 
               onDelete: CascadeAction.cascade)
           .oneToMany('users', 'comments',
-              parentColumn: 'id', 
-              childColumn: 'user_id', 
+              parentColumns: ['id'], 
+              childColumns: ['user_id'], 
               onDelete: CascadeAction.cascade)
           .manyToMany('posts', 'categories', 'post_categories',
-              parentColumn: 'id',
-              childColumn: 'id',
-              junctionParentColumn: 'post_id',
-              junctionChildColumn: 'category_id',
+              parentColumns: ['id'],
+              childColumns: ['id'],
+              junctionParentColumns: ['post_id'],
+              junctionChildColumns: ['category_id'],
               onDelete: CascadeAction.cascade);
       
       // Apply schema to database
@@ -84,8 +84,8 @@ void main() {
         expect(relationship!.type, equals(RelationshipType.oneToMany));
         expect(relationship.parentTable, equals('users'));
         expect(relationship.childTable, equals('posts'));
-        expect(relationship.parentColumn, equals('id'));
-        expect(relationship.childColumn, equals('user_id'));
+        expect(relationship.parentColumns, equals(['id']));
+        expect(relationship.childColumns, equals(['user_id']));
         expect(relationship.onDelete, equals(CascadeAction.cascade));
       });
 
@@ -96,8 +96,8 @@ void main() {
         expect(relationship.parentTable, equals('posts'));
         expect(relationship.childTable, equals('categories'));
         expect(relationship.junctionTable, equals('post_categories'));
-        expect(relationship.junctionParentColumn, equals('post_id'));
-        expect(relationship.junctionChildColumn, equals('category_id'));
+        expect(relationship.junctionParentColumns, equals(['post_id']));
+        expect(relationship.junctionChildColumns, equals(['category_id']));
       });
 
       test('can query relationships by table', () {
@@ -322,9 +322,9 @@ void main() {
                 .text('name', (col) => col.notNull())
                 .text('company_country', (col) => col.notNull())
                 .text('company_code', (col) => col.notNull()))
-            .oneToManyComposite('companies', 'departments',
-                ['country_code', 'company_code'],
-                ['company_country', 'company_code'],
+            .oneToMany('companies', 'departments',
+                parentColumns: ['country_code', 'company_code'],
+                childColumns: ['company_country', 'company_code'],
                 onDelete: CascadeAction.cascade);
 
         // Verify relationship was created correctly

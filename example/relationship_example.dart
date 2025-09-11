@@ -52,25 +52,25 @@ void main() async {
       
       // Define relationships (no database foreign keys required!)
       .oneToMany('users', 'posts',
-          parentColumn: 'id',
-          childColumn: 'user_id',
+          parentColumns: ['id'],
+          childColumns: ['user_id'],
           onDelete: CascadeAction.cascade)
       
       .oneToMany('users', 'comments', 
-          parentColumn: 'id',
-          childColumn: 'user_id',
+          parentColumns: ['id'],
+          childColumns: ['user_id'],
           onDelete: CascadeAction.cascade)
       
       .oneToMany('posts', 'comments',
-          parentColumn: 'id', 
-          childColumn: 'post_id',
+          parentColumns: ['id'], 
+          childColumns: ['post_id'],
           onDelete: CascadeAction.cascade)
       
       .manyToMany('posts', 'categories', 'post_categories',
-          parentColumn: 'id',
-          childColumn: 'id', 
-          junctionParentColumn: 'post_id',
-          junctionChildColumn: 'category_id',
+          parentColumns: ['id'],
+          childColumns: ['id'], 
+          junctionParentColumns: ['post_id'],
+          junctionChildColumns: ['category_id'],
           onDelete: CascadeAction.cascade);
 
   // Create database and apply schema
@@ -224,8 +224,8 @@ void main() async {
           .text('name', (col) => col.notNull())
           .integer('department_id', (col) => col.notNull()))
       .oneToMany('departments', 'employees',
-          parentColumn: 'id',
-          childColumn: 'department_id', 
+          parentColumns: ['id'],
+          childColumns: ['department_id'], 
           onDelete: CascadeAction.restrict);
 
   // Apply the restrict schema to a new database
