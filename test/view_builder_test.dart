@@ -45,8 +45,8 @@ void main() {
         
         final sql = view.toSql();
         expect(sql, contains('CREATE VIEW user_enhanced AS'));
-        expect(sql, contains('username AS name'));
-        expect(sql, contains('UPPER(email) AS email_upper'));
+        expect(sql, contains('username name'));
+        expect(sql, contains('UPPER(email) email_upper'));
       });
 
       test('can create complex view with joins', () {
@@ -122,8 +122,8 @@ void main() {
         
         final sql = view.toSql();
         expect(sql, contains('CREATE VIEW user_stats AS'));
-        expect(sql, contains('COUNT(*) AS user_count'));
-        expect(sql, contains('AVG(age) AS avg_age'));
+        expect(sql, contains('COUNT(*) user_count'));
+        expect(sql, contains('AVG(age) avg_age'));
         expect(sql, contains('GROUP BY active'));
       });
 

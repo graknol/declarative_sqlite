@@ -88,7 +88,7 @@ class JoinBuilder {
     buffer.write(' $tableName');
     
     if (tableAlias != null) {
-      buffer.write(' AS $tableAlias');
+      buffer.write(' $tableAlias');
     }
     
     if (onCondition != null) {

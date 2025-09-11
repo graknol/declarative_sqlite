@@ -275,7 +275,7 @@ class QueryBuilder {
     if (fromTable != null) {
       buffer.write('\nFROM $fromTable');
       if (fromAlias != null) {
-        buffer.write(' AS $fromAlias');
+        buffer.write(' $fromAlias');
       }
     }
     

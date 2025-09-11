@@ -49,6 +49,70 @@ class RelatedDataAccess extends DataAccess {
     }
   }
 
+  /// Gets related records following a specific path through multiple tables
+  /// 
+  /// [path] Array of table names defining the relationship path to follow
+  /// [rootValue] Value of the root record's key
+  /// [orderBy] Optional ORDER BY clause
+  /// [limit] Optional limit on number of results
+  /// 
+  /// Example: 
+  /// - `getRelatedByPath(['users', 'posts', 'comments'], userId)` gets all comments on a user's posts
+  /// - `getRelatedByPath(['users', 'comments'], userId)` gets all comments made by a user directly
+  /// 
+  /// Returns list of target records as Maps
+  Future<List<Map<String, dynamic>>> getRelatedByPath(
+    List<String> path,
+    dynamic rootValue, {
+    String? orderBy,
+    int? limit,
+  }) async {
+    if (path.length < 2) {
+      throw ArgumentError('Path must contain at least 2 tables');
+    }
+
+    final targetTable = path.last;
+    
+    // Build the relationship path
+    final relationshipPath = <RelationshipBuilder>[];
+    for (int i = 0; i < path.length - 1; i++) {
+      final parentTable = path[i];
+      final childTable = path[i + 1];
+      
+      final relationship = schema.getRelationship(parentTable, childTable);
+      if (relationship == null) {
+        throw ArgumentError('No relationship found between "$parentTable" and "$childTable" in path');
+      }
+      
+      relationshipPath.add(relationship);
+    }
+
+    // Build the nested EXISTS query for path navigation
+    final pathQuery = _buildNestedExistsPathQuery(relationshipPath, targetTable, rootValue);
+    if (pathQuery.sql.isEmpty) {
+      return [];
+    }
+
+    var sql = pathQuery.sql;
+    if (orderBy != null) {
+      sql += ' ORDER BY $orderBy';
+    }
+    if (limit != null) {
+      sql += ' LIMIT $limit';
+    }
+
+    final results = await database.rawQuery(sql, pathQuery.parameters);
+    
+    // Decode results using table metadata
+    final table = schema.getTable(targetTable);
+    if (table != null) {
+      final metadata = getTableMetadata(targetTable);
+      return results.map((row) => DataTypeUtils.decodeRow(row, metadata.columns)).toList();
+    }
+    
+    return results;
+  }
+
   /// Gets all parent records for a child record following a relationship
   /// 
   /// [parentTable] Name of the parent table
@@ -265,7 +329,7 @@ class RelatedDataAccess extends DataAccess {
     return (sql: buffer.toString(), parameters: parameters);
   }
 
-  /// Builds the nested EXISTS condition chain
+  /// Builds a nested EXISTS condition chain
   String _buildNestedExistsChain(List<RelationshipBuilder> path, bool hasRootParameter) {
     if (path.isEmpty) return '';
 
@@ -322,6 +386,24 @@ class RelatedDataAccess extends DataAccess {
     }
     
     return buffer.toString();
+  }
+
+  /// Builds a SELECT query using nested EXISTS pattern for path navigation
+  ({String sql, List<dynamic> parameters}) _buildNestedExistsPathQuery(
+    List<RelationshipBuilder> path,
+    String targetTable,
+    dynamic rootValue,
+  ) {
+    if (path.isEmpty) {
+      return (sql: '', parameters: <dynamic>[]);
+    }
+
+    final parameters = <dynamic>[rootValue];
+    
+    // Build: SELECT * FROM target_table WHERE EXISTS (nested conditions)
+    final sql = 'SELECT * FROM $targetTable WHERE ${_buildNestedExistsChain(path, rootValue != null)}';
+    
+    return (sql: sql, parameters: parameters);
   }
 
   /// Finds the relationship path from source table to target table

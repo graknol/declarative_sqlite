@@ -31,23 +31,75 @@ class RelationshipBuilder {
   const RelationshipBuilder._({
     required this.parentTable,
     required this.childTable,
-    required this.parentColumn,
-    required this.childColumn,
+    required this.parentColumns,
+    required this.childColumns,
     required this.type,
     required this.onDelete,
     this.junctionTable,
-    this.junctionParentColumn,
-    this.junctionChildColumn,
+    this.junctionParentColumns,
+    this.junctionChildColumns,
   });
 
   /// Creates a one-to-many relationship between two tables
   /// 
   /// [parentTable] Name of the parent table
   /// [childTable] Name of the child table
-  /// [parentColumn] Column in parent table that acts as the primary key
-  /// [childColumn] Column in child table that references the parent
+  /// [parentColumns] Columns in parent table that act as the primary key
+  /// [childColumns] Columns in child table that reference the parent
   /// [onDelete] Action to take when parent record is deleted
   const RelationshipBuilder.oneToMany({
+    required String parentTable,
+    required String childTable,
+    required List<String> parentColumns,
+    required List<String> childColumns,
+    CascadeAction onDelete = CascadeAction.cascade,
+  }) : this._(
+    parentTable: parentTable,
+    childTable: childTable,
+    parentColumns: parentColumns,
+    childColumns: childColumns,
+    type: RelationshipType.oneToMany,
+    onDelete: onDelete,
+    junctionTable: null,
+    junctionParentColumns: null,
+    junctionChildColumns: null,
+  );
+
+  /// Creates a many-to-many relationship between two tables using a junction table
+  /// 
+  /// [parentTable] Name of the first table in the relationship
+  /// [childTable] Name of the second table in the relationship
+  /// [junctionTable] Name of the junction/linking table
+  /// [parentColumns] Columns in parent table that act as the primary key
+  /// [childColumns] Columns in child table that act as the primary key
+  /// [junctionParentColumns] Columns in junction table referencing parent
+  /// [junctionChildColumns] Columns in junction table referencing child
+  /// [onDelete] Action to take when parent record is deleted
+  const RelationshipBuilder.manyToMany({
+    required String parentTable,
+    required String childTable,
+    required String junctionTable,
+    required List<String> parentColumns,
+    required List<String> childColumns,
+    required List<String> junctionParentColumns,
+    required List<String> junctionChildColumns,
+    CascadeAction onDelete = CascadeAction.cascade,
+  }) : this._(
+    parentTable: parentTable,
+    childTable: childTable,
+    parentColumns: parentColumns,
+    childColumns: childColumns,
+    type: RelationshipType.manyToMany,
+    onDelete: onDelete,
+    junctionTable: junctionTable,
+    junctionParentColumns: junctionParentColumns,
+    junctionChildColumns: junctionChildColumns,
+  );
+
+  // Backward compatibility constructors for single column relationships
+  
+  /// Creates a one-to-many relationship with single columns (backward compatibility)
+  RelationshipBuilder.singleOneToMany({
     required String parentTable,
     required String childTable,
     required String parentColumn,
@@ -56,26 +108,17 @@ class RelationshipBuilder {
   }) : this._(
     parentTable: parentTable,
     childTable: childTable,
-    parentColumn: parentColumn,
-    childColumn: childColumn,
+    parentColumns: [parentColumn],
+    childColumns: [childColumn],
     type: RelationshipType.oneToMany,
     onDelete: onDelete,
     junctionTable: null,
-    junctionParentColumn: null,
-    junctionChildColumn: null,
+    junctionParentColumns: null,
+    junctionChildColumns: null,
   );
 
-  /// Creates a many-to-many relationship between two tables using a junction table
-  /// 
-  /// [parentTable] Name of the first table in the relationship
-  /// [childTable] Name of the second table in the relationship
-  /// [junctionTable] Name of the junction/linking table
-  /// [parentColumn] Column in parent table that acts as the primary key
-  /// [childColumn] Column in child table that acts as the primary key
-  /// [junctionParentColumn] Column in junction table referencing parent
-  /// [junctionChildColumn] Column in junction table referencing child
-  /// [onDelete] Action to take when parent record is deleted
-  const RelationshipBuilder.manyToMany({
+  /// Creates a many-to-many relationship with single columns (backward compatibility)
+  RelationshipBuilder.singleManyToMany({
     required String parentTable,
     required String childTable,
     required String junctionTable,
@@ -87,13 +130,13 @@ class RelationshipBuilder {
   }) : this._(
     parentTable: parentTable,
     childTable: childTable,
-    parentColumn: parentColumn,
-    childColumn: childColumn,
+    parentColumns: [parentColumn],
+    childColumns: [childColumn],
     type: RelationshipType.manyToMany,
     onDelete: onDelete,
     junctionTable: junctionTable,
-    junctionParentColumn: junctionParentColumn,
-    junctionChildColumn: junctionChildColumn,
+    junctionParentColumns: [junctionParentColumn],
+    junctionChildColumns: [junctionChildColumn],
   );
 
   /// Creates a unique identifier for this relationship based on table names and type
@@ -112,11 +155,17 @@ class RelationshipBuilder {
   /// Name of the child table
   final String childTable;
 
-  /// Column name in the parent table (typically primary key)
-  final String parentColumn;
+  /// Column names in the parent table (typically primary key)
+  final List<String> parentColumns;
 
-  /// Column name in the child table (foreign key reference)
-  final String childColumn;
+  /// Column names in the child table (foreign key reference)
+  final List<String> childColumns;
+
+  /// Type of relationship
+  final RelationshipType type;
+
+  /// Type of relationship
+  final RelationshipType type;
 
   /// Type of relationship
   final RelationshipType type;
@@ -127,11 +176,23 @@ class RelationshipBuilder {
   /// Junction table name (for many-to-many relationships)
   final String? junctionTable;
 
-  /// Junction table column referencing parent (for many-to-many relationships)
-  final String? junctionParentColumn;
+  /// Junction table columns referencing parent (for many-to-many relationships)
+  final List<String>? junctionParentColumns;
 
-  /// Junction table column referencing child (for many-to-many relationships)  
-  final String? junctionChildColumn;
+  /// Junction table columns referencing child (for many-to-many relationships)  
+  final List<String>? junctionChildColumns;
+
+  /// Backward compatibility - gets the first parent column
+  String get parentColumn => parentColumns.first;
+  
+  /// Backward compatibility - gets the first child column
+  String get childColumn => childColumns.first;
+  
+  /// Backward compatibility - gets the first junction parent column
+  String? get junctionParentColumn => junctionParentColumns?.first;
+  
+  /// Backward compatibility - gets the first junction child column
+  String? get junctionChildColumn => junctionChildColumns?.first;
 
   /// Checks if this is a one-to-many relationship
   bool get isOneToMany => type == RelationshipType.oneToMany;
@@ -141,15 +202,29 @@ class RelationshipBuilder {
 
   /// Gets the SQL condition for finding child records given a parent value
   /// 
-  /// For one-to-many: "child_column = ?"
+  /// For one-to-many: "child_column = ?" or "(child_col1 = ? AND child_col2 = ?)" for composite
   /// For many-to-many: Involves junction table joins
   String getChildWhereCondition() {
     switch (type) {
       case RelationshipType.oneToMany:
-        return '$childColumn = ?';
+        if (childColumns.length == 1) {
+          return '${childColumns.first} = ?';
+        } else {
+          return childColumns.map((col) => '$col = ?').join(' AND ');
+        }
       case RelationshipType.manyToMany:
         // For many-to-many, we need a subquery or join through junction table
-        return '$childColumn IN (SELECT $junctionChildColumn FROM $junctionTable WHERE $junctionParentColumn = ?)';
+        final junctionParentCols = junctionParentColumns!;
+        final junctionChildCols = junctionChildColumns!;
+        
+        if (junctionParentCols.length == 1) {
+          return '${childColumns.first} IN (SELECT ${junctionChildCols.first} FROM $junctionTable WHERE ${junctionParentCols.first} = ?)';
+        } else {
+          // For composite keys, we need a more complex subquery
+          final junctionConditions = junctionParentCols.map((col) => '$col = ?').join(' AND ');
+          final childConditions = List.generate(childColumns.length, (i) => '${childColumns[i]} = ${junctionChildCols[i]}').join(' AND ');
+          return 'EXISTS (SELECT 1 FROM $junctionTable WHERE $junctionConditions AND $childConditions)';
+        }
     }
   }
 
@@ -157,9 +232,23 @@ class RelationshipBuilder {
   String getParentWhereCondition() {
     switch (type) {
       case RelationshipType.oneToMany:
-        return '$parentColumn = ?';
+        if (parentColumns.length == 1) {
+          return '${parentColumns.first} = ?';
+        } else {
+          return parentColumns.map((col) => '$col = ?').join(' AND ');
+        }
       case RelationshipType.manyToMany:
-        return '$parentColumn IN (SELECT $junctionParentColumn FROM $junctionTable WHERE $junctionChildColumn = ?)';
+        final junctionParentCols = junctionParentColumns!;
+        final junctionChildCols = junctionChildColumns!;
+        
+        if (junctionChildCols.length == 1) {
+          return '${parentColumns.first} IN (SELECT ${junctionParentCols.first} FROM $junctionTable WHERE ${junctionChildCols.first} = ?)';
+        } else {
+          // For composite keys, we need a more complex subquery
+          final junctionConditions = junctionChildCols.map((col) => '$col = ?').join(' AND ');
+          final parentConditions = List.generate(parentColumns.length, (i) => '${parentColumns[i]} = ${junctionParentCols[i]}').join(' AND ');
+          return 'EXISTS (SELECT 1 FROM $junctionTable WHERE $junctionConditions AND $parentConditions)';
+        }
     }
   }
 
@@ -175,23 +264,33 @@ class RelationshipBuilder {
       errors.add('Child table name cannot be empty');
     }
 
-    if (parentColumn.isEmpty) {
-      errors.add('Parent column name cannot be empty');
+    if (parentColumns.isEmpty) {
+      errors.add('Parent columns cannot be empty');
     }
 
-    if (childColumn.isEmpty) {
-      errors.add('Child column name cannot be empty');
+    if (childColumns.isEmpty) {
+      errors.add('Child columns cannot be empty');
+    }
+
+    if (parentColumns.length != childColumns.length) {
+      errors.add('Number of parent columns (${parentColumns.length}) must match number of child columns (${childColumns.length})');
     }
 
     if (type == RelationshipType.manyToMany) {
       if (junctionTable == null || junctionTable!.isEmpty) {
         errors.add('Junction table is required for many-to-many relationships');
       }
-      if (junctionParentColumn == null || junctionParentColumn!.isEmpty) {
-        errors.add('Junction parent column is required for many-to-many relationships');
+      if (junctionParentColumns == null || junctionParentColumns!.isEmpty) {
+        errors.add('Junction parent columns are required for many-to-many relationships');
       }
-      if (junctionChildColumn == null || junctionChildColumn!.isEmpty) {
-        errors.add('Junction child column is required for many-to-many relationships');
+      if (junctionChildColumns == null || junctionChildColumns!.isEmpty) {
+        errors.add('Junction child columns are required for many-to-many relationships');
+      }
+      if (junctionParentColumns != null && junctionParentColumns!.length != parentColumns.length) {
+        errors.add('Number of junction parent columns (${junctionParentColumns!.length}) must match number of parent columns (${parentColumns.length})');
+      }
+      if (junctionChildColumns != null && junctionChildColumns!.length != childColumns.length) {
+        errors.add('Number of junction child columns (${junctionChildColumns!.length}) must match number of child columns (${childColumns.length})');
       }
     }
 
@@ -202,9 +301,9 @@ class RelationshipBuilder {
   String toString() {
     switch (type) {
       case RelationshipType.oneToMany:
-        return 'RelationshipBuilder.oneToMany($parentTable.$parentColumn -> $childTable.$childColumn, onDelete: $onDelete)';
+        return 'RelationshipBuilder.oneToMany($parentTable.${parentColumns.join('+')} -> $childTable.${childColumns.join('+')}, onDelete: $onDelete)';
       case RelationshipType.manyToMany:
-        return 'RelationshipBuilder.manyToMany($parentTable.$parentColumn <-> $childTable.$childColumn via $junctionTable, onDelete: $onDelete)';
+        return 'RelationshipBuilder.manyToMany($parentTable.${parentColumns.join('+')} <-> $childTable.${childColumns.join('+')} via $junctionTable, onDelete: $onDelete)';
     }
   }
 
@@ -215,23 +314,43 @@ class RelationshipBuilder {
           runtimeType == other.runtimeType &&
           parentTable == other.parentTable &&
           childTable == other.childTable &&
-          parentColumn == other.parentColumn &&
-          childColumn == other.childColumn &&
+          _listEquals(parentColumns, other.parentColumns) &&
+          _listEquals(childColumns, other.childColumns) &&
           type == other.type &&
           onDelete == other.onDelete &&
           junctionTable == other.junctionTable &&
-          junctionParentColumn == other.junctionParentColumn &&
-          junctionChildColumn == other.junctionChildColumn;
+          _listEquals(junctionParentColumns, other.junctionParentColumns) &&
+          _listEquals(junctionChildColumns, other.junctionChildColumns);
+
+  /// Helper method for list equality comparison
+  bool _listEquals<T>(List<T>? a, List<T>? b) {
+    if (a == null) return b == null;
+    if (b == null || a.length != b.length) return false;
+    for (int index = 0; index < a.length; index += 1) {
+      if (a[index] != b[index]) return false;
+    }
+    return true;
+  }
 
   @override
   int get hashCode =>
       parentTable.hashCode ^
       childTable.hashCode ^
-      parentColumn.hashCode ^
-      childColumn.hashCode ^
+      _listHashCode(parentColumns) ^
+      _listHashCode(childColumns) ^
       type.hashCode ^
       onDelete.hashCode ^
       (junctionTable?.hashCode ?? 0) ^
-      (junctionParentColumn?.hashCode ?? 0) ^
-      (junctionChildColumn?.hashCode ?? 0);
+      _listHashCode(junctionParentColumns) ^
+      _listHashCode(junctionChildColumns);
+
+  /// Helper method for list hash code generation
+  int _listHashCode<T>(List<T>? list) {
+    if (list == null) return 0;
+    int hash = 0;
+    for (final item in list) {
+      hash ^= item.hashCode;
+    }
+    return hash;
+  }
 }

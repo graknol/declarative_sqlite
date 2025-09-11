@@ -121,7 +121,7 @@ class SchemaBuilder {
     // Use parentTable_id as default child column if not specified
     final actualChildColumn = childColumn ?? '${parentTable.toLowerCase()}_id';
     
-    final relationship = RelationshipBuilder.oneToMany(
+    final relationship = RelationshipBuilder.singleOneToMany(
       parentTable: parentTable,
       childTable: childTable,
       parentColumn: parentColumn,
@@ -147,7 +147,7 @@ class SchemaBuilder {
     final actualJunctionParentColumn = junctionParentColumn ?? '${parentTable.toLowerCase()}_id';
     final actualJunctionChildColumn = junctionChildColumn ?? '${childTable.toLowerCase()}_id';
     
-    final relationship = RelationshipBuilder.manyToMany(
+    final relationship = RelationshipBuilder.singleManyToMany(
       parentTable: parentTable,
       childTable: childTable,
       junctionTable: junctionTable,
@@ -155,6 +155,50 @@ class SchemaBuilder {
       childColumn: childColumn,
       junctionParentColumn: actualJunctionParentColumn,
       junctionChildColumn: actualJunctionChildColumn,
+      onDelete: onDelete,
+    );
+    
+    return addRelationship(relationship);
+  }
+
+  /// Creates and adds a new one-to-many relationship with composite keys
+  SchemaBuilder oneToManyComposite(
+    String parentTable,
+    String childTable,
+    List<String> parentColumns,
+    List<String> childColumns, {
+    CascadeAction onDelete = CascadeAction.cascade,
+  }) {
+    final relationship = RelationshipBuilder.oneToMany(
+      parentTable: parentTable,
+      childTable: childTable,
+      parentColumns: parentColumns,
+      childColumns: childColumns,
+      onDelete: onDelete,
+    );
+    
+    return addRelationship(relationship);
+  }
+
+  /// Creates and adds a new many-to-many relationship with composite keys
+  SchemaBuilder manyToManyComposite(
+    String parentTable,
+    String childTable,
+    String junctionTable,
+    List<String> parentColumns,
+    List<String> childColumns,
+    List<String> junctionParentColumns,
+    List<String> junctionChildColumns, {
+    CascadeAction onDelete = CascadeAction.cascade,
+  }) {
+    final relationship = RelationshipBuilder.manyToMany(
+      parentTable: parentTable,
+      childTable: childTable,
+      junctionTable: junctionTable,
+      parentColumns: parentColumns,
+      childColumns: childColumns,
+      junctionParentColumns: junctionParentColumns,
+      junctionChildColumns: junctionChildColumns,
       onDelete: onDelete,
     );
     
