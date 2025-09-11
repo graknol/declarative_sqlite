@@ -10,7 +10,7 @@ void main() {
   group('LWW Composite Primary Key Tests', () {
     late Database database;
     late SchemaBuilder schema;
-    late LWWDataAccess dataAccess;
+    late DataAccess dataAccess;
 
     setUpAll(() async {
       database = await databaseFactory.openDatabase(':memory:');
@@ -29,7 +29,7 @@ void main() {
       final migrator = SchemaMigrator();
       await migrator.migrate(database, schema);
       
-      dataAccess = await LWWDataAccess.create(database: database, schema: schema);
+      dataAccess = await DataAccess.create(database: database, schema: schema, enableLWW: true);
     });
 
     tearDownAll(() async {
@@ -38,7 +38,7 @@ void main() {
 
     setUp(() {
       // Clear operations before each test
-      dataAccess.clearAllPendingOperations();
+      dataAccess.clearSyncedOperations();
     });
 
     test('can insert and retrieve data with composite primary key', () async {
@@ -191,8 +191,8 @@ void main() {
       // User update
       await dataAccess.updateLWWColumn('order_items', compositeKey, 'quantity', 9);
       
-      // Simulate app restart by creating new LWWDataAccess instance
-      final newDataAccess = await LWWDataAccess.create(database: database, schema: schema);
+      // Simulate app restart by creating new DataAccess instance
+      final newDataAccess = await DataAccess.create(database: database, schema: schema, enableLWW: true);
       
       // Should still get the correct value from DB + stored timestamps
       final quantity = await newDataAccess.getLWWColumnValue('order_items', compositeKey, 'quantity');

@@ -65,10 +65,11 @@ void main() {
     });
 
     test('✅ Unified DataAccess API (requested consolidation)', () async {
-      // Single class handles everything - no more separate LWWDataAccess
-      final dataAccess = await DataAccess.createWithLWW(
+      // Single class handles everything with clean create() method
+      final dataAccess = await DataAccess.create(
         database: database, 
-        schema: schema
+        schema: schema,
+        enableLWW: true,
       );
 
       // Basic CRUD operations
@@ -148,23 +149,23 @@ void main() {
       expect(dataAccess.getPendingOperations().length, equals(0));
     });
 
-    test('✅ Legacy compatibility maintained', () async {
-      // Old LWWDataAccess still works for backward compatibility
-      final lwwDataAccess = await LWWDataAccess.create(database: database, schema: schema);
+    test('✅ Unified API for all functionality', () async {
+      // Single unified DataAccess handles everything
+      final unifiedDataAccess = await DataAccess.create(database: database, schema: schema, enableLWW: true);
       
       // Should be able to use basic operations
-      final id = await lwwDataAccess.insert('tasks', {
-        'title': 'Legacy Test',
+      final id = await unifiedDataAccess.insert('tasks', {
+        'title': 'Unified Test',
         'hours': 3,
       });
 
       expect(id, isNotNull);
-      final task = await lwwDataAccess.getByPrimaryKey('tasks', id);
-      expect(task!['title'], equals('Legacy Test'));
+      final task = await unifiedDataAccess.getByPrimaryKey('tasks', id);
+      expect(task!['title'], equals('Unified Test'));
 
-      // LWW operations should work through the wrapper
-      await lwwDataAccess.updateLWWColumn('tasks', id, 'hours', 5);
-      final operations = lwwDataAccess.getPendingOperations();
+      // LWW operations work directly
+      await unifiedDataAccess.updateLWWColumn('tasks', id, 'hours', 5);
+      final operations = unifiedDataAccess.getPendingOperations();
       expect(operations, isNotEmpty);
     });
 

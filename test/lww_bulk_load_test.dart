@@ -10,7 +10,7 @@ void main() {
   group('LWW BulkLoad Integration Tests', () {
     late Database database;
     late SchemaBuilder schema;
-    late LWWDataAccess dataAccess;
+    late DataAccess dataAccess;
 
     setUpAll(() async {
       database = await databaseFactory.openDatabase(':memory:');
@@ -33,7 +33,7 @@ void main() {
       final migrator = SchemaMigrator();
       await migrator.migrate(database, schema);
       
-      dataAccess = await LWWDataAccess.create(database: database, schema: schema);
+      dataAccess = await DataAccess.create(database: database, schema: schema, enableLWW: true);
     });
 
     tearDownAll(() async {
@@ -41,7 +41,7 @@ void main() {
     });
 
     setUp(() {
-      dataAccess.clearAllPendingOperations();
+      dataAccess.clearSyncedOperations();
     });
 
     test('rejects LWW column updates without HLC timestamps', () async {

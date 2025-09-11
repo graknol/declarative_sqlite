@@ -31,7 +31,7 @@ void main() {
     });
 
     test('can create DataAccess without LWW support', () async {
-      final dataAccess = DataAccess(database: database, schema: schema);
+      final dataAccess = await DataAccess.create(database: database, schema: schema);
       expect(dataAccess.lwwEnabled, isFalse);
 
       // Should be able to insert normal data
@@ -48,9 +48,10 @@ void main() {
     });
 
     test('can create DataAccess with LWW support', () async {
-      final dataAccess = await DataAccess.createWithLWW(
+      final dataAccess = await DataAccess.create(
         database: database, 
-        schema: schema
+        schema: schema,
+        enableLWW: true,
       );
       expect(dataAccess.lwwEnabled, isTrue);
 
@@ -67,9 +68,10 @@ void main() {
     });
 
     test('bulkLoad supports per-row timestamps', () async {
-      final dataAccess = await DataAccess.createWithLWW(
+      final dataAccess = await DataAccess.create(
         database: database, 
-        schema: schema
+        schema: schema,
+        enableLWW: true,
       );
 
       final timestamp1 = '1000';
@@ -106,9 +108,10 @@ void main() {
     });
 
     test('bulkLoad validates per-row timestamps', () async {
-      final dataAccess = await DataAccess.createWithLWW(
+      final dataAccess = await DataAccess.create(
         database: database, 
-        schema: schema
+        schema: schema,
+        enableLWW: true,
       );
 
       final dataset = [
@@ -120,10 +123,11 @@ void main() {
         throwsA(isA<ArgumentError>()));
     });
 
-    test('bulkLoad supports legacy single timestamps', () async {
-      final dataAccess = await DataAccess.createWithLWW(
+    test('bulkLoad supports per-row timestamps only', () async {
+      final dataAccess = await DataAccess.create(
         database: database, 
-        schema: schema
+        schema: schema,
+        enableLWW: true,
       );
 
       final dataset = [

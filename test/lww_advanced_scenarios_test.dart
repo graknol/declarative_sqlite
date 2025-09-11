@@ -10,7 +10,7 @@ void main() {
   group('LWW Advanced Scenarios - Real-World Use Cases', () {
     late Database database;
     late SchemaBuilder schema;
-    late LWWDataAccess dataAccess;
+    late DataAccess dataAccess;
 
     setUpAll(() async {
       database = await databaseFactory.openDatabase(':memory:');
@@ -31,7 +31,7 @@ void main() {
       final migrator = SchemaMigrator();
       await migrator.migrate(database, schema);
       
-      dataAccess = await LWWDataAccess.create(database: database, schema: schema);
+      dataAccess = await DataAccess.create(database: database, schema: schema, enableLWW: true);
     });
 
     tearDownAll(() async {
@@ -40,7 +40,7 @@ void main() {
 
     setUp(() {
       // Clear operations before each test
-      dataAccess.clearAllPendingOperations();
+      dataAccess.clearSyncedOperations();
     });
 
     test('scenario: user modifies quantity while offline, app closes, reopens, syncs later', () async {
@@ -80,7 +80,7 @@ void main() {
       print('📤 Pending operation created for server sync');
 
       // Simulate app restart by creating new data access instance (cache cleared)
-      final newDataAccess = await LWWDataAccess.create(database: database, schema: schema);
+      final newDataAccess = await DataAccess.create(database: database, schema: schema, enableLWW: true);
       
       // Without cache, should still get DB value
       final afterRestart = await newDataAccess.getLWWColumnValue('job_tasks', taskId, 'hours_used');

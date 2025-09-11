@@ -48,14 +48,14 @@
 ///       parentColumn: 'id', childColumn: 'id',
 ///       junctionParentColumn: 'post_id', junctionChildColumn: 'category_id');
 /// 
-/// // Create relationship-aware data access layer
-/// final dataAccess = RelatedDataAccess(database: database, schema: schema);
+/// // Create unified data access layer with relationship support
+/// final dataAccess = await DataAccess.create(database: database, schema: schema);
 /// 
 /// // Navigate relationships without manual joins
-/// final userPosts = await dataAccess.getRelated('user_posts', userId);
+/// final userPosts = await dataAccess.getRelated('users', 'posts', userId);
 /// 
 /// // Manage many-to-many relationships  
-/// await dataAccess.linkManyToMany('post_categories_rel', postId, categoryId);
+/// await dataAccess.linkManyToMany('posts', 'categories', 'post_categories', postId, categoryId);
 /// 
 /// // Delete with cascading cleanup (deletes user, posts, comments, etc.)
 /// await dataAccess.deleteWithChildren('users', userId);
@@ -138,8 +138,8 @@
 /// 
 /// ## Data Access Layer Example
 /// ```dart
-/// // Create data access layer
-/// final dataAccess = DataAccess(database: database, schema: schema);
+/// // Create unified data access layer
+/// final dataAccess = await DataAccess.create(database: database, schema: schema);
 /// 
 /// // Insert a user
 /// final userId = await dataAccess.insert('users', {
@@ -159,6 +159,16 @@
 /// // Get users with conditions
 /// final youngUsers = await dataAccess.getAllWhere('users',
 ///     where: 'age < ?', whereArgs: [25]);
+/// 
+/// // Enable LWW conflict resolution for offline sync
+/// final lwwDataAccess = await DataAccess.create(
+///   database: database, 
+///   schema: schema, 
+///   enableLWW: true,
+/// );
+/// 
+/// // Update with conflict resolution
+/// await lwwDataAccess.updateLWWColumn('users', userId, 'age', 32);
 /// ```
 library declarative_sqlite;
 
@@ -175,7 +185,5 @@ export 'src/relationship_builder.dart';
 export 'src/data_types.dart';
 export 'src/migrator.dart';
 export 'src/data_access.dart';
-export 'src/related_data_access.dart';
 export 'src/lww_types.dart';
-export 'src/lww_data_access.dart';
 export 'src/server_sync_manager.dart';
