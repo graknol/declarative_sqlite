@@ -52,7 +52,7 @@ class ExpressionBuilder {
   /// Generates the SQL representation of this expression
   String toSql() {
     if (alias != null) {
-      return '$expression AS $alias';
+      return '$expression $alias';
     }
     return expression;
   }

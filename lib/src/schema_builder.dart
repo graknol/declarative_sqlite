@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'table_builder.dart';
 import 'view_builder.dart';
+import 'relationship_builder.dart';
 
 /// Main entry point for building database schemas declaratively.
 /// 
@@ -12,16 +13,20 @@ class SchemaBuilder {
   const SchemaBuilder._({
     required this.tables,
     required this.views,
+    required this.relationships,
   });
 
   /// Creates a new schema builder.
-  const SchemaBuilder() : tables = const [], views = const [];
+  const SchemaBuilder() : tables = const [], views = const [], relationships = const [];
 
   /// List of tables in this schema
   final List<TableBuilder> tables;
 
   /// List of views in this schema
   final List<ViewBuilder> views;
+
+  /// List of relationships in this schema
+  final List<RelationshipBuilder> relationships;
 
   /// Adds a table to this schema
   SchemaBuilder addTable(TableBuilder table) {
@@ -33,6 +38,7 @@ class SchemaBuilder {
     return SchemaBuilder._(
       tables: [...tables, table],
       views: views,
+      relationships: relationships,
     );
   }
 
@@ -56,6 +62,7 @@ class SchemaBuilder {
     return SchemaBuilder._(
       tables: tables,
       views: [...views, view],
+      relationships: relationships,
     );
   }
 
@@ -64,6 +71,100 @@ class SchemaBuilder {
     final viewBuilder = builder(viewName);
     return addView(viewBuilder);
   }
+
+  /// Adds a relationship to this schema
+  SchemaBuilder addRelationship(RelationshipBuilder relationship) {
+    // Check for duplicate relationships (same parent-child-junction combo)
+    final existingRelationship = relationships.where((r) => 
+      r.parentTable == relationship.parentTable &&
+      r.childTable == relationship.childTable &&
+      r.type == relationship.type &&
+      (r.junctionTable == relationship.junctionTable || (r.junctionTable == null && relationship.junctionTable == null))
+    ).firstOrNull;
+
+    if (existingRelationship != null) {
+      throw ArgumentError('Relationship between "${relationship.parentTable}" and "${relationship.childTable}" already exists');
+    }
+    
+    // Validate the relationship
+    final validationErrors = relationship.validate();
+    if (validationErrors.isNotEmpty) {
+      throw ArgumentError('Invalid relationship: ${validationErrors.join(', ')}');
+    }
+    
+    // Check that referenced tables exist in the schema
+    if (!hasTable(relationship.parentTable)) {
+      throw ArgumentError('Relationship references non-existent parent table "${relationship.parentTable}"');
+    }
+    if (!hasTable(relationship.childTable)) {
+      throw ArgumentError('Relationship references non-existent child table "${relationship.childTable}"');
+    }
+    if (relationship.junctionTable != null && !hasTable(relationship.junctionTable!)) {
+      throw ArgumentError('Relationship references non-existent junction table "${relationship.junctionTable}"');
+    }
+    
+    return SchemaBuilder._(
+      tables: tables,
+      views: views,
+      relationships: [...relationships, relationship],
+    );
+  }
+
+  /// Creates and adds a new one-to-many relationship to this schema
+  SchemaBuilder oneToMany(
+    String parentTable,
+    String childTable, {
+    List<String>? parentColumns,
+    List<String>? childColumns,
+    CascadeAction onDelete = CascadeAction.cascade,
+  }) {
+    // Use sensible defaults if not specified
+    final actualParentColumns = parentColumns ?? ['id'];
+    final actualChildColumns = childColumns ?? ['${parentTable.toLowerCase()}_id'];
+    
+    final relationship = RelationshipBuilder.oneToMany(
+      parentTable: parentTable,
+      childTable: childTable,
+      parentColumns: actualParentColumns,
+      childColumns: actualChildColumns,
+      onDelete: onDelete,
+    );
+    
+    return addRelationship(relationship);
+  }
+
+  /// Creates and adds a new many-to-many relationship to this schema
+  SchemaBuilder manyToMany(
+    String parentTable,
+    String childTable,
+    String junctionTable, {
+    List<String>? parentColumns,
+    List<String>? childColumns,
+    List<String>? junctionParentColumns,
+    List<String>? junctionChildColumns,
+    CascadeAction onDelete = CascadeAction.cascade,
+  }) {
+    // Use sensible defaults for columns
+    final actualParentColumns = parentColumns ?? ['id'];
+    final actualChildColumns = childColumns ?? ['id'];
+    final actualJunctionParentColumns = junctionParentColumns ?? ['${parentTable.toLowerCase()}_id'];
+    final actualJunctionChildColumns = junctionChildColumns ?? ['${childTable.toLowerCase()}_id'];
+    
+    final relationship = RelationshipBuilder.manyToMany(
+      parentTable: parentTable,
+      childTable: childTable,
+      junctionTable: junctionTable,
+      parentColumns: actualParentColumns,
+      childColumns: actualChildColumns,
+      junctionParentColumns: actualJunctionParentColumns,
+      junctionChildColumns: actualJunctionChildColumns,
+      onDelete: onDelete,
+    );
+    
+    return addRelationship(relationship);
+  }
+
+
 
   /// Gets a table by name, or null if it doesn't exist
   TableBuilder? getTable(String tableName) {
@@ -83,6 +184,23 @@ class SchemaBuilder {
     }
   }
 
+  /// Gets a relationship by parent and child table names, or null if it doesn't exist
+  RelationshipBuilder? getRelationship(String parentTable, String childTable, {String? junctionTable}) {
+    return relationships.where((r) => 
+      r.parentTable == parentTable && 
+      r.childTable == childTable &&
+      (junctionTable == null || r.junctionTable == junctionTable)
+    ).firstOrNull;
+  }
+
+  /// Gets all relationships for a specific table pair (both directions)
+  List<RelationshipBuilder> getRelationshipsBetween(String table1, String table2) {
+    return relationships.where((r) => 
+      (r.parentTable == table1 && r.childTable == table2) ||
+      (r.parentTable == table2 && r.childTable == table1)
+    ).toList();
+  }
+
   /// Checks if a table exists in this schema
   bool hasTable(String tableName) {
     return tables.any((t) => t.name == tableName);
@@ -91,6 +209,28 @@ class SchemaBuilder {
   /// Checks if a view exists in this schema
   bool hasView(String viewName) {
     return views.any((v) => v.name == viewName);
+  }
+
+  /// Checks if a relationship exists between two tables
+  bool hasRelationship(String parentTable, String childTable, {String? junctionTable}) {
+    return getRelationship(parentTable, childTable, junctionTable: junctionTable) != null;
+  }
+
+  /// Gets all relationships where the specified table is a parent
+  List<RelationshipBuilder> getParentRelationships(String tableName) {
+    return relationships.where((r) => r.parentTable == tableName).toList();
+  }
+
+  /// Gets all relationships where the specified table is a child
+  List<RelationshipBuilder> getChildRelationships(String tableName) {
+    return relationships.where((r) => r.childTable == tableName).toList();
+  }
+
+  /// Gets all relationships involving the specified table (as parent or child)
+  List<RelationshipBuilder> getTableRelationships(String tableName) {
+    return relationships
+        .where((r) => r.parentTable == tableName || r.childTable == tableName)
+        .toList();
   }
 
   /// Generates all SQL statements needed to create this schema
@@ -122,6 +262,15 @@ class SchemaBuilder {
   /// Gets all view names in this schema
   List<String> get viewNames => views.map((v) => v.name).toList();
 
+  /// Gets all relationship IDs in this schema  
+  List<String> get relationshipIds => relationships.map((r) => r.relationshipId).toList();
+
+  /// Gets count of relationships in this schema
+  int get relationshipCount => relationships.length;
+
+  /// Gets all relationship names (IDs) in this schema  
+  List<String> get relationshipNames => relationships.map((r) => r.relationshipId).toList();
+
   /// Gets all object names (tables and views) in this schema
   List<String> get allNames => [...tableNames, ...viewNames];
 
@@ -152,6 +301,9 @@ class SchemaBuilder {
     if (views.isNotEmpty) {
       parts.add('views: [${viewNames.join(', ')}]');
     }
+    if (relationships.isNotEmpty) {
+      parts.add('relationships: [${relationshipNames.join(', ')}]');
+    }
     return 'SchemaBuilder(${parts.join(', ')})';
   }
 
@@ -161,10 +313,11 @@ class SchemaBuilder {
       other is SchemaBuilder &&
           runtimeType == other.runtimeType &&
           _listEquals(tables, other.tables) &&
-          _listEquals(views, other.views);
+          _listEquals(views, other.views) &&
+          _listEquals(relationships, other.relationships);
 
   @override
-  int get hashCode => tables.hashCode ^ views.hashCode;
+  int get hashCode => tables.hashCode ^ views.hashCode ^ relationships.hashCode;
 
   /// Helper method to compare lists for equality
   bool _listEquals<T>(List<T> a, List<T> b) {

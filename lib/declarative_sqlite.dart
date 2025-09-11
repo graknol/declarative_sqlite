@@ -1,9 +1,65 @@
-/// A declarative SQLite schema builder for Dart.
+/// A Dart package for declaratively creating SQLite tables, views, and automatically migrating them.
 /// 
 /// This library provides a fluent interface for defining database schemas
-/// with tables, views, columns, indices, and constraints. It automatically 
+/// with tables, views, columns, indices, constraints, and **relationships**. It automatically 
 /// migrates SQLite databases to match the declared schema and includes a 
 /// comprehensive data access layer for type-safe database operations.
+/// 
+/// ## Key Features
+/// - **Declarative Schema Definition**: Use a fluent builder pattern to define your database schema
+/// - **Relationship Modeling**: Define one-to-many and many-to-many relationships without foreign keys
+/// - **Cascading Operations**: Delete parent records with automatic child cleanup following relationship tree
+/// - **Proxy Queries**: Navigate relationships without manual joins or complex WHERE clauses
+/// - **SQL Views Support**: Create views with complex queries, joins, aggregations, and subqueries  
+/// - **Automatic Migration**: Create missing tables, views, and indices automatically
+/// - **Data Access Abstraction**: Type-safe CRUD operations with schema metadata integration
+/// - **Bulk Data Loading**: Efficiently load large datasets with flexible validation and error handling
+/// - **SQLite Data Types**: Full support for SQLite affinities (INTEGER, REAL, TEXT, BLOB)
+/// - **Constraints**: Support for Primary Key, Unique, and Not Null constraints
+/// - **Indices**: Single-column and composite indices with unique option
+/// - **Type Safe**: Built with null safety and immutable builders
+/// 
+/// ## Relationship Modeling Example
+/// ```dart
+/// import 'package:declarative_sqlite/declarative_sqlite.dart';
+/// 
+/// final schema = SchemaBuilder()
+///   .table('users', (table) => table
+///     .autoIncrementPrimaryKey('id')
+///     .text('username', (col) => col.notNull().unique())
+///     .text('email', (col) => col.notNull()))
+///   .table('posts', (table) => table
+///     .autoIncrementPrimaryKey('id')
+///     .text('title', (col) => col.notNull())
+///     .text('content')
+///     .integer('user_id', (col) => col.notNull()))
+///   .table('categories', (table) => table
+///     .autoIncrementPrimaryKey('id')
+///     .text('name', (col) => col.notNull().unique()))
+///   .table('post_categories', (table) => table
+///     .autoIncrementPrimaryKey('id')
+///     .integer('post_id', (col) => col.notNull())
+///     .integer('category_id', (col) => col.notNull()))
+///   // Define relationships without database foreign keys
+///   .oneToMany('user_posts', 'users', 'posts',
+///       parentColumn: 'id', childColumn: 'user_id',
+///       onDelete: CascadeAction.cascade)
+///   .manyToMany('post_categories_rel', 'posts', 'categories', 'post_categories',
+///       parentColumn: 'id', childColumn: 'id',
+///       junctionParentColumn: 'post_id', junctionChildColumn: 'category_id');
+/// 
+/// // Create relationship-aware data access layer
+/// final dataAccess = RelatedDataAccess(database: database, schema: schema);
+/// 
+/// // Navigate relationships without manual joins
+/// final userPosts = await dataAccess.getRelated('user_posts', userId);
+/// 
+/// // Manage many-to-many relationships  
+/// await dataAccess.linkManyToMany('post_categories_rel', postId, categoryId);
+/// 
+/// // Delete with cascading cleanup (deletes user, posts, comments, etc.)
+/// await dataAccess.deleteWithChildren('users', userId);
+/// ```
 /// 
 /// ## Schema Definition Example
 /// ```dart
@@ -115,6 +171,8 @@ export 'src/view_builder.dart';
 export 'src/query_builder.dart';
 export 'src/expression_builder.dart';
 export 'src/join_builder.dart';
+export 'src/relationship_builder.dart';
 export 'src/data_types.dart';
 export 'src/migrator.dart';
 export 'src/data_access.dart';
+export 'src/related_data_access.dart';
