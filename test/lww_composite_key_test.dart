@@ -29,7 +29,7 @@ void main() {
       final migrator = SchemaMigrator();
       await migrator.migrate(database, schema);
       
-      dataAccess = await DataAccess.create(database: database, schema: schema, enableLWW: true);
+      dataAccess = await DataAccess.create(database: database, schema: schema);
     });
 
     tearDownAll(() async {
@@ -192,7 +192,7 @@ void main() {
       await dataAccess.updateLWWColumn('order_items', compositeKey, 'quantity', 9);
       
       // Simulate app restart by creating new DataAccess instance
-      final newDataAccess = await DataAccess.create(database: database, schema: schema, enableLWW: true);
+      final newDataAccess = await DataAccess.create(database: database, schema: schema);
       
       // Should still get the correct value from DB + stored timestamps
       final quantity = await newDataAccess.getLWWColumnValue('order_items', compositeKey, 'quantity');

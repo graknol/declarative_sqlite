@@ -139,26 +139,26 @@ class DataAccess {
   DataAccess._({
     required this.database,
     required this.schema,
-    required this.lwwEnabled,
   });
 
-  /// Creates a DataAccess instance with optional LWW and relationship support
+  /// Creates a DataAccess instance with automatic LWW support detection
   /// 
   /// [database] The SQLite database instance
-  /// [schema] The schema definition containing table metadata  
-  /// [enableLWW] Whether to enable Last-Writer-Wins conflict resolution (default: false)
+  /// [schema] The schema definition containing table metadata
+  /// 
+  /// LWW (Last-Writer-Wins) conflict resolution is automatically enabled
+  /// if any columns in the schema are marked with `.lww()`.
   static Future<DataAccess> create({
     required Database database,
     required SchemaBuilder schema,
-    bool enableLWW = false,
   }) async {
     final instance = DataAccess._(
       database: database,
       schema: schema,
-      lwwEnabled: enableLWW,
     );
     
-    if (enableLWW) {
+    // Check if any table has LWW columns and initialize if needed
+    if (instance._hasAnyLWWColumns()) {
       await instance._initializeLWWTables();
     }
     
@@ -171,9 +171,6 @@ class DataAccess {
   /// The schema definition containing table metadata
   final SchemaBuilder schema;
   
-  /// Whether LWW functionality is enabled for this instance
-  final bool lwwEnabled;
-  
   /// Name of the internal table that stores LWW column timestamps
   static const String _lwwTimestampsTable = '_lww_column_timestamps';
 
@@ -183,6 +180,20 @@ class DataAccess {
   
   /// Queue of pending operations waiting to be synced to server
   final Map<String, PendingOperation> _pendingOperations = {};
+
+  /// Checks if the schema contains any tables with LWW columns
+  bool _hasAnyLWWColumns() {
+    return schema.tables.any((table) => 
+      table.columns.any((column) => column.isLWW)
+    );
+  }
+
+  /// Checks if a specific table has LWW columns
+  bool _hasLWWColumns(String tableName) {
+    final table = schema.getTable(tableName);
+    if (table == null) return false;
+    return table.columns.any((column) => column.isLWW);
+  }
 
   /// Gets a single row by primary key from the specified table.
   /// 
@@ -532,7 +543,7 @@ class DataAccess {
     
     // LWW validation and preprocessing
     final lwwColumns = table.columns.where((col) => col.isLWW).toList();
-    if (lwwEnabled && lwwColumns.isNotEmpty) {
+    if (lwwColumns.isNotEmpty) {
       _validateLWWTimestamps(dataset, options, lwwColumns);
     }
     
@@ -585,9 +596,9 @@ class DataAccess {
               _validateInsertValues(table, encodedRow);
             }
             
-            // Get LWW timestamps for this row if LWW is enabled
+            // Get LWW timestamps for this row if LWW columns exist
             Map<String, String>? rowLwwTimestamps;
-            if (lwwEnabled && lwwColumns.isNotEmpty && options.lwwTimestamps != null) {
+            if (lwwColumns.isNotEmpty && options.lwwTimestamps != null) {
               rowLwwTimestamps = options.lwwTimestamps![j];
             }
             
@@ -832,7 +843,7 @@ class DataAccess {
     BulkLoadOptions options,
     List<ColumnBuilder> lwwColumns,
   ) {
-    if (!lwwEnabled) return;
+    if (lwwColumns.isEmpty) return;
     
     if (options.lwwTimestamps != null) {
       final lwwTimestamps = options.lwwTimestamps!;
@@ -888,7 +899,7 @@ class DataAccess {
     await txn.insert(tableName, insertValues);
     
     // Store LWW timestamps for any LWW columns present
-    if (lwwEnabled && lwwTimestamps != null && lwwColumns.isNotEmpty) {
+    if (lwwTimestamps != null && lwwColumns.isNotEmpty) {
       final table = schema.getTable(tableName)!;
       final primaryKeyColumns = table.getPrimaryKeyColumns();
       
@@ -945,7 +956,7 @@ class DataAccess {
     }
     
     // Process LWW columns with conflict resolution
-    if (lwwEnabled && lwwTimestamps != null) {
+    if (lwwTimestamps != null) {
       for (final lwwColumn in lwwColumns) {
         if (encodedRow.containsKey(lwwColumn.name) && 
             lwwTimestamps.containsKey(lwwColumn.name)) {
@@ -1000,7 +1011,7 @@ class DataAccess {
   /// Initializes the LWW metadata table for storing per-column timestamps
   @protected
   Future<void> initializeLWWTables() async {
-    if (!lwwEnabled) return;
+    if (!_hasAnyLWWColumns()) return;
     
     await database.execute('''
       CREATE TABLE IF NOT EXISTS $_lwwTimestampsTable (
@@ -1025,7 +1036,7 @@ class DataAccess {
     String timestamp, {
     bool isFromServer = false,
   }) async {
-    if (!lwwEnabled) return;
+    if (!_hasLWWColumns(tableName)) return;
     
     final serializedPrimaryKey = _serializePrimaryKey(tableName, primaryKeyValue);
     await database.execute(
@@ -1045,7 +1056,7 @@ class DataAccess {
     String timestamp, {
     bool isFromServer = false,
   }) async {
-    if (!lwwEnabled) return;
+    if (!_hasLWWColumns(tableName)) return;
     
     final serializedPrimaryKey = _serializePrimaryKey(tableName, primaryKeyValue);
     await txn.execute(
@@ -1063,7 +1074,7 @@ class DataAccess {
     dynamic primaryKeyValue,
     String columnName,
   ) async {
-    if (!lwwEnabled) return null;
+    if (!_hasLWWColumns(tableName)) return null;
     
     final serializedPrimaryKey = _serializePrimaryKey(tableName, primaryKeyValue);
     final result = await txn.query(
@@ -1147,8 +1158,8 @@ class DataAccess {
     dynamic value, {
     String? timestamp,
   }) async {
-    if (!lwwEnabled) {
-      throw StateError('LWW functionality is not enabled. Use DataAccess.create() with enableLWW: true');
+    if (!_hasLWWColumns(tableName)) {
+      throw StateError('Table "$tableName" has no LWW columns. Mark columns with .lww() in the schema definition.');
     }
 
     final actualTimestamp = timestamp ?? SystemColumnUtils.generateHLCTimestamp();
@@ -1205,8 +1216,8 @@ class DataAccess {
     dynamic primaryKeyValue,
     String columnName,
   ) async {
-    if (!lwwEnabled) {
-      throw StateError('LWW functionality is not enabled. Use DataAccess.create() with enableLWW: true');
+    if (!_hasLWWColumns(tableName)) {
+      throw StateError('Table "$tableName" has no LWW columns. Mark columns with .lww() in the schema definition.');
     }
 
     // Check cache first
@@ -1226,8 +1237,8 @@ class DataAccess {
     String tableName,
     dynamic primaryKeyValue,
   ) async {
-    if (!lwwEnabled) {
-      throw StateError('LWW functionality is not enabled. Use DataAccess.create() with enableLWW: true');
+    if (!_hasLWWColumns(tableName)) {
+      throw StateError('Table "$tableName" has no LWW columns. Mark columns with .lww() in the schema definition.');
     }
 
     // Get the base row from database
@@ -1259,8 +1270,8 @@ class DataAccess {
     Map<String, dynamic> serverData,
     String serverTimestamp,
   ) async {
-    if (!lwwEnabled) {
-      throw StateError('LWW functionality is not enabled. Use DataAccess.create() with enableLWW: true');
+    if (!_hasLWWColumns(tableName)) {
+      throw StateError('Table "$tableName" has no LWW columns. Mark columns with .lww() in the schema definition.');
     }
 
     await database.transaction((txn) async {
@@ -1318,7 +1329,7 @@ class DataAccess {
     dynamic primaryKeyValue,
     String columnName,
   ) async {
-    if (!lwwEnabled) return null;
+    if (!_hasLWWColumns(tableName)) return null;
     
     final serializedPrimaryKey = _serializePrimaryKey(tableName, primaryKeyValue);
     final result = await database.query(

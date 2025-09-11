@@ -30,10 +30,10 @@ void main() {
       await database.close();
     });
 
-    test('can create DataAccess without LWW support', () async {
+    test('DataAccess automatically detects LWW from schema', () async {
       final dataAccess = await DataAccess.create(database: database, schema: schema);
-      expect(dataAccess.lwwEnabled, isFalse);
-
+      // LWW is automatically enabled because schema contains .lww() columns
+      
       // Should be able to insert normal data
       final id = await dataAccess.insert('tasks', {
         'title': 'Test Task',
@@ -51,9 +51,8 @@ void main() {
       final dataAccess = await DataAccess.create(
         database: database, 
         schema: schema,
-        enableLWW: true,
       );
-      expect(dataAccess.lwwEnabled, isTrue);
+      // LWW is now automatically enabled when schema contains LWW columns
 
       // First insert a row
       final id = await dataAccess.insert('tasks', {
@@ -71,7 +70,6 @@ void main() {
       final dataAccess = await DataAccess.create(
         database: database, 
         schema: schema,
-        enableLWW: true,
       );
 
       final timestamp1 = '1000';
@@ -111,7 +109,6 @@ void main() {
       final dataAccess = await DataAccess.create(
         database: database, 
         schema: schema,
-        enableLWW: true,
       );
 
       final dataset = [
@@ -127,7 +124,6 @@ void main() {
       final dataAccess = await DataAccess.create(
         database: database, 
         schema: schema,
-        enableLWW: true,
       );
 
       final dataset = [

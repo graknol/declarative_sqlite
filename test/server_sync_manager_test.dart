@@ -28,7 +28,7 @@ void main() {
       final migrator = SchemaMigrator();
       await migrator.migrate(database, schema);
       
-      dataAccess = await DataAccess.create(database: database, schema: schema, enableLWW: true);
+      dataAccess = await DataAccess.create(database: database, schema: schema);
     });
 
     tearDownAll(() async {

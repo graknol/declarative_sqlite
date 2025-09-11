@@ -31,7 +31,7 @@ void main() {
       final migrator = SchemaMigrator();
       await migrator.migrate(database, schema);
       
-      dataAccess = await DataAccess.create(database: database, schema: schema, enableLWW: true);
+      dataAccess = await DataAccess.create(database: database, schema: schema);
     });
 
     tearDownAll(() async {
@@ -80,7 +80,7 @@ void main() {
       print('📤 Pending operation created for server sync');
 
       // Simulate app restart by creating new data access instance (cache cleared)
-      final newDataAccess = await DataAccess.create(database: database, schema: schema, enableLWW: true);
+      final newDataAccess = await DataAccess.create(database: database, schema: schema);
       
       // Without cache, should still get DB value
       final afterRestart = await newDataAccess.getLWWColumnValue('job_tasks', taskId, 'hours_used');

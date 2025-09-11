@@ -31,7 +31,7 @@ void main() {
     });
 
     test('✅ Per-row timestamps for bulkLoad (requested feature)', () async {
-      final dataAccess = await DataAccess.createWithLWW(
+      final dataAccess = await DataAccess.create(
         database: database, 
         schema: schema
       );
@@ -69,7 +69,6 @@ void main() {
       final dataAccess = await DataAccess.create(
         database: database, 
         schema: schema,
-        enableLWW: true,
       );
 
       // Basic CRUD operations
@@ -113,7 +112,7 @@ void main() {
     });
 
     test('✅ ServerSyncManager with proper exception handling', () async {
-      final dataAccess = await DataAccess.createWithLWW(
+      final dataAccess = await DataAccess.create(
         database: database, 
         schema: schema
       );
@@ -151,7 +150,7 @@ void main() {
 
     test('✅ Unified API for all functionality', () async {
       // Single unified DataAccess handles everything
-      final unifiedDataAccess = await DataAccess.create(database: database, schema: schema, enableLWW: true);
+      final unifiedDataAccess = await DataAccess.create(database: database, schema: schema);
       
       // Should be able to use basic operations
       final id = await unifiedDataAccess.insert('tasks', {
@@ -170,7 +169,7 @@ void main() {
     });
 
     test('✅ Real-world scenario: Complex conflict resolution', () async {
-      final dataAccess = await DataAccess.createWithLWW(
+      final dataAccess = await DataAccess.create(
         database: database, 
         schema: schema
       );

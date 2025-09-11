@@ -19,12 +19,12 @@ void main() {
     final migrator = SchemaMigrator();
     await migrator.migrate(database, schema);
 
-    final dataAccess = await DataAccess.createWithLWW(
+    final dataAccess = await DataAccess.create(
       database: database, 
       schema: schema
     );
 
-    print('LWW enabled: ${dataAccess.lwwEnabled}');
+    print('LWW automatically detected from schema (columns marked with .lww())');
     
     // Insert a regular row first
     final id = await dataAccess.insert('tasks', {
