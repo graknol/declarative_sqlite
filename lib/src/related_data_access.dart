@@ -174,7 +174,7 @@ class RelatedDataAccess extends DataAccess {
 
     // Build optimized DELETE with JOINs based on the path
     final deleteQuery = _buildOptimizedDeleteQuery(deletionPath, rootPrimaryKey);
-    if (deleteQuery.isEmpty) {
+    if (deleteQuery.sql.isEmpty) {
       return 0;
     }
 

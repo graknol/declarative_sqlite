@@ -263,6 +263,9 @@ class SchemaBuilder {
   /// Gets count of relationships in this schema
   int get relationshipCount => relationships.length;
 
+  /// Gets all relationship names (IDs) in this schema  
+  List<String> get relationshipNames => relationships.map((r) => r.relationshipId).toList();
+
   /// Gets all object names (tables and views) in this schema
   List<String> get allNames => [...tableNames, ...viewNames];
 
@@ -271,9 +274,6 @@ class SchemaBuilder {
 
   /// Returns the number of views in this schema
   int get viewCount => views.length;
-
-  /// Returns the number of relationships in this schema
-  int get relationshipCount => relationships.length;
 
   /// Returns the total number of objects (tables and views) in this schema
   int get totalCount => tableCount + viewCount;
