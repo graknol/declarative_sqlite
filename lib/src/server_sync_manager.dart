@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:meta/meta.dart';
-import 'lww_data_access.dart';
+import 'data_access.dart';
 import 'lww_types.dart';
 
 /// Server sync configuration options
@@ -102,8 +102,8 @@ class ServerSyncManager {
     this.options = const ServerSyncOptions(),
   });
 
-  /// The LWW data access instance to sync from
-  final LWWDataAccess dataAccess;
+  /// The data access instance to sync from (must have LWW support enabled)
+  final DataAccess dataAccess;
   
   /// Callback function for uploading operations to server
   final ServerUploadCallback uploadCallback;

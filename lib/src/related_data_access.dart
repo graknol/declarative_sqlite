@@ -8,16 +8,60 @@ import 'data_types.dart';
 
 /// Data access layer that provides relationship-aware operations.
 /// 
-/// Extends the basic DataAccess functionality with support for:
-/// - Cascading deletes following relationship definitions
-/// - Proxy queries that automatically handle relationship joins
-/// - Navigation between related records
-class RelatedDataAccess extends DataAccess {
+/// @deprecated Use DataAccess instead for unified functionality
+/// This class is maintained for backwards compatibility only.
+class RelatedDataAccess {
+  final DataAccess _dataAccess;
+
+  RelatedDataAccess._(this._dataAccess);
+
   /// Creates a new RelatedDataAccess instance
-  RelatedDataAccess({
+  factory RelatedDataAccess({
     required Database database,
     required SchemaBuilder schema,
-  }) : super(database: database, schema: schema);
+  }) {
+    final dataAccess = DataAccess(database: database, schema: schema);
+    return RelatedDataAccess._(dataAccess);
+  }
+
+  /// Delegate all methods to the underlying DataAccess instance
+  Database get database => _dataAccess.database;
+  SchemaBuilder get schema => _dataAccess.schema;
+  bool get lwwEnabled => _dataAccess.lwwEnabled;
+
+  // Delegate all DataAccess methods
+  Future<Map<String, dynamic>?> getByPrimaryKey(String tableName, dynamic primaryKeyValue) =>
+      _dataAccess.getByPrimaryKey(tableName, primaryKeyValue);
+
+  Future<int> insert(String tableName, Map<String, dynamic> values) =>
+      _dataAccess.insert(tableName, values);
+
+  Future<int> updateByPrimaryKey(String tableName, dynamic primaryKeyValue, Map<String, dynamic> values) =>
+      _dataAccess.updateByPrimaryKey(tableName, primaryKeyValue, values);
+
+  Future<int> deleteByPrimaryKey(String tableName, dynamic primaryKeyValue) =>
+      _dataAccess.deleteByPrimaryKey(tableName, primaryKeyValue);
+
+  Future<bool> existsByPrimaryKey(String tableName, dynamic primaryKeyValue) =>
+      _dataAccess.existsByPrimaryKey(tableName, primaryKeyValue);
+
+  Future<List<Map<String, dynamic>>> getAllWhere(String tableName, {String? where, List<dynamic>? whereArgs, String? orderBy, int? limit, int? offset}) =>
+      _dataAccess.getAllWhere(tableName, where: where, whereArgs: whereArgs, orderBy: orderBy, limit: limit, offset: offset);
+
+  Future<int> count(String tableName, {String? where, List<dynamic>? whereArgs}) =>
+      _dataAccess.count(tableName, where: where, whereArgs: whereArgs);
+
+  Future<int> updateWhere(String tableName, Map<String, dynamic> values, {String? where, List<dynamic>? whereArgs}) =>
+      _dataAccess.updateWhere(tableName, values, where: where, whereArgs: whereArgs);
+
+  Future<int> deleteWhere(String tableName, {String? where, List<dynamic>? whereArgs}) =>
+      _dataAccess.deleteWhere(tableName, where: where, whereArgs: whereArgs);
+
+  Future<BulkLoadResult> bulkLoad(String tableName, List<Map<String, dynamic>> dataset, {BulkLoadOptions options = const BulkLoadOptions()}) =>
+      _dataAccess.bulkLoad(tableName, dataset, options: options);
+
+  TableMetadata getTableMetadata(String tableName) =>
+      _dataAccess.getTableMetadata(tableName);
 
   /// Gets all child records for a parent record following a relationship
   /// 

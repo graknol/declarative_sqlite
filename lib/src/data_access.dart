@@ -5,6 +5,7 @@ import 'schema_builder.dart';
 import 'table_builder.dart';
 import 'column_builder.dart';
 import 'data_types.dart';
+import 'lww_types.dart';
 
 /// Utilities for generating system column values
 class SystemColumnUtils {
@@ -126,21 +127,65 @@ class DataTypeUtils {
   }
 }
 
-/// Data access abstraction layer that provides CRUD operations based on schema metadata.
+/// A comprehensive data access layer that provides type-safe database operations
+/// with support for CRUD operations, bulk loading, LWW conflict resolution,
+/// and relationship management.
 /// 
 /// This class uses the schema definition to provide type-safe database operations
 /// with automatic primary key handling and constraint validation.
 class DataAccess {
-  const DataAccess({
+  /// Private constructor to ensure proper initialization through factory methods
+  DataAccess._({
     required this.database,
     required this.schema,
+    required this.lwwEnabled,
   });
+
+  /// Creates a basic DataAccess instance without LWW support
+  factory DataAccess({
+    required Database database,
+    required SchemaBuilder schema,
+  }) {
+    return DataAccess._(
+      database: database,
+      schema: schema,
+      lwwEnabled: false,
+    );
+  }
+
+  /// Creates a DataAccess instance with LWW support enabled
+  /// Initializes the LWW metadata tables automatically
+  static Future<DataAccess> createWithLWW({
+    required Database database,
+    required SchemaBuilder schema,
+  }) async {
+    final instance = DataAccess._(
+      database: database,
+      schema: schema,
+      lwwEnabled: true,
+    );
+    await instance._initializeLWWTables();
+    return instance;
+  }
 
   /// The SQLite database instance
   final Database database;
   
   /// The schema definition containing table metadata
   final SchemaBuilder schema;
+  
+  /// Whether LWW functionality is enabled for this instance
+  final bool lwwEnabled;
+  
+  /// Name of the internal table that stores LWW column timestamps
+  static const String _lwwTimestampsTable = '_lww_column_timestamps';
+
+  /// In-memory cache of current LWW column values
+  /// Map of tableName -> primaryKey -> columnName -> LWWColumnValue
+  final Map<String, Map<dynamic, Map<String, LWWColumnValue>>> _lwwCache = {};
+  
+  /// Queue of pending operations waiting to be synced to server
+  final Map<String, PendingOperation> _pendingOperations = {};
 
   /// Gets a single row by primary key from the specified table.
   /// 
@@ -488,6 +533,12 @@ class DataAccess {
       );
     }
     
+    // LWW validation and preprocessing
+    final lwwColumns = table.columns.where((col) => col.isLWW).toList();
+    if (lwwEnabled && lwwColumns.isNotEmpty) {
+      _validateLWWTimestamps(dataset, options, lwwColumns);
+    }
+    
     await database.transaction((txn) async {
       // Clear table if requested
       if (options.clearTableFirst) {
@@ -537,8 +588,18 @@ class DataAccess {
               _validateInsertValues(table, encodedRow);
             }
             
+            // Get LWW timestamps for this row if LWW is enabled
+            Map<String, String>? rowLwwTimestamps;
+            if (lwwEnabled && lwwColumns.isNotEmpty) {
+              if (options.perRowLwwTimestamps != null) {
+                rowLwwTimestamps = options.perRowLwwTimestamps![j];
+              } else if (options.lwwTimestamps != null) {
+                rowLwwTimestamps = options.lwwTimestamps;
+              }
+            }
+            
             if (options.upsertMode && primaryKeyColumns.isNotEmpty) {
-              // Upsert mode: check if row exists and update or insert accordingly
+              // Upsert mode with potential LWW conflict resolution
               final primaryKeyValues = <String, dynamic>{};
               var hasPrimaryKeyValues = true;
               
@@ -576,27 +637,39 @@ class DataAccess {
               );
               
               if (existingRows.isNotEmpty) {
-                // Row exists, update it
-                final updateValues = Map<String, dynamic>.from(encodedRow);
-                updateValues[SystemColumns.systemVersion] = SystemColumnUtils.generateHLCTimestamp();
-                
-                batch.update(
-                  tableName, 
-                  updateValues,
-                  where: whereClause,
-                  whereArgs: whereArgs,
+                // Row exists, update it with LWW conflict resolution
+                await _upsertRowWithLWW(
+                  txn,
+                  tableName,
+                  encodedRow,
+                  pkValue,
+                  lwwColumns,
+                  rowLwwTimestamps,
+                  options.isFromServer,
                 );
                 rowsUpdated++;
               } else {
                 // Row doesn't exist, insert it
-                final insertValues = SystemColumnUtils.ensureSystemColumns(encodedRow);
-                batch.insert(tableName, insertValues);
+                await _insertRowWithLWW(
+                  txn,
+                  tableName,
+                  encodedRow,
+                  lwwColumns,
+                  rowLwwTimestamps,
+                  options.isFromServer,
+                );
                 rowsInserted++;
               }
             } else {
               // Insert-only mode
-              final insertValues = SystemColumnUtils.ensureSystemColumns(encodedRow);
-              batch.insert(tableName, insertValues);
+              await _insertRowWithLWW(
+                txn,
+                tableName,
+                encodedRow,
+                lwwColumns,
+                rowLwwTimestamps,
+                options.isFromServer,
+              );
               rowsInserted++;
             }
             
@@ -667,19 +740,6 @@ class DataAccess {
       throw ArgumentError('Table "$tableName" does not exist in schema');
     }
     return table;
-  }
-
-  /// Gets the primary key column for a table or throws if none exists.
-  ColumnBuilder _getPrimaryKeyColumnOrThrow(TableBuilder table) {
-    final primaryKeyColumn = table.columns
-        .where((col) => col.constraints.contains(ConstraintType.primaryKey))
-        .firstOrNull;
-    
-    if (primaryKeyColumn == null) {
-      throw ArgumentError('Table "${table.name}" has no primary key column');
-    }
-    
-    return primaryKeyColumn;
   }
 
   /// Builds a WHERE clause and arguments for primary key matching
@@ -770,6 +830,521 @@ class DataAccess {
       }
     }
   }
+
+  // ============= LWW (Last-Writer-Wins) Support =============
+
+  /// Validates LWW timestamps for bulk load operations
+  void _validateLWWTimestamps(
+    List<Map<String, dynamic>> dataset,
+    BulkLoadOptions options,
+    List<ColumnBuilder> lwwColumns,
+  ) {
+    if (!lwwEnabled) return;
+    
+    // Check if using per-row timestamps or legacy single timestamps
+    final hasPerRowTimestamps = options.perRowLwwTimestamps != null;
+    final hasLegacyTimestamps = options.lwwTimestamps != null;
+    
+    if (hasPerRowTimestamps && hasLegacyTimestamps) {
+      throw ArgumentError(
+        'Cannot specify both lwwTimestamps and perRowLwwTimestamps. '
+        'Use perRowLwwTimestamps for per-row timestamps or lwwTimestamps for single timestamps.'
+      );
+    }
+    
+    if (hasPerRowTimestamps) {
+      final perRowTimestamps = options.perRowLwwTimestamps!;
+      if (perRowTimestamps.length != dataset.length) {
+        throw ArgumentError(
+          'perRowLwwTimestamps length (${perRowTimestamps.length}) must match '
+          'dataset length (${dataset.length})'
+        );
+      }
+      
+      // Validate that each row with LWW columns has corresponding timestamps
+      for (int i = 0; i < dataset.length; i++) {
+        final row = dataset[i];
+        final rowTimestamps = perRowTimestamps[i];
+        
+        for (final lwwColumn in lwwColumns) {
+          if (row.containsKey(lwwColumn.name)) {
+            if (rowTimestamps == null || !rowTimestamps.containsKey(lwwColumn.name)) {
+              throw ArgumentError(
+                'Row $i contains LWW column "${lwwColumn.name}" but no HLC timestamp provided for it in perRowLwwTimestamps[$i]. '
+                'All LWW columns must have timestamps.'
+              );
+            }
+          }
+        }
+      }
+    } else if (hasLegacyTimestamps) {
+      // Legacy validation - single timestamp per column for all rows
+      final providedTimestamps = options.lwwTimestamps!.keys.toSet();
+      
+      for (final row in dataset) {
+        for (final lwwColumn in lwwColumns) {
+          if (row.containsKey(lwwColumn.name) && !providedTimestamps.contains(lwwColumn.name)) {
+            throw ArgumentError(
+              'Row contains LWW column "${lwwColumn.name}" but no HLC timestamp provided for it. '
+              'All LWW columns must have timestamps in options.lwwTimestamps.'
+            );
+          }
+        }
+      }
+    } else {
+      // Check if any LWW columns are present - if so, timestamps are required
+      for (final row in dataset) {
+        for (final lwwColumn in lwwColumns) {
+          if (row.containsKey(lwwColumn.name)) {
+            throw ArgumentError(
+              'Row contains LWW column "${lwwColumn.name}" but no timestamps provided. '
+              'Use options.perRowLwwTimestamps or options.lwwTimestamps to provide HLC timestamps.'
+            );
+          }
+        }
+      }
+    }
+  }
+
+  /// Inserts a row with LWW timestamp handling
+  Future<void> _insertRowWithLWW(
+    DatabaseExecutor txn,
+    String tableName,
+    Map<String, dynamic> encodedRow,
+    List<ColumnBuilder> lwwColumns,
+    Map<String, String>? lwwTimestamps,
+    bool isFromServer,
+  ) async {
+    // Add system columns
+    final insertValues = SystemColumnUtils.ensureSystemColumns(encodedRow);
+    await txn.insert(tableName, insertValues);
+    
+    // Store LWW timestamps for any LWW columns present
+    if (lwwEnabled && lwwTimestamps != null && lwwColumns.isNotEmpty) {
+      final table = schema.getTable(tableName)!;
+      final primaryKeyColumns = table.getPrimaryKeyColumns();
+      
+      // Determine primary key value from inserted row
+      dynamic primaryKeyValue;
+      if (primaryKeyColumns.length == 1) {
+        primaryKeyValue = insertValues[primaryKeyColumns.first];
+      } else {
+        primaryKeyValue = <String, dynamic>{};
+        for (final col in primaryKeyColumns) {
+          primaryKeyValue[col] = insertValues[col];
+        }
+      }
+      
+      // Store timestamps for LWW columns
+      for (final lwwColumn in lwwColumns) {
+        if (encodedRow.containsKey(lwwColumn.name) && 
+            lwwTimestamps.containsKey(lwwColumn.name)) {
+          await _storeLWWTimestampTxn(
+            txn,
+            tableName,
+            primaryKeyValue,
+            lwwColumn.name,
+            lwwTimestamps[lwwColumn.name]!,
+            isFromServer: isFromServer,
+          );
+        }
+      }
+    }
+  }
+
+  /// Upserts a row with LWW conflict resolution
+  Future<void> _upsertRowWithLWW(
+    DatabaseExecutor txn,
+    String tableName,
+    Map<String, dynamic> encodedRow,
+    dynamic primaryKeyValue,
+    List<ColumnBuilder> lwwColumns,
+    Map<String, String>? lwwTimestamps,
+    bool isFromServer,
+  ) async {
+    final table = _getTableOrThrow(tableName);
+    final primaryKeyColumns = table.getPrimaryKeyColumns();
+    final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue, table);
+    
+    // Prepare update values starting with non-LWW columns
+    final updateValues = <String, dynamic>{};
+    final nonLwwColumns = encodedRow.entries.where(
+      (entry) => !lwwColumns.any((lwwCol) => lwwCol.name == entry.key)
+    );
+    
+    for (final entry in nonLwwColumns) {
+      updateValues[entry.key] = entry.value;
+    }
+    
+    // Process LWW columns with conflict resolution
+    if (lwwEnabled && lwwTimestamps != null) {
+      for (final lwwColumn in lwwColumns) {
+        if (encodedRow.containsKey(lwwColumn.name) && 
+            lwwTimestamps.containsKey(lwwColumn.name)) {
+          
+          final newValue = encodedRow[lwwColumn.name];
+          final newTimestamp = lwwTimestamps[lwwColumn.name]!;
+          
+          // Get current timestamp for this LWW column
+          final currentTimestamp = await _getLWWTimestampTxn(
+            txn,
+            tableName,
+            primaryKeyValue,
+            lwwColumn.name,
+          );
+          
+          bool shouldUpdate = true;
+          if (currentTimestamp != null) {
+            // Compare timestamps - new value wins if timestamp is newer or equal
+            shouldUpdate = newTimestamp.compareTo(currentTimestamp) >= 0;
+          }
+          
+          if (shouldUpdate) {
+            updateValues[lwwColumn.name] = newValue;
+            
+            // Store the new timestamp
+            await _storeLWWTimestampTxn(
+              txn,
+              tableName,
+              primaryKeyValue,
+              lwwColumn.name,
+              newTimestamp,
+              isFromServer: isFromServer,
+            );
+          }
+          // If current timestamp is newer, keep existing value (don't update)
+        }
+      }
+    }
+    
+    // Update system version
+    updateValues[SystemColumns.systemVersion] = SystemColumnUtils.generateHLCTimestamp();
+    
+    // Perform the update
+    await txn.update(
+      tableName,
+      updateValues,
+      where: whereClause,
+      whereArgs: whereArgs,
+    );
+  }
+
+  /// Initializes the LWW metadata table for storing per-column timestamps
+  @protected
+  Future<void> initializeLWWTables() async {
+    if (!lwwEnabled) return;
+    
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS $_lwwTimestampsTable (
+        table_name TEXT NOT NULL,
+        primary_key_value TEXT NOT NULL,
+        column_name TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        is_from_server INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (table_name, primary_key_value, column_name)
+      )
+    ''');
+  }
+
+  /// Private wrapper for initialization
+  Future<void> _initializeLWWTables() async => await initializeLWWTables();
+
+  /// Stores a timestamp for a specific LWW column
+  Future<void> _storeLWWTimestamp(
+    String tableName,
+    dynamic primaryKeyValue,
+    String columnName,
+    String timestamp, {
+    bool isFromServer = false,
+  }) async {
+    if (!lwwEnabled) return;
+    
+    final serializedPrimaryKey = _serializePrimaryKey(tableName, primaryKeyValue);
+    await database.execute(
+      '''INSERT OR REPLACE INTO $_lwwTimestampsTable 
+         (table_name, primary_key_value, column_name, timestamp, is_from_server)
+         VALUES (?, ?, ?, ?, ?)''',
+      [tableName, serializedPrimaryKey, columnName, timestamp, isFromServer ? 1 : 0],
+    );
+  }
+
+  /// Stores a timestamp for a specific LWW column using transaction
+  Future<void> _storeLWWTimestampTxn(
+    DatabaseExecutor txn,
+    String tableName,
+    dynamic primaryKeyValue,
+    String columnName,
+    String timestamp, {
+    bool isFromServer = false,
+  }) async {
+    if (!lwwEnabled) return;
+    
+    final serializedPrimaryKey = _serializePrimaryKey(tableName, primaryKeyValue);
+    await txn.execute(
+      '''INSERT OR REPLACE INTO $_lwwTimestampsTable 
+         (table_name, primary_key_value, column_name, timestamp, is_from_server)
+         VALUES (?, ?, ?, ?, ?)''',
+      [tableName, serializedPrimaryKey, columnName, timestamp, isFromServer ? 1 : 0],
+    );
+  }
+
+  /// Gets the current timestamp for an LWW column using transaction
+  Future<String?> _getLWWTimestampTxn(
+    DatabaseExecutor txn,
+    String tableName,
+    dynamic primaryKeyValue,
+    String columnName,
+  ) async {
+    if (!lwwEnabled) return null;
+    
+    final serializedPrimaryKey = _serializePrimaryKey(tableName, primaryKeyValue);
+    final result = await txn.query(
+      _lwwTimestampsTable,
+      columns: ['timestamp'],
+      where: 'table_name = ? AND primary_key_value = ? AND column_name = ?',
+      whereArgs: [tableName, serializedPrimaryKey, columnName],
+    );
+    
+    return result.isNotEmpty ? result.first['timestamp'] as String? : null;
+  }
+
+  /// Serializes a primary key value for storage in the LWW timestamps table
+  String _serializePrimaryKey(String tableName, dynamic primaryKeyValue) {
+    final table = schema.getTable(tableName);
+    if (table == null) {
+      throw ArgumentError('Table "$tableName" not found in schema');
+    }
+
+    final primaryKeyColumns = table.getPrimaryKeyColumns();
+    
+    if (primaryKeyColumns.isEmpty) {
+      throw ArgumentError('Table "$tableName" has no primary key');
+    }
+
+    if (primaryKeyColumns.length == 1) {
+      // Single primary key - just convert to string
+      return primaryKeyValue.toString();
+    } else {
+      // Composite primary key - encode each part
+      final Map<String, dynamic> primaryKeyMap;
+      if (primaryKeyValue is Map<String, dynamic>) {
+        primaryKeyMap = primaryKeyValue;
+      } else if (primaryKeyValue is List) {
+        if (primaryKeyValue.length != primaryKeyColumns.length) {
+          throw ArgumentError(
+            'Primary key list length (${primaryKeyValue.length}) does not match '
+            'number of primary key columns (${primaryKeyColumns.length})'
+          );
+        }
+        primaryKeyMap = <String, dynamic>{};
+        for (int i = 0; i < primaryKeyColumns.length; i++) {
+          primaryKeyMap[primaryKeyColumns[i]] = primaryKeyValue[i];
+        }
+      } else {
+        throw ArgumentError(
+          'Composite primary key must be provided as Map<String, dynamic> or List, '
+          'got ${primaryKeyValue.runtimeType}'
+        );
+      }
+
+      // Create ordered JSON representation
+      final orderedEntries = primaryKeyColumns.map((colName) {
+        final value = primaryKeyMap[colName];
+        if (value == null) {
+          throw ArgumentError(
+            'Primary key column "$colName" is missing from primary key value'
+          );
+        }
+        final encodedValue = value;
+        return '"$colName":${_jsonStringify(encodedValue)}';
+      }).join(',');
+      
+      return '{$orderedEntries}';
+    }
+  }
+
+  /// Helper method to stringify values for JSON
+  String _jsonStringify(dynamic value) {
+    if (value == null) return 'null';
+    if (value is String) return '"${value.replaceAll('"', '\\"')}"';
+    if (value is num || value is bool) return value.toString();
+    return '"$value"';
+  }
+
+  /// Updates a specific LWW column with conflict resolution
+  Future<void> updateLWWColumn(
+    String tableName,
+    dynamic primaryKeyValue,
+    String columnName,
+    dynamic value, {
+    String? timestamp,
+  }) async {
+    if (!lwwEnabled) {
+      throw StateError('LWW functionality is not enabled. Use DataAccess.createWithLWW()');
+    }
+
+    final actualTimestamp = timestamp ?? SystemColumnUtils.generateHLCTimestamp();
+    final table = _getTableOrThrow(tableName);
+    
+    // Check if column is LWW-enabled
+    final column = table.columns.firstWhere(
+      (col) => col.name == columnName,
+      orElse: () => throw ArgumentError('Column "$columnName" not found in table "$tableName"'),
+    );
+
+    if (!column.isLWW) {
+      throw ArgumentError('Column "$columnName" is not marked as LWW (.lww())');
+    }
+
+    final lwwValue = LWWColumnValue(
+      value: value,
+      timestamp: actualTimestamp,
+      columnName: columnName,
+      isFromServer: false,
+    );
+
+    // Store in cache for immediate UI feedback
+    _lwwCache
+        .putIfAbsent(tableName, () => {})
+        .putIfAbsent(primaryKeyValue, () => {})[columnName] = lwwValue;
+
+    // Store timestamp in database
+    await _storeLWWTimestamp(
+      tableName,
+      primaryKeyValue,
+      columnName,
+      actualTimestamp,
+    );
+
+    // Update the actual table with the new value
+    await updateByPrimaryKey(tableName, primaryKeyValue, {columnName: value});
+
+    // Add to pending operations queue
+    final operationId = '${SystemColumnUtils.generateGuid()}_${DateTime.now().millisecondsSinceEpoch}';
+    _pendingOperations[operationId] = PendingOperation(
+      id: operationId,
+      tableName: tableName,
+      primaryKeyValue: primaryKeyValue,
+      columnUpdates: {columnName: value},
+      timestamp: actualTimestamp,
+      operationType: OperationType.update,
+    );
+  }
+
+  /// Gets the current effective value of an LWW column
+  Future<dynamic> getLWWColumnValue(
+    String tableName,
+    dynamic primaryKeyValue,
+    String columnName,
+  ) async {
+    if (!lwwEnabled) {
+      throw StateError('LWW functionality is not enabled. Use DataAccess.createWithLWW()');
+    }
+
+    // Check cache first
+    final cachedValue = _lwwCache[tableName]?[primaryKeyValue]?[columnName];
+    if (cachedValue != null) {
+      return cachedValue.value;
+    }
+
+    // Fallback to database
+    final row = await getByPrimaryKey(tableName, primaryKeyValue);
+    return row?[columnName];
+  }
+
+  /// Applies server update with conflict resolution
+  Future<void> applyServerUpdate(
+    String tableName,
+    dynamic primaryKeyValue,
+    Map<String, dynamic> serverData,
+    String serverTimestamp,
+  ) async {
+    if (!lwwEnabled) {
+      throw StateError('LWW functionality is not enabled. Use DataAccess.createWithLWW()');
+    }
+
+    await database.transaction((txn) async {
+      for (final entry in serverData.entries) {
+        final columnName = entry.key;
+        final newValue = entry.value;
+
+        // Get current timestamp for this column
+        final currentTimestamp = await _getLWWTimestamp(tableName, primaryKeyValue, columnName);
+
+        // Compare timestamps - server wins if timestamp is newer or equal
+        if (currentTimestamp == null || serverTimestamp.compareTo(currentTimestamp) >= 0) {
+          // Server wins - update the value and timestamp
+          await txn.update(
+            tableName,
+            {columnName: newValue},
+            where: _buildPrimaryKeyWhereClause(
+              _getTableOrThrow(tableName).getPrimaryKeyColumns(),
+              primaryKeyValue,
+              _getTableOrThrow(tableName),
+            ).$1,
+            whereArgs: _buildPrimaryKeyWhereClause(
+              _getTableOrThrow(tableName).getPrimaryKeyColumns(),
+              primaryKeyValue,
+              _getTableOrThrow(tableName),
+            ).$2,
+          );
+
+          await _storeLWWTimestamp(
+            tableName,
+            primaryKeyValue,
+            columnName,
+            serverTimestamp,
+            isFromServer: true,
+          );
+
+          // Update cache
+          _lwwCache
+              .putIfAbsent(tableName, () => {})
+              .putIfAbsent(primaryKeyValue, () => {})[columnName] = LWWColumnValue(
+            value: newValue,
+            timestamp: serverTimestamp,
+            columnName: columnName,
+            isFromServer: true,
+          );
+        }
+        // If local timestamp is newer, local value wins (do nothing)
+      }
+    });
+  }
+
+  /// Gets the current timestamp for an LWW column
+  Future<String?> _getLWWTimestamp(
+    String tableName,
+    dynamic primaryKeyValue,
+    String columnName,
+  ) async {
+    if (!lwwEnabled) return null;
+    
+    final serializedPrimaryKey = _serializePrimaryKey(tableName, primaryKeyValue);
+    final result = await database.query(
+      _lwwTimestampsTable,
+      columns: ['timestamp'],
+      where: 'table_name = ? AND primary_key_value = ? AND column_name = ?',
+      whereArgs: [tableName, serializedPrimaryKey, columnName],
+    );
+    
+    return result.isNotEmpty ? result.first['timestamp'] as String? : null;
+  }
+
+  /// Gets all pending operations waiting for server sync
+  List<PendingOperation> getPendingOperations() {
+    return _pendingOperations.values.toList();
+  }
+
+  /// Marks an operation as synced and removes it from the pending queue
+  void markOperationSynced(String operationId) {
+    _pendingOperations.remove(operationId);
+  }
+
+  /// Clears all synced operations from the pending queue
+  void clearSyncedOperations() {
+    _pendingOperations.clear();
+  }
 }
 
 /// Metadata information about a table derived from its schema definition.
@@ -849,6 +1424,7 @@ class BulkLoadOptions {
     this.upsertMode = false,
     this.clearTableFirst = false,
     this.lwwTimestamps,
+    this.perRowLwwTimestamps,
     this.isFromServer = false,
   });
 
@@ -877,7 +1453,14 @@ class BulkLoadOptions {
   
   /// Map of column names to HLC timestamps for LWW conflict resolution
   /// Required for any columns marked with .lww() constraint
+  /// This provides a single timestamp per column for all rows (legacy format)
   final Map<String, String>? lwwTimestamps;
+  
+  /// Per-row LWW timestamps for granular conflict resolution
+  /// List where each element corresponds to a row in the dataset
+  /// Each element is a Map<String, String> of column names to HLC timestamps
+  /// When provided, this takes precedence over lwwTimestamps
+  final List<Map<String, String>?>? perRowLwwTimestamps;
   
   /// Whether the data being loaded is from server (default: false)
   /// Used for LWW conflict resolution tracking
