@@ -144,6 +144,24 @@ void main() async {
   }
   print("");
 
+  // NEW: Demonstrate path-based navigation
+  print('2a. Path-based navigation through multiple relationships...');
+  
+  // Get all comments on user's posts using path navigation
+  final commentsOnUserPosts = await dataAccess.getRelatedByPath(['users', 'posts', 'comments'], userId);
+  print('Comments on user posts via path [users, posts, comments]: ${commentsOnUserPosts.length}');
+  for (final comment in commentsOnUserPosts) {
+    print('  - ${comment['content']}');
+  }
+
+  // Get direct user comments using path navigation  
+  final directUserComments = await dataAccess.getRelatedByPath(['users', 'comments'], userId);
+  print('Direct user comments via path [users, comments]: ${directUserComments.length}');
+  for (final comment in directUserComments) {
+    print('  - ${comment['content']}');
+  }
+  print("");
+
   // Demonstrate many-to-many relationships
   print('3. Managing many-to-many relationships...');
   

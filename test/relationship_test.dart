@@ -228,6 +228,113 @@ void main() {
       });
     });
 
+    group('Path-based Relationship Navigation', () {
+      test('can navigate through multiple relationship paths', () async {
+        // Insert test data with deeper hierarchy
+        final userId = await dataAccess.insert('users', {
+          'username': 'alice',
+          'email': 'alice@example.com',
+        });
+
+        final post1Id = await dataAccess.insert('posts', {
+          'title': 'First Post',
+          'content': 'Content of first post',
+          'user_id': userId,
+        });
+
+        final post2Id = await dataAccess.insert('posts', {
+          'title': 'Second Post', 
+          'content': 'Content of second post',
+          'user_id': userId,
+        });
+
+        // Add comments to posts
+        await dataAccess.insert('comments', {
+          'content': 'Comment on first post',
+          'post_id': post1Id,
+          'user_id': userId,
+        });
+
+        await dataAccess.insert('comments', {
+          'content': 'Another comment on first post',
+          'post_id': post1Id,
+          'user_id': userId,
+        });
+
+        await dataAccess.insert('comments', {
+          'content': 'Comment on second post',
+          'post_id': post2Id,
+          'user_id': userId,
+        });
+
+        // Direct user comments
+        await dataAccess.insert('comments', {
+          'content': 'Direct user comment',
+          'post_id': post1Id,
+          'user_id': userId,
+        });
+
+        // Test path navigation: users -> posts -> comments (comments on user's posts)
+        final commentsOnUserPosts = await dataAccess.getRelatedByPath(['users', 'posts', 'comments'], userId);
+        expect(commentsOnUserPosts.length, equals(4)); // All comments on user's posts
+        expect(commentsOnUserPosts.every((c) => c['user_id'] == userId), isTrue);
+
+        // Test path navigation: users -> comments (direct comments by user)
+        final directUserComments = await dataAccess.getRelatedByPath(['users', 'comments'], userId);
+        expect(directUserComments.length, equals(4)); // All comments by this user
+        expect(directUserComments.every((c) => c['user_id'] == userId), isTrue);
+
+        // Verify they're the same in this case (same user commenting on their own posts)
+        expect(commentsOnUserPosts.length, equals(directUserComments.length));
+      });
+
+      test('throws error for invalid relationship paths', () async {
+        final userId = await dataAccess.insert('users', {
+          'username': 'bob',
+          'email': 'bob@example.com',
+        });
+
+        // Test with non-existent relationship
+        expect(
+          () => dataAccess.getRelatedByPath(['users', 'nonexistent'], userId),
+          throwsA(isA<ArgumentError>()),
+        );
+
+        // Test with too short path
+        expect(
+          () => dataAccess.getRelatedByPath(['users'], userId),
+          throwsA(isA<ArgumentError>()),
+        );
+      });
+    });
+
+    group('Composite Key Relationships', () {
+      test('can define relationships with composite keys', () async {
+        // Create schema with composite key relationships
+        final compositeSchema = SchemaBuilder()
+            .table('companies', (table) => table
+                .text('country_code', (col) => col.notNull())
+                .text('company_code', (col) => col.notNull())
+                .text('name', (col) => col.notNull())
+                .compositeKey(['country_code', 'company_code']))
+            .table('departments', (table) => table
+                .autoIncrementPrimaryKey('id')
+                .text('name', (col) => col.notNull())
+                .text('company_country', (col) => col.notNull())
+                .text('company_code', (col) => col.notNull()))
+            .oneToManyComposite('companies', 'departments',
+                ['country_code', 'company_code'],
+                ['company_country', 'company_code'],
+                onDelete: CascadeAction.cascade);
+
+        // Verify relationship was created correctly
+        final relationship = compositeSchema.getRelationship('companies', 'departments');
+        expect(relationship, isNotNull);
+        expect(relationship!.parentColumns, equals(['country_code', 'company_code']));
+        expect(relationship.childColumns, equals(['company_country', 'company_code']));
+      });
+    });
+
     group('Cascading Deletes', () {
       test('can delete with children - simple cascade', () async {
         // Setup test data
@@ -315,6 +422,38 @@ void main() {
         // But with force=true should succeed
         final deletedCount = await restrictDataAccess.deleteWithChildren('parents', parentId, force: true);
         expect(deletedCount, equals(2)); // Parent and child
+      });
+
+      test('cascade delete works with path navigation', () async {
+        // Setup test data
+        final userId = await dataAccess.insert('users', {
+          'username': 'test_user',
+          'email': 'test@example.com',
+        });
+
+        final postId = await dataAccess.insert('posts', {
+          'title': 'Test Post',
+          'content': 'Test content',
+          'user_id': userId,
+        });
+
+        await dataAccess.insert('comments', {
+          'content': 'Test comment',
+          'post_id': postId,
+          'user_id': userId,
+        });
+
+        // Verify data exists through path navigation before deletion
+        final commentsViaPath = await dataAccess.getRelatedByPath(['users', 'posts', 'comments'], userId);
+        expect(commentsViaPath.length, equals(1));
+
+        // Delete with cascade
+        final deletedCount = await dataAccess.deleteWithChildren('users', userId);
+        expect(deletedCount, greaterThan(0));
+
+        // Verify path navigation returns empty after cascade delete
+        final commentsAfterDelete = await dataAccess.getRelatedByPath(['users', 'posts', 'comments'], userId);
+        expect(commentsAfterDelete.length, equals(0));
       });
     });
 

@@ -4,6 +4,7 @@ import 'schema_builder.dart';
 import 'table_builder.dart';
 import 'relationship_builder.dart';
 import 'data_access.dart';
+import 'data_types.dart';
 
 /// Data access layer that provides relationship-aware operations.
 /// 
