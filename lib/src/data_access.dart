@@ -1225,7 +1225,7 @@ class DataAccess {
       id: operationId,
       tableName: tableName,
       primaryKeyValue: primaryKeyValue,
-      columnUpdates: {columnName: value},
+      columnUpdates: {columnName: lwwValue},
       timestamp: actualTimestamp,
       operationType: OperationType.update,
     );

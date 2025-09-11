@@ -78,4 +78,11 @@ class LWWDataAccess {
 
   void clearSyncedOperations() =>
       _dataAccess.clearSyncedOperations();
+
+  /// @deprecated Legacy method name for clearing operations
+  void clearAllPendingOperations() =>
+      _dataAccess.clearSyncedOperations();
+
+  /// Access to the underlying DataAccess instance for compatibility
+  DataAccess get asDataAccess => _dataAccess;
 }

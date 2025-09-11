@@ -42,7 +42,7 @@ void main() {
 
     test('can create ServerSyncManager with callback', () {
       final syncManager = ServerSyncManager(
-        dataAccess: dataAccess,
+        dataAccess: dataAccess.asDataAccess,
         uploadCallback: (operations) async {
           return true; // Always succeed
         },
@@ -72,7 +72,7 @@ void main() {
       // Create sync manager with successful upload callback
       final uploadedOperations = <PendingOperation>[];
       final syncManager = ServerSyncManager(
-        dataAccess: dataAccess,
+        dataAccess: dataAccess.asDataAccess,
         uploadCallback: (operations) async {
           uploadedOperations.addAll(operations);
           return true; // Success
@@ -104,7 +104,7 @@ void main() {
 
       var attemptCount = 0;
       final syncManager = ServerSyncManager(
-        dataAccess: dataAccess,
+        dataAccess: dataAccess.asDataAccess,
         uploadCallback: (operations) async {
           attemptCount++;
           if (attemptCount < 3) {
@@ -136,7 +136,7 @@ void main() {
       await dataAccess.updateLWWColumn('tasks', 1, 'hours', 9);
 
       final syncManager = ServerSyncManager(
-        dataAccess: dataAccess,
+        dataAccess: dataAccess.asDataAccess,
         uploadCallback: (operations) async {
           throw Exception('Unauthorized'); // Permanent error
         },
@@ -170,7 +170,7 @@ void main() {
 
       final uploadBatches = <List<PendingOperation>>[];
       final syncManager = ServerSyncManager(
-        dataAccess: dataAccess,
+        dataAccess: dataAccess.asDataAccess,
         uploadCallback: (operations) async {
           uploadBatches.add(List.from(operations));
           return true;
@@ -201,7 +201,7 @@ void main() {
 
       var syncCount = 0;
       final syncManager = ServerSyncManager(
-        dataAccess: dataAccess,
+        dataAccess: dataAccess.asDataAccess,
         uploadCallback: (operations) async {
           syncCount++;
           return true;
@@ -240,7 +240,7 @@ void main() {
       await dataAccess.updateLWWColumn('tasks', 1, 'hours', 5);
 
       final syncManager = ServerSyncManager(
-        dataAccess: dataAccess,
+        dataAccess: dataAccess.asDataAccess,
         uploadCallback: (operations) async {
           // Simulate slow upload
           await Future.delayed(Duration(milliseconds: 100));
@@ -269,7 +269,7 @@ void main() {
       expect(dataAccess.getPendingOperations().length, equals(0));
 
       final syncManager = ServerSyncManager(
-        dataAccess: dataAccess,
+        dataAccess: dataAccess.asDataAccess,
         uploadCallback: (operations) async {
           fail('Should not be called with empty operations');
         },
@@ -294,7 +294,7 @@ void main() {
 
       SyncResult? receivedResult;
       final syncManager = ServerSyncManager(
-        dataAccess: dataAccess,
+        dataAccess: dataAccess.asDataAccess,
         uploadCallback: (operations) async => true,
         onSyncStatus: (result) {
           receivedResult = result;
@@ -322,7 +322,7 @@ void main() {
       final attemptTimes = <DateTime>[];
       
       final syncManager = ServerSyncManager(
-        dataAccess: dataAccess,
+        dataAccess: dataAccess.asDataAccess,
         uploadCallback: (operations) async {
           attemptCount++;
           attemptTimes.add(DateTime.now());
