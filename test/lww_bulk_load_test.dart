@@ -58,7 +58,7 @@ void main() {
         throwsA(isA<ArgumentError>().having(
           (e) => e.message,
           'message',
-          contains('no HLC timestamps were provided'),
+          contains('no timestamps provided'),
         )),
       );
     });
@@ -88,7 +88,7 @@ void main() {
 
       // Missing timestamp for 'rate' column
       final options = BulkLoadOptions(
-        lwwTimestamps: {'hours': '1000'}, // Missing 'rate' timestamp
+        lwwTimestamps: [{'hours': '1000'}], // Missing 'rate' timestamp for row
         isFromServer: true,
       );
 
@@ -122,11 +122,20 @@ void main() {
       ];
 
       final options = BulkLoadOptions(
-        lwwTimestamps: {
-          'hours': currentTime.toString(),
-          'rate': (currentTime + 1000).toString(),
-          'notes': (currentTime + 2000).toString(),
-        },
+        lwwTimestamps: [
+          // Row 1 timestamps
+          {
+            'hours': currentTime.toString(),
+            'rate': (currentTime + 1000).toString(),
+            'notes': (currentTime + 2000).toString(),
+          },
+          // Row 2 timestamps 
+          {
+            'hours': currentTime.toString(),
+            'rate': (currentTime + 1000).toString(),
+            'notes': (currentTime + 2000).toString(),
+          },
+        ],
         isFromServer: true,
       );
 
@@ -176,11 +185,13 @@ void main() {
 
       final options = BulkLoadOptions(
         upsertMode: true,
-        lwwTimestamps: {
-          'hours': (currentTime + 10000).toString(), // Newer (server wins)
-          'rate': (currentTime - 100000).toString(), // Older (local wins)
-          'notes': (currentTime + 5000).toString(), // Newer (server wins)
-        },
+        lwwTimestamps: [
+          {
+            'hours': (currentTime + 10000).toString(), // Newer (server wins)
+            'rate': (currentTime - 100000).toString(), // Older (local wins)
+            'notes': (currentTime + 5000).toString(), // Newer (server wins)
+          }
+        ],
         isFromServer: true,
       );
 
@@ -191,7 +202,7 @@ void main() {
       expect(result.errors, isEmpty);
 
       // Verify conflict resolution results
-      final task = await dataAccess.getLWWRow('tasks', 1);
+      final task = await dataAccess.getByPrimaryKey('tasks', 1);
       expect(task!['title'], equals('Local Task')); // Non-LWW updated
       expect(task['hours'], equals(10)); // Server won (newer timestamp)
       expect(task['rate'], equals(20.0)); // Local won (newer timestamp)
@@ -217,10 +228,16 @@ void main() {
       ];
 
       final options = BulkLoadOptions(
-        lwwTimestamps: {
-          'score': currentTime.toString(),
-          'bio': (currentTime + 1000).toString(),
-        },
+        lwwTimestamps: [
+          {
+            'score': currentTime.toString(),
+            'bio': (currentTime + 1000).toString(),
+          },
+          {
+            'score': currentTime.toString(),
+            'bio': (currentTime + 1000).toString(),
+          },
+        ],
         isFromServer: true,
       );
 
@@ -251,10 +268,12 @@ void main() {
       ];
 
       await dataAccess.bulkLoad('users', initialDataset, options: BulkLoadOptions(
-        lwwTimestamps: {
-          'score': initialTime.toString(),
-          'bio': initialTime.toString(),
-        },
+        lwwTimestamps: [
+          {
+            'score': initialTime.toString(),
+            'bio': initialTime.toString(),
+          }
+        ],
       ));
 
       // Update via upsert with newer timestamps
@@ -271,10 +290,12 @@ void main() {
 
       final result = await dataAccess.bulkLoad('users', updateDataset, options: BulkLoadOptions(
         upsertMode: true,
-        lwwTimestamps: {
-          'score': updateTime.toString(),
-          'bio': updateTime.toString(),
-        },
+        lwwTimestamps: [
+          {
+            'score': updateTime.toString(),
+            'bio': updateTime.toString(),
+          }
+        ],
         isFromServer: true,
       ));
 
@@ -282,7 +303,7 @@ void main() {
       expect(result.rowsUpdated, equals(1));
 
       // Verify update
-      final charlie = await dataAccess.getLWWRow('users', {
+      final charlie = await dataAccess.getByPrimaryKey('users', {
         'username': 'charlie',
         'email': 'charlie@example.com',
       });
@@ -307,11 +328,11 @@ void main() {
 
       final options = BulkLoadOptions(
         batchSize: 50, // Process in smaller batches
-        lwwTimestamps: {
+        lwwTimestamps: List.generate(150, (index) => {
           'hours': currentTime.toString(),
           'rate': (currentTime + 1000).toString(),
           'notes': (currentTime + 2000).toString(),
-        },
+        }),
         isFromServer: true,
       );
 
@@ -360,17 +381,19 @@ void main() {
 
       final result = await dataAccess.bulkLoad('tasks', serverDataset, options: BulkLoadOptions(
         upsertMode: true,
-        lwwTimestamps: {
-          'hours': (currentTime - 100000).toString(), // Older
-          'rate': (currentTime + 10000).toString(), // Newer
-        },
+        lwwTimestamps: [
+          {
+            'hours': (currentTime - 100000).toString(), // Older
+            'rate': (currentTime + 10000).toString(), // Newer
+          }
+        ],
         isFromServer: true,
       ));
 
       expect(result.rowsUpdated, equals(1));
 
       // Verify results
-      final task = await dataAccess.getLWWRow('tasks', 1);
+      final task = await dataAccess.getByPrimaryKey('tasks', 1);
       expect(task!['title'], equals('Updated Title')); // Non-LWW updated
       expect(task['hours'], equals(15)); // Local LWW value won
       expect(task['rate'], equals(30.0)); // Server LWW value won
@@ -395,9 +418,10 @@ void main() {
       final options = BulkLoadOptions(
         allowPartialData: true,
         collectErrors: true,
-        lwwTimestamps: {
-          'hours': '1000',
-        },
+        lwwTimestamps: [
+          {'hours': '1000'}, // Row 1 timestamps
+          {'hours': '1000'}, // Row 2 timestamps
+        ],
       );
 
       final result = await dataAccess.bulkLoad('tasks', dataset, options: options);

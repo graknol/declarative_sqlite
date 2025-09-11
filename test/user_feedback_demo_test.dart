@@ -49,7 +49,7 @@ void main() {
 
       final result = await dataAccess.bulkLoad('tasks', dataset, 
         options: BulkLoadOptions(
-          perRowLwwTimestamps: perRowTimestamps,
+          lwwTimestamps: perRowTimestamps,
           isFromServer: true,
         )
       );
@@ -99,7 +99,7 @@ void main() {
       
       final result = await dataAccess.bulkLoad('tasks', serverData, options: BulkLoadOptions(
         upsertMode: true,
-        lwwTimestamps: {'hours': '2000', 'rate': '2000'}, // Newer than user edit (1000)
+        lwwTimestamps: [{'hours': '2000', 'rate': '2000'}], // Newer than user edit (1000)
         isFromServer: true,
       ));
 
@@ -199,7 +199,7 @@ void main() {
 
       await dataAccess.bulkLoad('tasks', serverUpdates, options: BulkLoadOptions(
         upsertMode: true,
-        perRowLwwTimestamps: [
+        lwwTimestamps: [
           {
             'hours': '100',     // Older than user edit
             'rate': '999999',   // Newer than user edit

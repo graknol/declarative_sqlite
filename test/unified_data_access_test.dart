@@ -87,7 +87,7 @@ void main() {
 
       final result = await dataAccess.bulkLoad('tasks', dataset, 
         options: BulkLoadOptions(
-          perRowLwwTimestamps: perRowTimestamps,
+          lwwTimestamps: perRowTimestamps,
           isFromServer: true,
         )
       );
@@ -133,31 +133,15 @@ void main() {
 
       final result = await dataAccess.bulkLoad('tasks', dataset, 
         options: BulkLoadOptions(
-          lwwTimestamps: {'hours': '1000', 'rate': '1000'},
+          lwwTimestamps: [
+            {'hours': '1000', 'rate': '1000'},  // Row 1 timestamps
+            {'hours': '1000', 'rate': '1000'},  // Row 2 timestamps
+          ],
           isFromServer: true,
         )
       );
 
       expect(result.rowsInserted, equals(2));
-    });
-
-    test('cannot use both per-row and single timestamps', () async {
-      final dataAccess = await DataAccess.createWithLWW(
-        database: database, 
-        schema: schema
-      );
-
-      final dataset = [
-        {'id': 1, 'title': 'Task 1', 'hours': 10},
-      ];
-
-      expect(() async => await dataAccess.bulkLoad('tasks', dataset, 
-        options: BulkLoadOptions(
-          lwwTimestamps: {'hours': '1000'},
-          perRowLwwTimestamps: [{'hours': '1000'}],
-          isFromServer: true,
-        )
-      ), throwsA(isA<ArgumentError>()));
     });
   });
 }

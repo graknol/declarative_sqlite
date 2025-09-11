@@ -590,12 +590,8 @@ class DataAccess {
             
             // Get LWW timestamps for this row if LWW is enabled
             Map<String, String>? rowLwwTimestamps;
-            if (lwwEnabled && lwwColumns.isNotEmpty) {
-              if (options.perRowLwwTimestamps != null) {
-                rowLwwTimestamps = options.perRowLwwTimestamps![j];
-              } else if (options.lwwTimestamps != null) {
-                rowLwwTimestamps = options.lwwTimestamps;
-              }
+            if (lwwEnabled && lwwColumns.isNotEmpty && options.lwwTimestamps != null) {
+              rowLwwTimestamps = options.lwwTimestamps![j];
             }
             
             if (options.upsertMode && primaryKeyColumns.isNotEmpty) {
@@ -841,22 +837,11 @@ class DataAccess {
   ) {
     if (!lwwEnabled) return;
     
-    // Check if using per-row timestamps or legacy single timestamps
-    final hasPerRowTimestamps = options.perRowLwwTimestamps != null;
-    final hasLegacyTimestamps = options.lwwTimestamps != null;
-    
-    if (hasPerRowTimestamps && hasLegacyTimestamps) {
-      throw ArgumentError(
-        'Cannot specify both lwwTimestamps and perRowLwwTimestamps. '
-        'Use perRowLwwTimestamps for per-row timestamps or lwwTimestamps for single timestamps.'
-      );
-    }
-    
-    if (hasPerRowTimestamps) {
-      final perRowTimestamps = options.perRowLwwTimestamps!;
-      if (perRowTimestamps.length != dataset.length) {
+    if (options.lwwTimestamps != null) {
+      final lwwTimestamps = options.lwwTimestamps!;
+      if (lwwTimestamps.length != dataset.length) {
         throw ArgumentError(
-          'perRowLwwTimestamps length (${perRowTimestamps.length}) must match '
+          'lwwTimestamps length (${lwwTimestamps.length}) must match '
           'dataset length (${dataset.length})'
         );
       }
@@ -864,30 +849,16 @@ class DataAccess {
       // Validate that each row with LWW columns has corresponding timestamps
       for (int i = 0; i < dataset.length; i++) {
         final row = dataset[i];
-        final rowTimestamps = perRowTimestamps[i];
+        final rowTimestamps = lwwTimestamps[i];
         
         for (final lwwColumn in lwwColumns) {
           if (row.containsKey(lwwColumn.name)) {
             if (rowTimestamps == null || !rowTimestamps.containsKey(lwwColumn.name)) {
               throw ArgumentError(
-                'Row $i contains LWW column "${lwwColumn.name}" but no HLC timestamp provided for it in perRowLwwTimestamps[$i]. '
+                'Row $i contains LWW column "${lwwColumn.name}" but no HLC timestamp provided for it in lwwTimestamps[$i]. '
                 'All LWW columns must have timestamps.'
               );
             }
-          }
-        }
-      }
-    } else if (hasLegacyTimestamps) {
-      // Legacy validation - single timestamp per column for all rows
-      final providedTimestamps = options.lwwTimestamps!.keys.toSet();
-      
-      for (final row in dataset) {
-        for (final lwwColumn in lwwColumns) {
-          if (row.containsKey(lwwColumn.name) && !providedTimestamps.contains(lwwColumn.name)) {
-            throw ArgumentError(
-              'Row contains LWW column "${lwwColumn.name}" but no HLC timestamp provided for it. '
-              'All LWW columns must have timestamps in options.lwwTimestamps.'
-            );
           }
         }
       }
@@ -898,7 +869,7 @@ class DataAccess {
           if (row.containsKey(lwwColumn.name)) {
             throw ArgumentError(
               'Row contains LWW column "${lwwColumn.name}" but no timestamps provided. '
-              'Use options.perRowLwwTimestamps or options.lwwTimestamps to provide HLC timestamps.'
+              'Use options.lwwTimestamps to provide HLC timestamps.'
             );
           }
         }
@@ -1424,7 +1395,6 @@ class BulkLoadOptions {
     this.upsertMode = false,
     this.clearTableFirst = false,
     this.lwwTimestamps,
-    this.perRowLwwTimestamps,
     this.isFromServer = false,
   });
 
@@ -1451,16 +1421,11 @@ class BulkLoadOptions {
   /// When true, all existing rows are deleted before inserting new data.
   final bool clearTableFirst;
   
-  /// Map of column names to HLC timestamps for LWW conflict resolution
-  /// Required for any columns marked with .lww() constraint
-  /// This provides a single timestamp per column for all rows (legacy format)
-  final Map<String, String>? lwwTimestamps;
-  
   /// Per-row LWW timestamps for granular conflict resolution
   /// List where each element corresponds to a row in the dataset
   /// Each element is a Map<String, String> of column names to HLC timestamps
-  /// When provided, this takes precedence over lwwTimestamps
-  final List<Map<String, String>?>? perRowLwwTimestamps;
+  /// Required for any columns marked with .lww() constraint
+  final List<Map<String, String>?>? lwwTimestamps;
   
   /// Whether the data being loaded is from server (default: false)
   /// Used for LWW conflict resolution tracking

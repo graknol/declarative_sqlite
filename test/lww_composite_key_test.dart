@@ -122,30 +122,30 @@ void main() {
       
       // Simulate older server update (should be rejected)
       final olderTimestamp = (DateTime.now().microsecondsSinceEpoch - 10000).toString();
-      final serverValue = await dataAccess.updateLWWColumn(
+      await dataAccess.updateLWWColumn(
         'order_items', 
         compositeKey, 
         'quantity', 
         12,
-        explicitTimestamp: olderTimestamp,
-        isFromServer: true,
+        timestamp: olderTimestamp,
       );
       
       // User's value should win (15)
+      final serverValue = await dataAccess.getLWWColumnValue('order_items', compositeKey, 'quantity');
       expect(serverValue, equals(15));
       
       // Simulate newer server update (should be accepted)
       final newerTimestamp = (DateTime.now().microsecondsSinceEpoch + 10000).toString();
-      final newerServerValue = await dataAccess.updateLWWColumn(
+      await dataAccess.updateLWWColumn(
         'order_items',
         compositeKey,
         'quantity', 
         20,
-        explicitTimestamp: newerTimestamp,
-        isFromServer: true,
+        timestamp: newerTimestamp,
       );
       
       // Server's newer value should win (20)
+      final newerServerValue = await dataAccess.getLWWColumnValue('order_items', compositeKey, 'quantity');
       expect(newerServerValue, equals(20));
     });
 
@@ -200,16 +200,16 @@ void main() {
       
       // Verify server conflict resolution still works after restart
       final olderTimestamp = (DateTime.now().microsecondsSinceEpoch - 10000).toString();
-      final serverValue = await newDataAccess.updateLWWColumn(
+      await newDataAccess.updateLWWColumn(
         'order_items',
         compositeKey,
         'quantity',
         6, // older value
-        explicitTimestamp: olderTimestamp,
-        isFromServer: true,
+        timestamp: olderTimestamp,
       );
       
       // User's value should still win
+      final serverValue = await newDataAccess.getLWWColumnValue('order_items', compositeKey, 'quantity');
       expect(serverValue, equals(9));
     });
 
@@ -277,28 +277,32 @@ void main() {
       final serverTimestamp3 = (currentTime + 10000).toString(); // Newest
 
       // Server updates with different outcomes
-      final quantityResult = await dataAccess.updateLWWColumn(
+      await dataAccess.updateLWWColumn(
         'order_items', compositeKey, 'quantity', 6,
-        explicitTimestamp: serverTimestamp1, isFromServer: true,
+        timestamp: serverTimestamp1,
       ); // Should lose to user (8)
 
-      final priceResult = await dataAccess.updateLWWColumn(
+      await dataAccess.updateLWWColumn(
         'order_items', compositeKey, 'unit_price', 25.00,
-        explicitTimestamp: serverTimestamp2, isFromServer: true,
+        timestamp: serverTimestamp2,
       ); // Should win over user (25.00)
 
-      final notesResult = await dataAccess.updateLWWColumn(
+      await dataAccess.updateLWWColumn(
         'order_items', compositeKey, 'notes', 'Server final notes',
-        explicitTimestamp: serverTimestamp3, isFromServer: true,
+        timestamp: serverTimestamp3,
       ); // Should win (newest timestamp)
 
       // Verify outcomes
+      final quantityResult = await dataAccess.getLWWColumnValue('order_items', compositeKey, 'quantity');
+      final priceResult = await dataAccess.getLWWColumnValue('order_items', compositeKey, 'unit_price');
+      final notesResult = await dataAccess.getLWWColumnValue('order_items', compositeKey, 'notes');
+      
       expect(quantityResult, equals(8)); // User won
       expect(priceResult, equals(25.00)); // Server won  
       expect(notesResult, equals('Server final notes')); // Server won
 
-      // Verify through getLWWRow as well
-      final finalRow = await dataAccess.getLWWRow('order_items', compositeKey);
+      // Verify through getByPrimaryKey as well
+      final finalRow = await dataAccess.getByPrimaryKey('order_items', compositeKey);
       expect(finalRow!['quantity'], equals(8));
       expect(finalRow['unit_price'], equals(25.00));
       expect(finalRow['notes'], equals('Server final notes'));
