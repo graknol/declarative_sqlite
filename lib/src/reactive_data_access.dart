@@ -152,8 +152,8 @@ class ReactiveStreamManager {
     // Store the stream
     _streams[streamId] = stream;
     
-    // Generate initial data
-    stream.refresh();
+    // Generate initial data asynchronously
+    Future.microtask(() => stream.refresh());
     
     return stream;
   }
@@ -190,8 +190,8 @@ class ReactiveStreamManager {
     // Store the stream
     _streams[streamId] = stream;
     
-    // Generate initial data
-    stream.refresh();
+    // Generate initial data asynchronously
+    Future.microtask(() => stream.refresh());
     
     return stream;
   }
@@ -227,8 +227,8 @@ class ReactiveStreamManager {
     // Store the stream
     _streams[streamId] = stream;
     
-    // Generate initial data
-    stream.refresh();
+    // Generate initial data asynchronously
+    Future.microtask(() => stream.refresh());
     
     return stream;
   }
@@ -367,6 +367,42 @@ class ReactiveDataAccess {
     );
     
     return reactiveStream.stream;
+  }
+
+  /// Creates a reactive stream for raw SQL queries
+  /// This method analyzes the SQL to determine dependencies automatically
+  Stream<List<Map<String, dynamic>>> watchRawQuery(
+    String query,
+    List<dynamic>? arguments, {
+    String? streamId,
+  }) {
+    final id = streamId ?? 'raw_query_${DateTime.now().millisecondsSinceEpoch}';
+    
+    final reactiveStream = _streamManager.createRawQueryStream(
+      id,
+      query,
+      arguments,
+    );
+    
+    return reactiveStream.stream;
+  }
+
+  /// Creates a reactive stream for raw aggregate queries with custom data types
+  Stream<T> watchRawAggregate<T>(
+    String query,
+    List<dynamic>? arguments,
+    T Function(List<Map<String, dynamic>>) transformer, {
+    String? streamId,
+  }) {
+    final id = streamId ?? 'raw_aggregate_${DateTime.now().millisecondsSinceEpoch}';
+    
+    final reactiveStream = _streamManager.createRawQueryStream(
+      id,
+      query,
+      arguments,
+    );
+    
+    return reactiveStream.stream.map(transformer);
   }
   
   /// Creates a reactive stream for counting records

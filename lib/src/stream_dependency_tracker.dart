@@ -124,8 +124,8 @@ class DependencyAnalyzer {
   
   final SchemaBuilder schema;
   
-  /// Analyzes a simple SELECT query to extract dependencies
-  /// This is a simplified version - in a full implementation, this would parse SQL
+  /// Analyzes a SQL query to extract dependencies
+  /// Uses a conservative approach that prioritizes correctness over optimization
   Set<StreamDependency> analyzeQuery(String streamId, String query, {List<dynamic>? args}) {
     final dependencies = <StreamDependency>{};
     
@@ -135,53 +135,70 @@ class DependencyAnalyzer {
     // Extract table names mentioned in FROM and JOIN clauses
     final mentionedTables = _extractTableNames(lowercaseQuery);
     
-    // For each mentioned table, determine the type of dependency
-    for (final tableName in mentionedTables) {
-      final table = schema.getTable(tableName);
-      if (table == null) continue;
-      
-      // Determine dependency type based on query characteristics
-      final dependencyType = _determineDependencyType(lowercaseQuery, tableName);
-      
-      switch (dependencyType) {
-        case DependencyType.wholeTable:
-          dependencies.add(StreamDependency(
-            streamId: streamId,
-            tableName: tableName,
-            dependencyType: DependencyType.wholeTable,
-          ));
-          break;
-          
-        case DependencyType.columnWise:
-          final columns = _extractColumnDependencies(lowercaseQuery, tableName, table);
-          dependencies.add(StreamDependency(
-            streamId: streamId,
-            tableName: tableName,
-            dependencyType: DependencyType.columnWise,
-            dependentColumns: columns,
-          ));
-          break;
-          
-        case DependencyType.whereClauseWise:
-          final (whereCondition, whereArgs) = _extractWhereClauseDependencies(lowercaseQuery, args);
-          dependencies.add(StreamDependency(
-            streamId: streamId,
-            tableName: tableName,
-            dependencyType: DependencyType.whereClauseWise,
-            whereCondition: whereCondition,
-            whereArgs: whereArgs,
-          ));
-          break;
-          
-        case DependencyType.relatedTable:
-          final relatedTables = _extractRelatedTables(tableName);
-          dependencies.add(StreamDependency(
-            streamId: streamId,
-            tableName: tableName,
-            dependencyType: DependencyType.relatedTable,
-            relatedTables: relatedTables,
-          ));
-          break;
+    // For complex queries (JOINs, subqueries, CTEs), use whole-table dependencies for reliability
+    final isComplexQuery = _isComplexQuery(lowercaseQuery);
+    
+    if (isComplexQuery) {
+      // Use whole-table dependencies for all mentioned tables to ensure correctness
+      for (final tableName in mentionedTables) {
+        final table = schema.getTable(tableName);
+        if (table == null) continue;
+        
+        dependencies.add(StreamDependency(
+          streamId: streamId,
+          tableName: tableName,
+          dependencyType: DependencyType.wholeTable,
+        ));
+      }
+    } else {
+      // For simple queries, try to optimize with more specific dependencies
+      for (final tableName in mentionedTables) {
+        final table = schema.getTable(tableName);
+        if (table == null) continue;
+        
+        // Determine dependency type based on query characteristics
+        final dependencyType = _determineDependencyType(lowercaseQuery, tableName);
+        
+        switch (dependencyType) {
+          case DependencyType.wholeTable:
+            dependencies.add(StreamDependency(
+              streamId: streamId,
+              tableName: tableName,
+              dependencyType: DependencyType.wholeTable,
+            ));
+            break;
+            
+          case DependencyType.columnWise:
+            final columns = _extractColumnDependencies(lowercaseQuery, tableName, table);
+            dependencies.add(StreamDependency(
+              streamId: streamId,
+              tableName: tableName,
+              dependencyType: DependencyType.columnWise,
+              dependentColumns: columns,
+            ));
+            break;
+            
+          case DependencyType.whereClauseWise:
+            final (whereCondition, whereArgs) = _extractWhereClauseDependencies(lowercaseQuery, args);
+            dependencies.add(StreamDependency(
+              streamId: streamId,
+              tableName: tableName,
+              dependencyType: DependencyType.whereClauseWise,
+              whereCondition: whereCondition,
+              whereArgs: whereArgs,
+            ));
+            break;
+            
+          case DependencyType.relatedTable:
+            final relatedTables = _extractRelatedTables(tableName);
+            dependencies.add(StreamDependency(
+              streamId: streamId,
+              tableName: tableName,
+              dependencyType: DependencyType.relatedTable,
+              relatedTables: relatedTables,
+            ));
+            break;
+        }
       }
     }
     
@@ -243,21 +260,39 @@ class DependencyAnalyzer {
     return dependencies;
   }
   
-  /// Extract table names from SQL query
+  /// Checks if a query is complex and requires conservative dependency tracking
+  bool _isComplexQuery(String query) {
+    return query.contains('join') ||
+           query.contains('union') ||
+           query.contains('with') ||  // CTE
+           query.contains('exists') ||
+           query.contains('select') && query.split('select').length > 2 ||  // Subqueries
+           query.contains('window') ||
+           query.contains('over(') ||
+           query.contains('case when');
+  }
+
+  /// Extract table names from SQL query using improved patterns
   Set<String> _extractTableNames(String query) {
     final tables = <String>{};
     
-    // Simple regex-based extraction - in a full implementation, use a proper SQL parser
-    final fromPattern = RegExp(r'from\s+(\w+)', caseSensitive: false);
-    final joinPattern = RegExp(r'join\s+(\w+)', caseSensitive: false);
+    // Improved regex patterns for better table extraction
+    final patterns = [
+      RegExp(r'from\s+(\w+)', caseSensitive: false),
+      RegExp(r'join\s+(\w+)', caseSensitive: false),
+      RegExp(r'update\s+(\w+)', caseSensitive: false),
+      RegExp(r'insert\s+into\s+(\w+)', caseSensitive: false),
+      RegExp(r'delete\s+from\s+(\w+)', caseSensitive: false),
+    ];
     
-    fromPattern.allMatches(query).forEach((match) {
-      tables.add(match.group(1)!);
-    });
-    
-    joinPattern.allMatches(query).forEach((match) {
-      tables.add(match.group(1)!);
-    });
+    for (final pattern in patterns) {
+      pattern.allMatches(query).forEach((match) {
+        final tableName = match.group(1)!;
+        if (schema.getTable(tableName) != null) {
+          tables.add(tableName);
+        }
+      });
+    }
     
     return tables;
   }
@@ -494,14 +529,97 @@ class StreamDependencyTracker {
   
   /// Checks if a database change matches a WHERE clause dependency
   bool _doesChangeMatchWhereClause(StreamDependency dependency, DatabaseChange change) {
-    // This is a simplified implementation
-    // In a full implementation, this would evaluate the WHERE clause against the changed data
-    
     if (dependency.whereCondition == null) return true;
     
-    // For now, we'll be conservative and assume any change might affect the WHERE clause
-    // A more sophisticated implementation would parse the WHERE clause and evaluate it
+    // For INSERT operations, check if the new values would match the WHERE clause
+    if (change.operation == DatabaseOperation.insert || 
+        change.operation == DatabaseOperation.bulkInsert) {
+      if (change.newValues != null) {
+        return _evaluateWhereClause(dependency.whereCondition!, dependency.whereArgs, change.newValues!);
+      }
+    }
+    
+    // For UPDATE operations, check both old and new values
+    if (change.operation == DatabaseOperation.update || 
+        change.operation == DatabaseOperation.bulkUpdate) {
+      bool oldMatches = false;
+      bool newMatches = false;
+      
+      if (change.oldValues != null) {
+        oldMatches = _evaluateWhereClause(dependency.whereCondition!, dependency.whereArgs, change.oldValues!);
+      }
+      
+      if (change.newValues != null) {
+        newMatches = _evaluateWhereClause(dependency.whereCondition!, dependency.whereArgs, change.newValues!);
+      }
+      
+      // If either old or new values match, the stream should be updated
+      return oldMatches || newMatches;
+    }
+    
+    // For DELETE operations, check if the old values matched the WHERE clause
+    if (change.operation == DatabaseOperation.delete || 
+        change.operation == DatabaseOperation.bulkDelete) {
+      if (change.oldValues != null) {
+        return _evaluateWhereClause(dependency.whereCondition!, dependency.whereArgs, change.oldValues!);
+      }
+    }
+    
+    // Conservative fallback - trigger the update
     return true;
+  }
+  
+  /// Simple WHERE clause evaluator for basic conditions
+  bool _evaluateWhereClause(String whereClause, List<dynamic>? whereArgs, Map<String, dynamic> values) {
+    try {
+      // Convert WHERE clause to lowercase for easier parsing
+      final lowerWhere = whereClause.toLowerCase();
+      
+      // Handle simple equality checks: column = ?
+      final equalityPattern = RegExp(r'(\w+)\s*=\s*\?');
+      var match = equalityPattern.firstMatch(lowerWhere);
+      if (match != null && whereArgs != null && whereArgs.isNotEmpty) {
+        final columnName = match.group(1)!;
+        final expectedValue = whereArgs[0];
+        final actualValue = values[columnName];
+        return actualValue == expectedValue;
+      }
+      
+      // Handle simple comparison checks: column > ?, column < ?, etc.
+      final comparisonPattern = RegExp(r'(\w+)\s*([><=]+)\s*\?');
+      match = comparisonPattern.firstMatch(lowerWhere);
+      if (match != null && whereArgs != null && whereArgs.isNotEmpty) {
+        final columnName = match.group(1)!;
+        final operator = match.group(2)!;
+        final expectedValue = whereArgs[0];
+        final actualValue = values[columnName];
+        
+        if (actualValue is num && expectedValue is num) {
+          switch (operator) {
+            case '>':
+              return actualValue > expectedValue;
+            case '<':
+              return actualValue < expectedValue;
+            case '>=':
+              return actualValue >= expectedValue;
+            case '<=':
+              return actualValue <= expectedValue;
+            case '=':
+              return actualValue == expectedValue;
+            case '!=':
+            case '<>':
+              return actualValue != expectedValue;
+          }
+        }
+      }
+      
+      // For complex WHERE clauses, be conservative and return true
+      return true;
+      
+    } catch (e) {
+      // If evaluation fails, be conservative and return true
+      return true;
+    }
   }
   
   /// Gets all registered stream IDs

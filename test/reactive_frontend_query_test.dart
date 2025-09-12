@@ -140,17 +140,14 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - customer orders with JOIN
-      final subscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'customers', // Primary table for dependency tracking
-        () => database.rawQuery('''
-          SELECT c.name, c.email, COUNT(o.id) as order_count, COALESCE(SUM(o.total_amount), 0) as total_spent
-          FROM customers c
-          LEFT JOIN orders o ON c.id = o.customer_id
-          WHERE c.status = 'active'
-          GROUP BY c.id
-          ORDER BY total_spent DESC
-        '''),
-      ).listen((data) {
+      final subscription = reactiveDataAccess.watchRawQuery('''
+        SELECT c.name, c.email, COUNT(o.id) as order_count, COALESCE(SUM(o.total_amount), 0) as total_spent
+        FROM customers c
+        LEFT JOIN orders o ON c.id = o.customer_id
+        WHERE c.status = 'active'
+        GROUP BY c.id
+        ORDER BY total_spent DESC
+      ''', null).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -238,19 +235,16 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - customers with above-average order values
-      final subscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'customers',
-        () => database.rawQuery('''
-          SELECT c.name, c.email, AVG(o.total_amount) as avg_order_value
-          FROM customers c
-          JOIN orders o ON c.id = o.customer_id
-          WHERE o.total_amount > (
-            SELECT AVG(total_amount) FROM orders WHERE status = 'completed'
-          )
-          GROUP BY c.id
-          ORDER BY avg_order_value DESC
-        '''),
-      ).listen((data) {
+      final subscription = reactiveDataAccess.watchRawQuery('''
+        SELECT c.name, c.email, AVG(o.total_amount) as avg_order_value
+        FROM customers c
+        JOIN orders o ON c.id = o.customer_id
+        WHERE o.total_amount > (
+          SELECT AVG(total_amount) FROM orders WHERE status = 'completed'
+        )
+        GROUP BY c.id
+        ORDER BY avg_order_value DESC
+      ''', null).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -279,20 +273,17 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - customer ranking by total spent
-      final subscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'customers',
-        () => database.rawQuery('''
-          SELECT 
-            c.name,
-            c.email,
-            SUM(o.total_amount) as total_spent,
-            ROW_NUMBER() OVER (ORDER BY SUM(o.total_amount) DESC) as spending_rank
-          FROM customers c
-          LEFT JOIN orders o ON c.id = o.customer_id
-          GROUP BY c.id
-          ORDER BY total_spent DESC
-        '''),
-      ).listen((data) {
+      final subscription = reactiveDataAccess.watchRawQuery('''
+        SELECT 
+          c.name,
+          c.email,
+          SUM(o.total_amount) as total_spent,
+          ROW_NUMBER() OVER (ORDER BY SUM(o.total_amount) DESC) as spending_rank
+        FROM customers c
+        LEFT JOIN orders o ON c.id = o.customer_id
+        GROUP BY c.id
+        ORDER BY total_spent DESC
+      ''', null).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -321,37 +312,34 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - CTE for complex customer analytics
-      final subscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'customers',
-        () => database.rawQuery('''
-          WITH customer_stats AS (
-            SELECT 
-              c.id,
-              c.name,
-              c.email,
-              COUNT(o.id) as order_count,
-              COALESCE(SUM(o.total_amount), 0) as total_spent
-            FROM customers c
-            LEFT JOIN orders o ON c.id = o.customer_id AND o.status = 'completed'
-            GROUP BY c.id
-          ),
-          avg_stats AS (
-            SELECT AVG(total_spent) as avg_customer_spending
-            FROM customer_stats
-          )
+      final subscription = reactiveDataAccess.watchRawQuery('''
+        WITH customer_stats AS (
           SELECT 
-            cs.name,
-            cs.email,
-            cs.total_spent,
-            CASE 
-              WHEN cs.total_spent > avs.avg_customer_spending THEN 'high_value'
-              ELSE 'regular'
-            END as customer_tier
-          FROM customer_stats cs
-          CROSS JOIN avg_stats avs
-          ORDER BY cs.total_spent DESC
-        '''),
-      ).listen((data) {
+            c.id,
+            c.name,
+            c.email,
+            COUNT(o.id) as order_count,
+            COALESCE(SUM(o.total_amount), 0) as total_spent
+          FROM customers c
+          LEFT JOIN orders o ON c.id = o.customer_id AND o.status = 'completed'
+          GROUP BY c.id
+        ),
+        avg_stats AS (
+          SELECT AVG(total_spent) as avg_customer_spending
+          FROM customer_stats
+        )
+        SELECT 
+          cs.name,
+          cs.email,
+          cs.total_spent,
+          CASE 
+            WHEN cs.total_spent > avs.avg_customer_spending THEN 'high_value'
+            ELSE 'regular'
+          END as customer_tier
+        FROM customer_stats cs
+        CROSS JOIN avg_stats avs
+        ORDER BY cs.total_spent DESC
+      ''', null).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
