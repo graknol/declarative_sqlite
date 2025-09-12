@@ -8,6 +8,7 @@ import '../models/note.dart';
 
 /// Global database service for the shop floor demo app
 /// Provides centralized access to the database with offline-first capabilities
+/// Now featuring sophisticated dependency-based reactive streams!
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
   static DatabaseService get instance => _instance;
@@ -16,17 +17,8 @@ class DatabaseService {
   
   Database? _database;
   DataAccess? _dataAccess;
+  ReactiveDataAccess? _reactiveDataAccess;
   SchemaBuilder? _schema;
-  
-  // Stream controllers for reactive updates
-  final _orderUpdatesController = StreamController<List<Order>>.broadcast();
-  final _orderLineUpdatesController = StreamController<List<OrderLine>>.broadcast();
-  final _noteUpdatesController = StreamController<List<Note>>.broadcast();
-  
-  // Getters for reactive streams
-  Stream<List<Order>> get orderUpdates => _orderUpdatesController.stream;
-  Stream<List<OrderLine>> get orderLineUpdates => _orderLineUpdatesController.stream;
-  Stream<List<Note>> get noteUpdates => _noteUpdatesController.stream;
   
   Database get database {
     if (_database == null) {
@@ -40,6 +32,13 @@ class DatabaseService {
       throw StateError('DataAccess not initialized. Call initialize() first.');
     }
     return _dataAccess!;
+  }
+  
+  ReactiveDataAccess get reactiveDataAccess {
+    if (_reactiveDataAccess == null) {
+      throw StateError('ReactiveDataAccess not initialized. Call initialize() first.');
+    }
+    return _reactiveDataAccess!;
   }
   
   /// Initialize the database with shop floor schema
@@ -69,7 +68,12 @@ class DatabaseService {
     _dataAccess = await DataAccess.create(
       database: _database!,
       schema: _schema!,
-      enableLWW: true,
+    );
+    
+    // Create reactive data access layer with dependency-based change detection
+    _reactiveDataAccess = ReactiveDataAccess(
+      dataAccess: _dataAccess!,
+      schema: _schema!,
     );
     
     // Initialize with sample data if database is empty
@@ -252,12 +256,12 @@ class DatabaseService {
     });
   }
   
-  /// Get all orders with optional filtering
-  Future<List<Order>> getOrders({
+  /// Get all orders with optional filtering - now using reactive streams!
+  Stream<List<Order>> watchOrders({
     String? statusFilter,
     String? priorityFilter,
     String? searchQuery,
-  }) async {
+  }) {
     final whereConditions = <String>[];
     final whereArgs = <dynamic>[];
     
@@ -279,75 +283,82 @@ class DatabaseService {
     
     final whereClause = whereConditions.isNotEmpty ? whereConditions.join(' AND ') : null;
     
-    final rawOrders = await dataAccess.getAllWhere(
+    // Use reactive data access to create an intelligent stream
+    // This will only update when actual changes affect the query results!
+    return reactiveDataAccess.watchTable(
       'orders',
       where: whereClause,
       whereArgs: whereArgs,
       orderBy: 'created_at DESC',
-    );
-    
-    final orders = rawOrders.map((data) => Order.fromMap(data)).toList();
-    
-    // Notify listeners of updates
-    _orderUpdatesController.add(orders);
-    
-    return orders;
+    ).map((rawOrders) => rawOrders.map((data) => Order.fromMap(data)).toList());
   }
   
-  /// Get order lines for a specific order
-  Future<List<OrderLine>> getOrderLines(String orderId) async {
-    final rawOrderLines = await dataAccess.getAllWhere(
+  /// Legacy method for backwards compatibility
+  Future<List<Order>> getOrders({
+    String? statusFilter,
+    String? priorityFilter,
+    String? searchQuery,
+  }) async {
+    return await watchOrders(
+      statusFilter: statusFilter,
+      priorityFilter: priorityFilter,
+      searchQuery: searchQuery,
+    ).first;
+  }
+  
+  /// Get order lines for a specific order - now using reactive streams!
+  Stream<List<OrderLine>> watchOrderLines(String orderId) {
+    return reactiveDataAccess.watchTable(
       'order_lines',
       where: 'order_id = ?',
       whereArgs: [orderId],
       orderBy: 'created_at ASC',
-    );
-    
-    final orderLines = rawOrderLines.map((data) => OrderLine.fromMap(data)).toList();
-    
-    // Notify listeners of updates
-    _orderLineUpdatesController.add(orderLines);
-    
-    return orderLines;
+    ).map((rawOrderLines) => rawOrderLines.map((data) => OrderLine.fromMap(data)).toList());
   }
   
-  /// Get notes for a specific order
-  Future<List<Note>> getOrderNotes(String orderId) async {
-    final rawNotes = await dataAccess.getAllWhere(
+  /// Legacy method for backwards compatibility
+  Future<List<OrderLine>> getOrderLines(String orderId) async {
+    return await watchOrderLines(orderId).first;
+  }
+  
+  /// Get notes for a specific order - now using reactive streams!
+  Stream<List<Note>> watchOrderNotes(String orderId) {
+    return reactiveDataAccess.watchTable(
       'notes',
       where: 'order_id = ?',
       whereArgs: [orderId],
       orderBy: 'created_at DESC',
-    );
-    
-    final notes = rawNotes.map((data) => Note.fromMap(data)).toList();
-    
-    // Notify listeners of updates
-    _noteUpdatesController.add(notes);
-    
-    return notes;
+    ).map((rawNotes) => rawNotes.map((data) => Note.fromMap(data)).toList());
   }
   
-  /// Update order status with LWW conflict resolution
+  /// Legacy method for backwards compatibility
+  Future<List<Note>> getOrderNotes(String orderId) async {
+    return await watchOrderNotes(orderId).first;
+  }
+  
+  /// Update order status - now with automatic dependency-based stream updates!
   Future<void> updateOrderStatus(String orderId, String newStatus) async {
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
     
-    await dataAccess.updateByPrimaryKey('orders', orderId, {
+    // Use reactive data access - streams will be automatically updated
+    // based on their dependencies!
+    await reactiveDataAccess.updateByPrimaryKey('orders', orderId, {
       'status': newStatus,
       'updated_at': DateTime.now().toIso8601String(),
       'status_lww_timestamp': timestamp,
     });
     
-    // Refresh and notify listeners
-    await getOrders();
+    // No need to manually refresh streams - they update automatically! 🎉
   }
   
-  /// Add a new note with offline-first GUID support
+  /// Add a new note - now with automatic dependency-based stream updates!
   Future<String> addNote(String orderId, String content, String author, {String noteType = 'general'}) async {
     final noteId = 'note-${DateTime.now().millisecondsSinceEpoch}-${orderId.hashCode}';
     final now = DateTime.now().toIso8601String();
     
-    await dataAccess.insert('notes', {
+    // Use reactive data access - streams will be automatically updated
+    // based on their dependencies!
+    await reactiveDataAccess.insert('notes', {
       'id': noteId,
       'order_id': orderId,
       'content': content,
@@ -359,17 +370,41 @@ class DatabaseService {
       'created_on_device': 'demo-app',
     });
     
-    // Refresh and notify listeners
-    await getOrderNotes(orderId);
-    
+    // No need to manually refresh streams - they update automatically! 🎉
     return noteId;
+  }
+  
+  /// Watch order count by status - demonstrates aggregate reactive streams
+  Stream<int> watchOrderCountByStatus(String status) {
+    return reactiveDataAccess.watchCount(
+      'orders',
+      where: 'status = ?',
+      whereArgs: [status],
+    );
+  }
+  
+  /// Watch total order value - demonstrates custom aggregate streams
+  Stream<double> watchTotalOrderValue() {
+    return reactiveDataAccess.watchAggregate<double>(
+      'orders',
+      () async {
+        final result = await dataAccess.database.rawQuery(
+          'SELECT SUM(total_amount) as total FROM orders'
+        );
+        return (result.first['total'] as num?)?.toDouble() ?? 0.0;
+      },
+      dependentColumns: ['total_amount'],
+    );
+  }
+  
+  /// Get dependency statistics for monitoring
+  DependencyStats getDependencyStats() {
+    return reactiveDataAccess.getDependencyStats();
   }
   
   /// Clean up resources
   void dispose() {
-    _orderUpdatesController.close();
-    _orderLineUpdatesController.close();
-    _noteUpdatesController.close();
+    _reactiveDataAccess?.dispose();
     _database?.close();
   }
 }

@@ -35,20 +35,15 @@ class _OrderListPageState extends State<OrderListPage> {
     super.dispose();
   }
   
-  Future<void> _refreshOrders() async {
-    await _dbService.getOrders(
-      statusFilter: _statusFilter,
-      priorityFilter: _priorityFilter,
-      searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
-    );
-  }
+  // No longer needed - streams update automatically!
+  // Future<void> _refreshOrders() async { ... }
   
   void _onFilterChanged({String? status, String? priority}) {
     setState(() {
       _statusFilter = status;
       _priorityFilter = priority;
     });
-    _refreshOrders();
+    // No need to manually refresh - the stream will automatically update!
   }
   
   void _navigateToOrderDetail(Order order) {
@@ -94,10 +89,14 @@ class _OrderListPageState extends State<OrderListPage> {
             onFilterChanged: _onFilterChanged,
           ),
           
-          // Orders list with reactive updates
+          // Orders list with sophisticated dependency-based reactive updates
           Expanded(
             child: StreamBuilder<List<Order>>(
-              stream: _dbService.orderUpdates,
+              stream: _dbService.watchOrders(
+                statusFilter: _statusFilter,
+                priorityFilter: _priorityFilter,
+                searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
+              ),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return _buildInitialLoader();
@@ -114,7 +113,10 @@ class _OrderListPageState extends State<OrderListPage> {
                 }
                 
                 return RefreshIndicator(
-                  onRefresh: _refreshOrders,
+                  onRefresh: () async {
+                    // Manual refresh is now optional - streams auto-update!
+                    // This is here for user gesture only
+                  },
                   child: ListView.builder(
                     padding: EdgeInsets.all(16),
                     itemCount: orders.length,

@@ -29,7 +29,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadOrderDetails();
+    // No need to manually load details - streams handle this automatically!
   }
   
   @override
@@ -38,16 +38,12 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     super.dispose();
   }
   
-  Future<void> _loadOrderDetails() async {
-    await Future.wait([
-      _dbService.getOrderLines(widget.order.id),
-      _dbService.getOrderNotes(widget.order.id),
-    ]);
-  }
+  // No longer needed - streams update automatically!
+  // Future<void> _loadOrderDetails() async { ... }
   
   Future<void> _updateOrderStatus(String newStatus) async {
     await _dbService.updateOrderStatus(widget.order.id, newStatus);
-    setState(() {}); // Refresh the UI
+    // No need to setState - streams update automatically!
   }
   
   void _showAddNoteDialog() {
@@ -241,7 +237,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
   
   Widget _buildOrderLinesTab() {
     return StreamBuilder<List<OrderLine>>(
-      stream: _dbService.orderLineUpdates,
+      stream: _dbService.watchOrderLines(widget.order.id),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildOrderLinesLoader();
@@ -258,7 +254,9 @@ class _OrderDetailPageState extends State<OrderDetailPage>
         }
         
         return RefreshIndicator(
-          onRefresh: () => _dbService.getOrderLines(widget.order.id),
+          onRefresh: () async {
+            // Manual refresh is now optional - streams auto-update!
+          },
           child: ListView.builder(
             padding: EdgeInsets.all(16),
             itemCount: orderLines.length,
@@ -277,7 +275,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
   
   Widget _buildNotesTab() {
     return StreamBuilder<List<Note>>(
-      stream: _dbService.noteUpdates,
+      stream: _dbService.watchOrderNotes(widget.order.id),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildNotesLoader();
