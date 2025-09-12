@@ -3,6 +3,62 @@ import 'package:test/test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
+/// Helper method to insert initial test data
+Future<void> insertTestData(DataAccess dataAccess) async {
+  // Insert users
+  await dataAccess.insert('users', {
+    'username': 'alice',
+    'email': 'alice@example.com',
+    'age': 30,
+    'status': 'active',
+    'created_at': DateTime.now().toIso8601String(),
+  });
+
+  await dataAccess.insert('users', {
+    'username': 'bob',
+    'email': 'bob@example.com',
+    'age': 25,
+    'status': 'active',
+    'created_at': DateTime.now().toIso8601String(),
+  });
+
+  await dataAccess.insert('users', {
+    'username': 'charlie',
+    'email': 'charlie@example.com',
+    'age': 35,
+    'status': 'inactive',
+    'created_at': DateTime.now().toIso8601String(),
+  });
+
+  // Insert posts
+  await dataAccess.insert('posts', {
+    'user_id': 1,
+    'title': 'First Post',
+    'content': 'Content of first post',
+    'category': 'tech',
+    'likes': 15,
+    'created_at': DateTime.now().toIso8601String(),
+  });
+
+  await dataAccess.insert('posts', {
+    'user_id': 1,
+    'title': 'Second Post',
+    'content': 'Content of second post',
+    'category': 'lifestyle',
+    'likes': 5,
+    'created_at': DateTime.now().toIso8601String(),
+  });
+
+  await dataAccess.insert('posts', {
+    'user_id': 2,
+    'title': 'Bob\'s Post',
+    'content': 'Content from Bob',
+    'category': 'tech',
+    'likes': 8,
+    'created_at': DateTime.now().toIso8601String(),
+  });
+}
+
 /// Comprehensive test suite for the reactive stream dependency-based change detection system
 /// Testing all scenarios and edge cases to ensure no invalidations are missed
 void main() {
@@ -26,7 +82,7 @@ void main() {
           .text('username', (col) => col.notNull().unique())
           .text('email', (col) => col.notNull())
           .integer('age')
-          .text('status', (col) => col.notNull().defaultValue('active'))
+          .text('status', (col) => col.notNull().withDefaultValue('active'))
           .text('created_at', (col) => col.notNull())
           .index('idx_status', ['status'])
           .index('idx_email', ['email']))
@@ -36,7 +92,7 @@ void main() {
           .text('title', (col) => col.notNull())
           .text('content', (col) => col.notNull())
           .text('category', (col) => col.notNull())
-          .integer('likes', (col) => col.defaultValue(0))
+          .integer('likes', (col) => col.withDefaultValue(0))
           .text('created_at', (col) => col.notNull())
           .index('idx_category', ['category'])
           .index('idx_likes', ['likes']))
@@ -62,64 +118,8 @@ void main() {
     );
 
     // Insert initial test data
-    await _insertTestData();
+    await insertTestData(dataAccess);
   });
-
-  /// Helper method to insert initial test data
-  Future<void> _insertTestData() async {
-    // Insert users
-    await dataAccess.insert('users', {
-      'username': 'alice',
-      'email': 'alice@example.com',
-      'age': 30,
-      'status': 'active',
-      'created_at': DateTime.now().toIso8601String(),
-    });
-
-    await dataAccess.insert('users', {
-      'username': 'bob',
-      'email': 'bob@example.com',
-      'age': 25,
-      'status': 'active',
-      'created_at': DateTime.now().toIso8601String(),
-    });
-
-    await dataAccess.insert('users', {
-      'username': 'charlie',
-      'email': 'charlie@example.com',
-      'age': 35,
-      'status': 'inactive',
-      'created_at': DateTime.now().toIso8601String(),
-    });
-
-    // Insert posts
-    await dataAccess.insert('posts', {
-      'user_id': 1,
-      'title': 'First Post',
-      'content': 'Content of first post',
-      'category': 'tech',
-      'likes': 15,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-
-    await dataAccess.insert('posts', {
-      'user_id': 1,
-      'title': 'Second Post',
-      'content': 'Content of second post',
-      'category': 'lifestyle',
-      'likes': 5,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-
-    await dataAccess.insert('posts', {
-      'user_id': 2,
-      'title': 'Bob\'s Post',
-      'content': 'Content from Bob',
-      'category': 'tech',
-      'likes': 8,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-  }
 
   tearDown(() async {
     await reactiveDataAccess.dispose();

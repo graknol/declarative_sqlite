@@ -614,12 +614,44 @@ class ReactiveDataAccess {
     return _streamManager.getDependencyStats();
   }
   
-  /// Manually refreshes a specific stream
+  /// Manually refreshes a specific stream by stream ID
   Future<void> refreshStream(String streamId) async {
     final stream = _streamManager.getStream(streamId);
     if (stream != null && !stream.isClosed) {
       await stream.refresh();
     }
+  }
+
+  /// Refreshes all streams watching a specific table (useful for pull-to-refresh)
+  Future<void> refreshTable(String tableName) async {
+    // Get all active streams and refresh those that might be affected by this table
+    final activeStreams = _streamManager.activeStreams;
+    final refreshFutures = <Future<void>>[];
+    
+    for (final streamId in activeStreams) {
+      // For now, refresh all streams that contain the table name in their ID
+      // This is a simple heuristic that works for most common patterns
+      if (streamId.contains(tableName)) {
+        refreshFutures.add(refreshStream(streamId));
+      }
+    }
+    
+    // If no streams match the heuristic, refresh all streams
+    // This ensures pull-to-refresh always works even if naming doesn't match
+    if (refreshFutures.isEmpty) {
+      for (final streamId in activeStreams) {
+        refreshFutures.add(refreshStream(streamId));
+      }
+    }
+    
+    await Future.wait(refreshFutures);
+  }
+
+  /// Refreshes all active streams (useful for global pull-to-refresh)
+  Future<void> refreshAll() async {
+    final activeStreams = _streamManager.activeStreams;
+    final refreshFutures = activeStreams.map((streamId) => refreshStream(streamId));
+    await Future.wait(refreshFutures);
   }
   
   /// Manually cleans up inactive streams
