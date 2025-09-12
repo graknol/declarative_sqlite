@@ -1,0 +1,25 @@
+name: flutter_shop_floor_demo
+description: A comprehensive Flutter demo showcasing offline-first collaborative data sync using declarative_sqlite
+version: 1.0.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  sqflite: ^2.3.3+1
+  uuid: ^4.5.1
+  
+  # Local dependency for declarative_sqlite
+  declarative_sqlite:
+    path: ../../
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
