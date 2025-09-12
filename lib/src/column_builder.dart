@@ -80,12 +80,33 @@ class ColumnBuilder {
     );
   }
 
+  /// Marks this column for Last-Writer-Wins conflict resolution
+  /// 
+  /// Columns marked as LWW will use HLC timestamp comparison to resolve
+  /// conflicts when updates come from multiple sources (user edits, server sync).
+  /// Only the update with the newer HLC timestamp will be applied.
+  ColumnBuilder lww() {
+    if (constraints.contains(ConstraintType.lww)) {
+      return this;
+    }
+    return ColumnBuilder._(
+      name: name,
+      dataType: dataType,
+      constraints: [...constraints, ConstraintType.lww],
+      defaultValue: defaultValue,
+    );
+  }
+
+  /// Checks if this column is marked for LWW conflict resolution
+  bool get isLWW => constraints.contains(ConstraintType.lww);
+
   /// Generates the SQL column definition
   String toSql() {
     final buffer = StringBuffer();
     buffer.write('$name $dataType');
     
-    for (final constraint in constraints) {
+    // Only include SQL constraints, not metadata constraints like LWW
+    for (final constraint in constraints.where((c) => c.isSqlConstraint)) {
       buffer.write(' $constraint');
     }
     

@@ -124,7 +124,7 @@ void main() {
       await migrator.migrate(database, schema);
 
       // Create DataAccess for this schema
-      dataAccess = DataAccess(database: database, schema: schema);
+      dataAccess = await DataAccess.create(database: database, schema: schema);
 
       // Insert test data using DataAccess
       await dataAccess.insert('test_data', {
@@ -150,7 +150,7 @@ void main() {
       await migrator.migrate(database, initialSchema);
 
       // Create DataAccess for initial schema
-      dataAccess = DataAccess(database: database, schema: initialSchema);
+      dataAccess = await DataAccess.create(database: database, schema: initialSchema);
 
       // Insert some initial data using DataAccess
       await dataAccess.insert('users', {'name': 'John Doe', 'email': 'john@example.com'});
@@ -195,7 +195,7 @@ void main() {
       await migrator.migrate(database, v1Schema);
 
       // Create DataAccess for v1 schema
-      dataAccess = DataAccess(database: database, schema: v1Schema);
+      dataAccess = await DataAccess.create(database: database, schema: v1Schema);
 
       // Add some data to v1 schema using DataAccess
       final userId = await dataAccess.insert('users', {
@@ -231,7 +231,7 @@ void main() {
       await migrator.migrate(database, v2Schema);
 
       // Update DataAccess for v2 schema
-      dataAccess = DataAccess(database: database, schema: v2Schema);
+      dataAccess = await DataAccess.create(database: database, schema: v2Schema);
 
       // Verify all tables exist
       final tables = await database.rawQuery(
@@ -280,7 +280,7 @@ void main() {
       await migrator.migrate(database, originalSchema);
 
       // Create DataAccess for original schema
-      dataAccess = DataAccess(database: database, schema: originalSchema);
+      dataAccess = await DataAccess.create(database: database, schema: originalSchema);
 
       // Insert test data using DataAccess
       await dataAccess.insert('products', {'name': 'Widget', 'price': 19.99});

@@ -48,7 +48,7 @@ void main() {
       await migrator.migrate(database, schema);
       
       // Create data access instance
-      dataAccess = DataAccess(database: database, schema: schema);
+      dataAccess = await DataAccess.create(database: database, schema: schema);
     });
 
     tearDown(() async {
@@ -473,7 +473,7 @@ void main() {
       final migrator = SchemaMigrator();
       await migrator.migrate(database, schema);
       
-      dataAccess = DataAccess(database: database, schema: schema);
+      dataAccess = await DataAccess.create(database: database, schema: schema);
     });
 
     tearDown(() async {

@@ -37,7 +37,7 @@ void main() {
 
         final migrator = SchemaMigrator();
         await migrator.migrate(database, schema);
-        dataAccess = DataAccess(database: database, schema: schema);
+        dataAccess = await DataAccess.create(database: database, schema: schema);
       });
 
       test('can create table with date columns', () async {
@@ -146,7 +146,7 @@ void main() {
 
         final migrator = SchemaMigrator();
         await migrator.migrate(database, schema);
-        dataAccess = DataAccess(database: database, schema: schema);
+        dataAccess = await DataAccess.create(database: database, schema: schema);
       });
 
       test('can create table with composite primary key', () async {
@@ -255,7 +255,7 @@ void main() {
 
         final migrator = SchemaMigrator();
         await migrator.migrate(database, schema);
-        dataAccess = DataAccess(database: database, schema: schema);
+        dataAccess = await DataAccess.create(database: database, schema: schema);
       });
 
       test('automatically adds systemId and systemVersion columns', () async {
@@ -376,7 +376,7 @@ void main() {
 
         final migrator = SchemaMigrator();
         await migrator.migrate(database, schema);
-        dataAccess = DataAccess(database: database, schema: schema);
+        dataAccess = await DataAccess.create(database: database, schema: schema);
       });
 
       test('can use upsert mode to insert new rows', () async {
@@ -481,7 +481,7 @@ void main() {
 
         final migrator = SchemaMigrator();
         await migrator.migrate(database, noPkSchema);
-        final noPkDataAccess = DataAccess(database: database, schema: noPkSchema);
+        final noPkDataAccess = await DataAccess.create(database: database, schema: noPkSchema);
 
         final dataset = [{'message': 'test', 'timestamp': 123}];
 
@@ -500,7 +500,7 @@ void main() {
 
         final migrator = SchemaMigrator();
         await migrator.migrate(database, compSchema);
-        final compDataAccess = DataAccess(database: database, schema: compSchema);
+        final compDataAccess = await DataAccess.create(database: database, schema: compSchema);
 
         // Insert initial data
         await compDataAccess.insert('order_items', {

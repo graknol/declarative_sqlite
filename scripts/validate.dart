@@ -48,7 +48,7 @@ void main() async {
     
     // Test 4: Data Operations
     print('✓ Testing data access operations...');
-    final dataAccess = DataAccess(database: database, schema: schema);
+    final dataAccess = await DataAccess.create(database: database, schema: schema);
     
     // Insert user
     final userId = await dataAccess.insert('users', {

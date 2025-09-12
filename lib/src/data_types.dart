@@ -40,12 +40,19 @@ enum ConstraintType {
   unique('UNIQUE'),
   
   /// Not null constraint
-  notNull('NOT NULL');
+  notNull('NOT NULL'),
+  
+  /// Last-Writer-Wins conflict resolution marker (not a SQL constraint)
+  /// Columns marked with this will use HLC timestamp-based conflict resolution
+  lww('');
 
   const ConstraintType(this.sqlName);
   
   /// The SQL constraint name as it appears in CREATE TABLE statements
   final String sqlName;
+  
+  /// Whether this constraint appears in SQL CREATE TABLE statements
+  bool get isSqlConstraint => sqlName.isNotEmpty;
   
   @override
   String toString() => sqlName;

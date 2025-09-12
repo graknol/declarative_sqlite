@@ -7,7 +7,7 @@ void main() {
     late Database database;
     late SchemaMigrator migrator;
     late SchemaBuilder schema;
-    late RelatedDataAccess dataAccess;
+    late DataAccess dataAccess;
 
     setUpAll(() {
       // Initialize sqflite_ffi for testing
@@ -67,7 +67,7 @@ void main() {
       await migrator.migrate(database, schema);
       
       // Create data access instance
-      dataAccess = RelatedDataAccess(database: database, schema: schema);
+      dataAccess = await DataAccess.create(database: database, schema: schema);
     });
 
     tearDown(() async {
@@ -407,7 +407,7 @@ void main() {
 
         // Apply schema and create data access
         await migrator.migrate(database, restrictSchema);
-        final restrictDataAccess = RelatedDataAccess(database: database, schema: restrictSchema);
+        final restrictDataAccess = await DataAccess.create(database: database, schema: restrictSchema);
 
         // Insert test data
         final parentId = await restrictDataAccess.insert('parents', {'name': 'Parent'});
