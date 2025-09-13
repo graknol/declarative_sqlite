@@ -7,7 +7,6 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 void main() {
   late Database database;
   late DataAccess dataAccess;
-  late ReactiveDataAccess reactiveDataAccess;
   late SchemaBuilder schema;
 
   setUpAll(() async {
@@ -32,10 +31,6 @@ void main() {
     await migrator.migrate(database, schema);
 
     dataAccess = await DataAccess.create(database: database, schema: schema);
-    reactiveDataAccess = ReactiveDataAccess(
-      dataAccess: dataAccess,
-      schema: schema,
-    );
 
     // Insert initial data
     await dataAccess.insert('users', {'name': 'Alice', 'email': 'alice@test.com'});
@@ -43,7 +38,7 @@ void main() {
   });
 
   tearDown(() async {
-    await reactiveDataAccess.dispose();
+    await dataAccess.dispose();
     await database.close();
   });
 
@@ -52,7 +47,8 @@ void main() {
       var updateCount = 0;
       List<Map<String, dynamic>>? lastData;
 
-      final stream = reactiveDataAccess.watchTable('users', streamId: 'test_users_stream');
+      final query = QueryBuilder().selectAll().from('users');
+      final stream = dataAccess.watch(query, streamId: 'test_users_stream');
       final subscription = stream.listen((data) {
         updateCount++;
         lastData = data;
@@ -64,7 +60,7 @@ void main() {
       expect(lastData!.length, equals(1));
 
       // Manually refresh the stream (simulating pull-to-refresh)
-      await reactiveDataAccess.refreshStream('test_users_stream');
+      await dataAccess.refreshStream('test_users_stream');
 
       // Wait for refresh to complete
       await Future.delayed(Duration(milliseconds: 200));
@@ -78,8 +74,11 @@ void main() {
       var postsUpdateCount = 0;
 
       // Create streams for different tables
-      final usersStream = reactiveDataAccess.watchTable('users', streamId: 'users_stream');
-      final postsStream = reactiveDataAccess.watchTable('posts', streamId: 'posts_stream');
+      final usersQuery = QueryBuilder().selectAll().from('users');
+      final postsQuery = QueryBuilder().selectAll().from('posts');
+      
+      final usersStream = dataAccess.watch(usersQuery, streamId: 'users_stream');
+      final postsStream = dataAccess.watch(postsQuery, streamId: 'posts_stream');
 
       final usersSubscription = usersStream.listen((data) => usersUpdateCount++);
       final postsSubscription = postsStream.listen((data) => postsUpdateCount++);
@@ -90,7 +89,7 @@ void main() {
       expect(postsUpdateCount, equals(1));
 
       // Refresh only users table
-      await reactiveDataAccess.refreshTable('users');
+      await dataAccess.refreshTable('users');
 
       // Wait for refresh to complete
       await Future.delayed(Duration(milliseconds: 200));
@@ -105,8 +104,11 @@ void main() {
       var postsUpdateCount = 0;
 
       // Create streams for different tables
-      final usersStream = reactiveDataAccess.watchTable('users', streamId: 'all_users_stream');
-      final postsStream = reactiveDataAccess.watchTable('posts', streamId: 'all_posts_stream');
+      final usersQuery = QueryBuilder().selectAll().from('users');
+      final postsQuery = QueryBuilder().selectAll().from('posts');
+      
+      final usersStream = dataAccess.watch(usersQuery, streamId: 'all_users_stream');
+      final postsStream = dataAccess.watch(postsQuery, streamId: 'all_posts_stream');
 
       final usersSubscription = usersStream.listen((data) => usersUpdateCount++);
       final postsSubscription = postsStream.listen((data) => postsUpdateCount++);
@@ -117,7 +119,7 @@ void main() {
       expect(postsUpdateCount, equals(1));
 
       // Refresh all streams
-      await reactiveDataAccess.refreshAll();
+      await dataAccess.refreshAll();
 
       // Wait for refresh to complete
       await Future.delayed(Duration(milliseconds: 200));
@@ -132,7 +134,8 @@ void main() {
       var updateCount = 0;
       List<Map<String, dynamic>>? lastData;
 
-      final stream = reactiveDataAccess.watchTable('users', streamId: 'ptr_users_stream');
+      final query = QueryBuilder().selectAll().from('users');
+      final stream = dataAccess.watch(query, streamId: 'ptr_users_stream');
       final subscription = stream.listen((data) {
         updateCount++;
         lastData = data;
@@ -150,7 +153,7 @@ void main() {
 
       // The stream might not automatically detect this change since it bypassed reactive layer
       // So user does pull-to-refresh
-      await reactiveDataAccess.refreshTable('users');
+      await dataAccess.refreshTable('users');
 
       // Wait for refresh to complete
       await Future.delayed(Duration(milliseconds: 200));

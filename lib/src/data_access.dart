@@ -781,11 +781,21 @@ class DataAccess {
     
     final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue, table);
     
-    return await database.delete(
+    final result = await database.delete(
       tableName,
       where: whereClause,
       whereArgs: whereArgs,
     );
+    
+    // Notify reactive streams about the change
+    await _streamManager.notifyChange(DatabaseChange(
+      tableName: tableName,
+      operation: DatabaseOperation.delete,
+      affectedColumns: {}, // Delete affects all columns conceptually
+      primaryKeyValue: primaryKeyValue,
+    ));
+    
+    return result;
   }
 
   /// Deletes rows matching the specified where condition.

@@ -127,7 +127,8 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = dataAccess.watchTable('users').listen((data) {
+      final query = QueryBuilder().selectAll().from('users');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) { // Skip initial load, wait for insert
           completer.complete(data);
@@ -156,7 +157,8 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = dataAccess.watchTable('users').listen((data) {
+      final query = QueryBuilder().selectAll().from('users');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -181,7 +183,8 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = dataAccess.watchTable('users').listen((data) {
+      final query = QueryBuilder().selectAll().from('users');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -210,14 +213,8 @@ void main() {
       final statusCompleter = Completer<List<Map<String, dynamic>>>();
 
       // Watch only email changes
-      final emailSubscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'users',
-        () async {
-          final result = await dataAccess.getAllWhere('users');
-          return result.map((row) => {'id': row['id'], 'email': row['email']}).toList();
-        },
-        dependentColumns: ['email'],
-      ).listen((data) {
+      final emailQuery = QueryBuilder().selectColumns(['id', 'email']).from('users');
+      final emailSubscription = dataAccess.watch(emailQuery).listen((data) {
         emailUpdateCount++;
         if (emailUpdateCount == 2) {
           emailCompleter.complete(data);
@@ -225,14 +222,8 @@ void main() {
       });
 
       // Watch only status changes
-      final statusSubscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'users',
-        () async {
-          final result = await dataAccess.getAllWhere('users');
-          return result.map((row) => {'id': row['id'], 'status': row['status']}).toList();
-        },
-        dependentColumns: ['status'],
-      ).listen((data) {
+      final statusQuery = QueryBuilder().selectColumns(['id', 'status']).from('users');
+      final statusSubscription = dataAccess.watch(statusQuery).listen((data) {
         statusUpdateCount++;
         if (statusUpdateCount == 2) {
           statusCompleter.complete(data);
@@ -275,11 +266,8 @@ void main() {
       final popularCompleter = Completer<List<Map<String, dynamic>>>();
 
       // Watch active users only
-      final activeSubscription = dataAccess.watchTable(
-        'users',
-        where: 'status = ?',
-        whereArgs: ['active'],
-      ).listen((data) {
+      final activeQuery = QueryBuilder().selectAll().from('users').where("status = 'active'");
+      final activeSubscription = dataAccess.watch(activeQuery).listen((data) {
         activeUserUpdateCount++;
         if (activeUserUpdateCount == 2) {
           activeCompleter.complete(data);
@@ -287,11 +275,8 @@ void main() {
       });
 
       // Watch popular posts only (likes > 10)
-      final popularSubscription = dataAccess.watchTable(
-        'posts',
-        where: 'likes > ?',
-        whereArgs: [10],
-      ).listen((data) {
+      final popularQuery = QueryBuilder().selectAll().from('posts').where('likes > 10');
+      final popularSubscription = dataAccess.watch(popularQuery).listen((data) {
         popularPostUpdateCount++;
         if (popularPostUpdateCount == 2) {
           popularCompleter.complete(data);
@@ -332,22 +317,21 @@ void main() {
       final completer = Completer<Map<String, dynamic>>();
 
       // Create aggregate stream that depends on both users and posts
-      final subscription = dataAccess.watchAggregate<Map<String, dynamic>>(
-        'users',
-        () async {
-          final result = await database.rawQuery('''
-            SELECT u.username, COUNT(p.id) as post_count, COALESCE(SUM(p.likes), 0) as total_likes
-            FROM users u 
-            LEFT JOIN posts p ON u.id = p.user_id 
-            WHERE u.id = 1
-            GROUP BY u.id
-          ''');
-          return result.first;
-        },
-      ).listen((data) {
+      final userStatsQuery = QueryBuilder()
+        .select([
+          ExpressionBuilder.qualifiedColumn('u', 'username'),
+          ExpressionBuilder.function('COUNT', ['p.id']).as('post_count'),
+          ExpressionBuilder.function('COALESCE', ['SUM(p.likes)', '0']).as('total_likes'),
+        ])
+        .from('users', 'u')
+        .leftJoin('posts', 'u.id = p.user_id', 'p')
+        .where('u.id = 1')
+        .groupBy(['u.id']);
+      
+      final subscription = dataAccess.watch(userStatsQuery).listen((data) {
         userStatsUpdateCount++;
         if (userStatsUpdateCount == 2) {
-          completer.complete(data);
+          completer.complete(data.first);
         }
       });
 
@@ -376,7 +360,8 @@ void main() {
       var updateCount = 0;
       final completer = Completer<List<Map<String, dynamic>>>();
 
-      final subscription = dataAccess.watchTable('bulk_test').listen((data) {
+      final query = QueryBuilder().selectAll().from('bulk_test');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -412,7 +397,8 @@ void main() {
         {'id': 'test2', 'name': 'Original2', 'value': 200, 'category': 'test'},
       ]);
 
-      final subscription = dataAccess.watchTable('bulk_test').listen((data) {
+      final query = QueryBuilder().selectAll().from('bulk_test');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -445,14 +431,8 @@ void main() {
       final valueCompleter = Completer<List<Map<String, dynamic>>>();
 
       // Watch name changes only
-      final nameSubscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'bulk_test',
-        () async {
-          final result = await dataAccess.getAllWhere('bulk_test');
-          return result.map((row) => {'id': row['id'], 'name': row['name']}).toList();
-        },
-        dependentColumns: ['name'],
-      ).listen((data) {
+      final nameQuery = QueryBuilder().selectColumns(['id', 'name']).from('bulk_test');
+      final nameSubscription = dataAccess.watch(nameQuery).listen((data) {
         nameUpdateCount++;
         if (nameUpdateCount == 2) {
           nameCompleter.complete(data);
@@ -460,14 +440,8 @@ void main() {
       });
 
       // Watch value changes only
-      final valueSubscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'bulk_test',
-        () async {
-          final result = await dataAccess.getAllWhere('bulk_test');
-          return result.map((row) => {'id': row['id'], 'value': row['value']}).toList();
-        },
-        dependentColumns: ['value'],
-      ).listen((data) {
+      final valueQuery = QueryBuilder().selectColumns(['id', 'value']).from('bulk_test');
+      final valueSubscription = dataAccess.watch(valueQuery).listen((data) {
         valueUpdateCount++;
         if (valueUpdateCount == 2) {
           valueCompleter.complete(data);
@@ -495,19 +469,21 @@ void main() {
       var updateCount = 0;
       final completer = Completer<List<Map<String, dynamic>>>();
 
-      // Create stream with complex raw query
-      final subscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'users',
-        () => database.rawQuery('''
-          SELECT u.username, COUNT(p.id) as posts, AVG(p.likes) as avg_likes
-          FROM users u
-          LEFT JOIN posts p ON u.id = p.user_id
-          WHERE u.status = 'active'
-          GROUP BY u.id
-          HAVING COUNT(p.id) > 0
-          ORDER BY avg_likes DESC
-        '''),
-      ).listen((data) {
+      // Create stream with complex query using QueryBuilder
+      final complexQuery = QueryBuilder()
+        .select([
+          ExpressionBuilder.qualifiedColumn('u', 'username'),
+          ExpressionBuilder.function('COUNT', ['p.id']).as('posts'),
+          ExpressionBuilder.function('AVG', ['p.likes']).as('avg_likes'),
+        ])
+        .from('users', 'u')
+        .leftJoin('posts', 'u.id = p.user_id', 'p')
+        .where("u.status = 'active'")
+        .groupBy(['u.id'])
+        .having('COUNT(p.id) > 0')
+        .orderBy(['avg_likes DESC']);
+        
+      final subscription = dataAccess.watch(complexQuery).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -532,7 +508,8 @@ void main() {
       var updateCount = 0;
       final updates = <List<Map<String, dynamic>>>[];
 
-      final subscription = dataAccess.watchTable('users').listen((data) {
+      final query = QueryBuilder().selectAll().from('users');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         updates.add(List.from(data));
       });
@@ -572,9 +549,13 @@ void main() {
 
     test('should clean up inactive streams', () async {
       // Create multiple streams
-      final stream1 = dataAccess.watchTable('users');
-      final stream2 = dataAccess.watchTable('posts');
-      final stream3 = dataAccess.watchTable('bulk_test');
+      final usersQuery = QueryBuilder().selectAll().from('users');
+      final postsQuery = QueryBuilder().selectAll().from('posts');
+      final bulkQuery = QueryBuilder().selectAll().from('bulk_test');
+      
+      final stream1 = dataAccess.watch(usersQuery);
+      final stream2 = dataAccess.watch(postsQuery);
+      final stream3 = dataAccess.watch(bulkQuery);
 
       final subscription1 = stream1.listen((_) {});
       final subscription2 = stream2.listen((_) {});
@@ -599,7 +580,8 @@ void main() {
       var updateCount = 0;
       final completer = Completer<void>();
 
-      final subscription = dataAccess.watchTable('users').listen((data) {
+      final query = QueryBuilder().selectAll().from('users');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 1) {
           completer.complete();
@@ -639,7 +621,8 @@ void main() {
       final subscriptions = <StreamSubscription>[];
 
       for (int i = 0; i < 10; i++) {
-        final stream = dataAccess.watchTable('users');
+        final query = QueryBuilder().selectAll().from('users');
+        final stream = dataAccess.watch(query);
         streams.add(stream);
         subscriptions.add(stream.listen((_) {}));
       }
