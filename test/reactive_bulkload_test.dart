@@ -179,14 +179,10 @@ void main() {
       final stockCompleter = Completer<List<Map<String, dynamic>>>();
 
       // Watch price-related changes only
-      final priceSubscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'products',
-        () async {
-          final result = await dataAccess.getAllWhere('products');
-          return result.map((row) => {'id': row['id'], 'price': row['price']}).toList();
-        },
-        dependentColumns: ['price'],
-      ).listen((data) {
+      final priceQuery = QueryBuilder()
+        .selectColumns(['id', 'price'])
+        .from('products');
+      final priceSubscription = dataAccess.watch(priceQuery).listen((data) {
         priceUpdateCount++;
         if (priceUpdateCount == 2) {
           priceCompleter.complete(data);
@@ -194,14 +190,10 @@ void main() {
       });
 
       // Watch stock-related changes only
-      final stockSubscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'products',
-        () async {
-          final result = await dataAccess.getAllWhere('products');
-          return result.map((row) => {'id': row['id'], 'stock_quantity': row['stock_quantity']}).toList();
-        },
-        dependentColumns: ['stock_quantity'],
-      ).listen((data) {
+      final stockQuery = QueryBuilder()
+        .selectColumns(['id', 'stock_quantity'])
+        .from('products');
+      final stockSubscription = dataAccess.watch(stockQuery).listen((data) {
         stockUpdateCount++;
         if (stockUpdateCount == 2) {
           stockCompleter.complete(data);
@@ -232,7 +224,8 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = dataAccess.watchTable('products').listen((data) {
+      final query = QueryBuilder().selectAll().from('products');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -268,7 +261,8 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = dataAccess.watchTable('products').listen((data) {
+      final query = QueryBuilder().selectAll().from('products');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -300,7 +294,8 @@ void main() {
       final updates = <int>[];
       final completer = Completer<void>();
 
-      final subscription = dataAccess.watchTable('products').listen((data) {
+      final query = QueryBuilder().selectAll().from('products');
+      final subscription = dataAccess.watch(query).listen((data) {
         updates.add(data.length);
         // Wait for at least 2 updates after the initial one (if any)
         if (updates.length >= 2 && updates.last >= 3) { 
@@ -337,27 +332,24 @@ void main() {
       var updateCount = 0;
 
       // Complex aggregate stream that depends on bulk-loaded data
-      final subscription = dataAccess.watchAggregate<Map<String, dynamic>>(
-        'products',
-        () async {
-          final result = await database.rawQuery('''
-            SELECT 
-              category,
-              COUNT(*) as product_count,
-              AVG(price) as avg_price,
-              SUM(stock_quantity) as total_stock
-            FROM products 
-            WHERE price > 50
-            GROUP BY category
-            ORDER BY avg_price DESC
-            LIMIT 1
-          ''');
-          return result.isNotEmpty ? result.first : {};
-        },
-      ).listen((data) {
+      final query = QueryBuilder()
+        .select([
+          ExpressionBuilder.column('category'),
+          ExpressionBuilder.function('COUNT', ['*']).as('product_count'),
+          ExpressionBuilder.function('AVG', ['price']).as('avg_price'),
+          ExpressionBuilder.function('SUM', ['stock_quantity']).as('total_stock'),
+        ])
+        .from('products')
+        .where('price > 50')
+        .groupBy(['category'])
+        .orderBy(['avg_price DESC'])
+        .limit(1);
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
-          completer.complete(data);
+          // Extract first result for single-row aggregate
+          final result = data.isNotEmpty ? data.first : <String, dynamic>{};
+          completer.complete(result);
         }
       });
 
@@ -385,7 +377,8 @@ void main() {
       final updates = <int>[];
       final completer = Completer<void>();
 
-      final subscription = dataAccess.watchTable('products').listen((data) {
+      final query = QueryBuilder().selectAll().from('products');
+      final subscription = dataAccess.watch(query).listen((data) {
         updates.add(data.length);
         // Wait for final count of 3 products
         if (data.length >= 3) {
@@ -421,7 +414,8 @@ void main() {
       final updates = <List<Map<String, dynamic>>>[];
       final completer = Completer<void>();
 
-      final subscription = dataAccess.watchTable('products').listen((data) {
+      final query = QueryBuilder().selectAll().from('products');
+      final subscription = dataAccess.watch(query).listen((data) {
         updates.add(List.from(data));
         // Wait for final count of 3 products
         if (data.length >= 3) {

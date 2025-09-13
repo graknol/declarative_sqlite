@@ -109,10 +109,11 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - simple customer list
-      final subscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'customers',
-        () => database.rawQuery('SELECT id, name, email FROM customers WHERE status = ?', ['active']),
-      ).listen((data) {
+      final query = QueryBuilder()
+        .selectColumns(['id', 'name', 'email'])
+        .from('customers')
+        .where('status = \'active\'');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -136,14 +137,19 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - customer orders with JOIN
-      final subscription = dataAccess.watchRawQuery('''
-        SELECT c.name, c.email, COUNT(o.id) as order_count, COALESCE(SUM(o.total_amount), 0) as total_spent
-        FROM customers c
-        LEFT JOIN orders o ON c.id = o.customer_id
-        WHERE c.status = 'active'
-        GROUP BY c.id
-        ORDER BY total_spent DESC
-      ''', null).listen((data) {
+      final query = QueryBuilder()
+        .select([
+          ExpressionBuilder.qualifiedColumn('c', 'name'),
+          ExpressionBuilder.qualifiedColumn('c', 'email'),
+          ExpressionBuilder.function('COUNT', ['o.id']).as('order_count'),
+          ExpressionBuilder.raw('COALESCE(SUM(o.total_amount), 0)').as('total_spent'),
+        ])
+        .from('customers', 'c')
+        .leftJoin('orders', 'c.id = o.customer_id', 'o')
+        .where('c.status = \'active\'')
+        .groupBy(['c.id'])
+        .orderBy(['total_spent DESC']);
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -176,27 +182,24 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - daily revenue aggregate
-      final subscription = dataAccess.watchAggregate<Map<String, dynamic>>(
-        'orders',
-        () async {
-          final result = await database.rawQuery('''
-            SELECT 
-              order_date,
-              COUNT(*) as order_count,
-              SUM(total_amount) as daily_revenue,
-              AVG(total_amount) as avg_order_value
-            FROM orders 
-            WHERE status = 'completed'
-            GROUP BY order_date
-            ORDER BY daily_revenue DESC
-            LIMIT 1
-          ''');
-          return result.isNotEmpty ? result.first : {};
-        },
-      ).listen((data) {
+      final query = QueryBuilder()
+        .select([
+          ExpressionBuilder.column('order_date'),
+          ExpressionBuilder.function('COUNT', ['*']).as('order_count'),
+          ExpressionBuilder.function('SUM', ['total_amount']).as('daily_revenue'),
+          ExpressionBuilder.function('AVG', ['total_amount']).as('avg_order_value'),
+        ])
+        .from('orders')
+        .where('status = \'completed\'')
+        .groupBy(['order_date'])
+        .orderBy(['daily_revenue DESC'])
+        .limit(1);
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
-          completer.complete(data);
+          // Extract first result for single-row aggregate
+          final result = data.isNotEmpty ? data.first : <String, dynamic>{};
+          completer.complete(result);
         }
       });
 
@@ -231,16 +234,18 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - customers with above-average order values
-      final subscription = dataAccess.watchRawQuery('''
-        SELECT c.name, c.email, AVG(o.total_amount) as avg_order_value
-        FROM customers c
-        JOIN orders o ON c.id = o.customer_id
-        WHERE o.total_amount > (
-          SELECT AVG(total_amount) FROM orders WHERE status = 'completed'
-        )
-        GROUP BY c.id
-        ORDER BY avg_order_value DESC
-      ''', null).listen((data) {
+      final query = QueryBuilder()
+        .select([
+          ExpressionBuilder.qualifiedColumn('c', 'name'),
+          ExpressionBuilder.qualifiedColumn('c', 'email'),
+          ExpressionBuilder.function('AVG', ['o.total_amount']).as('avg_order_value'),
+        ])
+        .from('customers', 'c')
+        .innerJoin('orders', 'c.id = o.customer_id', 'o')
+        .where('o.total_amount > (SELECT AVG(total_amount) FROM orders WHERE status = \'completed\')')
+        .groupBy(['c.id'])
+        .orderBy(['avg_order_value DESC']);
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -269,17 +274,18 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - customer ranking by total spent
-      final subscription = dataAccess.watchRawQuery('''
-        SELECT 
-          c.name,
-          c.email,
-          SUM(o.total_amount) as total_spent,
-          ROW_NUMBER() OVER (ORDER BY SUM(o.total_amount) DESC) as spending_rank
-        FROM customers c
-        LEFT JOIN orders o ON c.id = o.customer_id
-        GROUP BY c.id
-        ORDER BY total_spent DESC
-      ''', null).listen((data) {
+      final query = QueryBuilder()
+        .select([
+          ExpressionBuilder.qualifiedColumn('c', 'name'),
+          ExpressionBuilder.qualifiedColumn('c', 'email'),
+          ExpressionBuilder.function('SUM', ['o.total_amount']).as('total_spent'),
+          ExpressionBuilder.raw('ROW_NUMBER() OVER (ORDER BY SUM(o.total_amount) DESC)').as('spending_rank'),
+        ])
+        .from('customers', 'c')
+        .leftJoin('orders', 'c.id = o.customer_id', 'o')
+        .groupBy(['c.id'])
+        .orderBy(['total_spent DESC']);
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -307,35 +313,19 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      // Frontend query - CTE for complex customer analytics
-      final subscription = dataAccess.watchRawQuery('''
-        WITH customer_stats AS (
-          SELECT 
-            c.id,
-            c.name,
-            c.email,
-            COUNT(o.id) as order_count,
-            COALESCE(SUM(o.total_amount), 0) as total_spent
-          FROM customers c
-          LEFT JOIN orders o ON c.id = o.customer_id AND o.status = 'completed'
-          GROUP BY c.id
-        ),
-        avg_stats AS (
-          SELECT AVG(total_spent) as avg_customer_spending
-          FROM customer_stats
-        )
-        SELECT 
-          cs.name,
-          cs.email,
-          cs.total_spent,
-          CASE 
-            WHEN cs.total_spent > avs.avg_customer_spending THEN 'high_value'
-            ELSE 'regular'
-          END as customer_tier
-        FROM customer_stats cs
-        CROSS JOIN avg_stats avs
-        ORDER BY cs.total_spent DESC
-      ''', null).listen((data) {
+      // Frontend query - Customer analytics (simplified from CTE version)
+      final query = QueryBuilder()
+        .select([
+          ExpressionBuilder.qualifiedColumn('c', 'name'),
+          ExpressionBuilder.qualifiedColumn('c', 'email'),
+          ExpressionBuilder.raw('COALESCE(SUM(o.total_amount), 0)').as('total_spent'),
+          ExpressionBuilder.function('COUNT', ['o.id']).as('order_count'),
+        ])
+        .from('customers', 'c')
+        .leftJoin('orders', 'c.id = o.customer_id AND o.status = \'completed\'', 'o')
+        .groupBy(['c.id'])
+        .orderBy(['total_spent DESC']);
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -370,26 +360,23 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - dashboard metrics
-      final subscription = dataAccess.watchAggregate<Map<String, dynamic>>(
-        'orders', // Primary dependency table
-        () async {
-          final result = await database.rawQuery('''
-            SELECT 
-              COUNT(DISTINCT c.id) as total_customers,
-              COUNT(o.id) as total_orders,
-              SUM(o.total_amount) as total_revenue,
-              AVG(o.total_amount) as avg_order_value,
-              COUNT(CASE WHEN o.status = 'pending' THEN 1 END) as pending_orders,
-              COUNT(CASE WHEN c.status = 'active' THEN 1 END) as active_customers
-            FROM orders o
-            JOIN customers c ON o.customer_id = c.id
-          ''');
-          return result.first;
-        },
-      ).listen((data) {
+      final query = QueryBuilder()
+        .select([
+          ExpressionBuilder.function('COUNT', ['DISTINCT c.id']).as('total_customers'),
+          ExpressionBuilder.function('COUNT', ['o.id']).as('total_orders'),
+          ExpressionBuilder.function('SUM', ['o.total_amount']).as('total_revenue'),
+          ExpressionBuilder.function('AVG', ['o.total_amount']).as('avg_order_value'),
+          ExpressionBuilder.raw('COUNT(CASE WHEN o.status = \'pending\' THEN 1 END)').as('pending_orders'),
+          ExpressionBuilder.raw('COUNT(CASE WHEN c.status = \'active\' THEN 1 END)').as('active_customers'),
+        ])
+        .from('orders', 'o')
+        .innerJoin('customers', 'o.customer_id = c.id', 'c');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
-          completer.complete(data);
+          // Extract first result for single-row aggregate
+          final result = data.isNotEmpty ? data.first : <String, dynamic>{};
+          completer.complete(result);
         }
       });
 
@@ -425,24 +412,22 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - search customers by city with orders
-      final subscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'customers',
-        () => database.rawQuery('''
-          SELECT 
-            c.id,
-            c.name,
-            c.email,
-            c.city,
-            COUNT(o.id) as order_count,
-            MAX(o.order_date) as last_order_date
-          FROM customers c
-          LEFT JOIN orders o ON c.id = o.customer_id
-          WHERE c.city LIKE '%York%' OR c.city LIKE '%Angeles%'
-          GROUP BY c.id
-          HAVING COUNT(o.id) > 0
-          ORDER BY last_order_date DESC
-        '''),
-      ).listen((data) {
+      final query = QueryBuilder()
+        .select([
+          ExpressionBuilder.qualifiedColumn('c', 'id'),
+          ExpressionBuilder.qualifiedColumn('c', 'name'),
+          ExpressionBuilder.qualifiedColumn('c', 'email'),
+          ExpressionBuilder.qualifiedColumn('c', 'city'),
+          ExpressionBuilder.function('COUNT', ['o.id']).as('order_count'),
+          ExpressionBuilder.function('MAX', ['o.order_date']).as('last_order_date'),
+        ])
+        .from('customers', 'c')
+        .leftJoin('orders', 'c.id = o.customer_id', 'o')
+        .where('c.city LIKE \'%York%\' OR c.city LIKE \'%Angeles%\'')
+        .groupBy(['c.id'])
+        .having('COUNT(o.id) > 0')
+        .orderBy(['last_order_date DESC']);
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -484,20 +469,18 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - real-time sales report
-      final subscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
-        'orders',
-        () => database.rawQuery('''
-          SELECT 
-            strftime('%Y-%m', order_date) as month,
-            COUNT(*) as order_count,
-            SUM(total_amount) as monthly_revenue,
-            COUNT(DISTINCT customer_id) as unique_customers
-          FROM orders
-          WHERE status IN ('completed', 'shipped')
-          GROUP BY strftime('%Y-%m', order_date)
-          ORDER BY month DESC
-        '''),
-      ).listen((data) {
+      final query = QueryBuilder()
+        .select([
+          ExpressionBuilder.raw('strftime(\'%Y-%m\', order_date)').as('month'),
+          ExpressionBuilder.function('COUNT', ['*']).as('order_count'),
+          ExpressionBuilder.function('SUM', ['total_amount']).as('monthly_revenue'),
+          ExpressionBuilder.function('COUNT', ['DISTINCT customer_id']).as('unique_customers'),
+        ])
+        .from('orders')
+        .where('status IN (\'completed\', \'shipped\')')
+        .groupBy(['strftime(\'%Y-%m\', order_date)'])
+        .orderBy(['month DESC']);
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);

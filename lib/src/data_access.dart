@@ -1068,6 +1068,19 @@ class DataAccess {
       }
     });
     
+    // Notify reactive streams about the bulk changes
+    if (rowsInserted > 0 || rowsUpdated > 0) {
+      final operation = options.upsertMode 
+          ? DatabaseOperation.bulkUpdate 
+          : DatabaseOperation.bulkInsert;
+      
+      await _streamManager.notifyChange(DatabaseChange(
+        tableName: tableName,
+        operation: operation,
+        affectedColumns: datasetColumns,
+      ));
+    }
+    
     return BulkLoadResult(
       rowsProcessed: rowsProcessed,
       rowsInserted: rowsInserted,
