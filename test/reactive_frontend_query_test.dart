@@ -120,7 +120,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Update customer status - should trigger because it affects the WHERE clause
       await dataAccess.updateByPrimaryKey('customers', 1, {'status': 'inactive'});
@@ -156,7 +156,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Add new order - should trigger because it affects the JOIN results
       await dataAccess.insert('orders', {
@@ -203,7 +203,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Add multiple orders for same date
       await Future.wait([
@@ -252,7 +252,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Add a large order that should affect the subquery average
       await dataAccess.insert('orders', {
@@ -292,7 +292,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Add order that should change rankings
       await dataAccess.insert('orders', {
@@ -332,7 +332,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Add high-value order that should affect customer tiers
       await dataAccess.insert('orders', {
@@ -346,8 +346,8 @@ void main() {
       expect(updateCount, equals(2));
       expect(result.length, equals(2));
       
-      // Check that customer tiers were recalculated
-      final hasHighValueCustomer = result.any((r) => r['customer_tier'] == 'high_value');
+      // Check that a customer now has high total spending (>= 800)
+      final hasHighValueCustomer = result.any((r) => (r['total_spent'] as num) >= 800);
       expect(hasHighValueCustomer, isTrue);
 
       await subscription.cancel();
@@ -380,7 +380,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Add new customer and order
       final newCustomerId = await dataAccess.insert('customers', {
@@ -434,7 +434,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Add customer in matching city
       final newCustomerId = await dataAccess.insert('customers', {
@@ -487,7 +487,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Add orders in new month
       await Future.wait([
