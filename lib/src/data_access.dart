@@ -1151,18 +1151,22 @@ class DataAccess {
   }
 
   /// Updates a specific LWW column with conflict resolution
-  Future<void> updateLWWColumn(
+  /// Returns the effective value after conflict resolution (may be different from input if rejected)
+  Future<dynamic> updateLWWColumn(
     String tableName,
     dynamic primaryKeyValue,
     String columnName,
     dynamic value, {
     String? timestamp,
+    String? explicitTimestamp,
+    bool isFromServer = false,
   }) async {
     if (!_hasLWWColumns(tableName)) {
       throw StateError('Table "$tableName" has no LWW columns. Mark columns with .lww() in the schema definition.');
     }
 
-    final actualTimestamp = timestamp ?? SystemColumnUtils.generateHLCTimestamp();
+    // Use explicitTimestamp if provided, then timestamp, then generate new one
+    final actualTimestamp = explicitTimestamp ?? timestamp ?? SystemColumnUtils.generateHLCTimestamp();
     final table = _getTableOrThrow(tableName);
     
     // Check if column is LWW-enabled
@@ -1175,11 +1179,25 @@ class DataAccess {
       throw ArgumentError('Column "$columnName" is not marked as LWW (.lww())');
     }
 
+    // CRITICAL FIX: Check existing timestamp for conflict resolution
+    final currentTimestamp = await _getLWWTimestamp(tableName, primaryKeyValue, columnName);
+    
+    // Only update if the new timestamp is newer or equal (Last-Writer-Wins)
+    bool shouldUpdate = true;
+    if (currentTimestamp != null) {
+      shouldUpdate = actualTimestamp.compareTo(currentTimestamp) >= 0;
+    }
+    
+    // If update should be rejected due to older timestamp, return current value
+    if (!shouldUpdate) {
+      return await getLWWColumnValue(tableName, primaryKeyValue, columnName);
+    }
+
     final lwwValue = LWWColumnValue(
       value: value,
       timestamp: actualTimestamp,
       columnName: columnName,
-      isFromServer: false,
+      isFromServer: isFromServer,
     );
 
     // Store in cache for immediate UI feedback
@@ -1193,21 +1211,27 @@ class DataAccess {
       primaryKeyValue,
       columnName,
       actualTimestamp,
+      isFromServer: isFromServer,
     );
 
     // Update the actual table with the new value
     await updateByPrimaryKey(tableName, primaryKeyValue, {columnName: value});
 
-    // Add to pending operations queue
-    final operationId = '${SystemColumnUtils.generateGuid()}_${DateTime.now().millisecondsSinceEpoch}';
-    _pendingOperations[operationId] = PendingOperation(
-      id: operationId,
-      tableName: tableName,
-      primaryKeyValue: primaryKeyValue,
-      columnUpdates: {columnName: lwwValue},
-      timestamp: actualTimestamp,
-      operationType: OperationType.update,
-    );
+    // Add to pending operations queue (only if not from server)
+    if (!isFromServer) {
+      final operationId = '${SystemColumnUtils.generateGuid()}_${DateTime.now().millisecondsSinceEpoch}';
+      _pendingOperations[operationId] = PendingOperation(
+        id: operationId,
+        tableName: tableName,
+        primaryKeyValue: primaryKeyValue,
+        columnUpdates: {columnName: lwwValue},
+        timestamp: actualTimestamp,
+        operationType: OperationType.update,
+      );
+    }
+    
+    // Return the value that was actually set
+    return value;
   }
 
   /// Gets the current effective value of an LWW column
@@ -1264,7 +1288,8 @@ class DataAccess {
   }
 
   /// Applies server update with conflict resolution
-  Future<void> applyServerUpdate(
+  /// Returns the effective values after conflict resolution
+  Future<Map<String, dynamic>> applyServerUpdate(
     String tableName,
     dynamic primaryKeyValue,
     Map<String, dynamic> serverData,
@@ -1274,13 +1299,20 @@ class DataAccess {
       throw StateError('Table "$tableName" has no LWW columns. Mark columns with .lww() in the schema definition.');
     }
 
+    final effectiveValues = <String, dynamic>{};
+
     await database.transaction((txn) async {
       for (final entry in serverData.entries) {
         final columnName = entry.key;
         final newValue = entry.value;
 
-        // Get current timestamp for this column
-        final currentTimestamp = await _getLWWTimestamp(tableName, primaryKeyValue, columnName);
+        // Get current timestamp for this column using transaction-safe method
+        final currentTimestamp = await _getLWWTimestampTxn(
+          txn,
+          tableName,
+          primaryKeyValue,
+          columnName,
+        );
 
         // Compare timestamps - server wins if timestamp is newer or equal
         if (currentTimestamp == null || serverTimestamp.compareTo(currentTimestamp) >= 0) {
@@ -1300,7 +1332,8 @@ class DataAccess {
             ).$2,
           );
 
-          await _storeLWWTimestamp(
+          await _storeLWWTimestampTxn(
+            txn,
             tableName,
             primaryKeyValue,
             columnName,
@@ -1317,10 +1350,34 @@ class DataAccess {
             columnName: columnName,
             isFromServer: true,
           );
+
+          effectiveValues[columnName] = newValue;
+        } else {
+          // Local timestamp is newer, local value wins - get from cache or database
+          final cachedValue = _lwwCache[tableName]?[primaryKeyValue]?[columnName];
+          if (cachedValue != null) {
+            effectiveValues[columnName] = cachedValue.value;
+          } else {
+            // Get current value from database within the same transaction
+            final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(
+              _getTableOrThrow(tableName).getPrimaryKeyColumns(),
+              primaryKeyValue,
+              _getTableOrThrow(tableName),
+            );
+            final result = await txn.query(
+              tableName,
+              columns: [columnName],
+              where: whereClause,
+              whereArgs: whereArgs,
+              limit: 1,
+            );
+            effectiveValues[columnName] = result.isNotEmpty ? result.first[columnName] : null;
+          }
         }
-        // If local timestamp is newer, local value wins (do nothing)
       }
     });
+
+    return effectiveValues;
   }
 
   /// Gets the current timestamp for an LWW column
@@ -1342,18 +1399,34 @@ class DataAccess {
     return result.isNotEmpty ? result.first['timestamp'] as String? : null;
   }
 
-  /// Gets all pending operations waiting for server sync
+  /// Gets all unsynced pending operations waiting for server sync
   List<PendingOperation> getPendingOperations() {
-    return _pendingOperations.values.toList();
+    return _pendingOperations.values.where((op) => !op.isSynced).toList();
   }
 
-  /// Marks an operation as synced and removes it from the pending queue
+  /// Marks an operation as synced (but keeps it for clearing later)
   void markOperationSynced(String operationId) {
-    _pendingOperations.remove(operationId);
+    final operation = _pendingOperations[operationId];
+    if (operation != null) {
+      _pendingOperations[operationId] = PendingOperation(
+        id: operation.id,
+        tableName: operation.tableName,
+        operationType: operation.operationType,
+        primaryKeyValue: operation.primaryKeyValue,
+        columnUpdates: operation.columnUpdates,
+        timestamp: operation.timestamp,
+        isSynced: true, // Mark as synced
+      );
+    }
   }
 
   /// Clears all synced operations from the pending queue
   void clearSyncedOperations() {
+    _pendingOperations.removeWhere((key, operation) => operation.isSynced);
+  }
+
+  /// Clears all pending operations (useful for testing)
+  void clearAllOperations() {
     _pendingOperations.clear();
   }
 
