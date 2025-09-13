@@ -49,24 +49,35 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = dataAccess.watchTable('users').listen((data) {
+      print('🔧 DEBUG: Creating watchTable stream');
+      final streamResult = dataAccess.watchTable('users');
+      print('🔧 DEBUG: Stream created, type: ${streamResult.runtimeType}');
+      
+      final subscription = streamResult.listen((data) {
         updateCount++;
+        print('🔧 DEBUG: Stream update #$updateCount: ${data.length} records');
         if (updateCount == 2) { // Skip initial load, wait for insert
+          print('🔧 DEBUG: Completing completer');
           completer.complete(data);
         }
       });
 
       // Wait for initial load
+      print('🔧 DEBUG: Waiting for initial load');
       await Future.delayed(Duration(milliseconds: 100));
+      print('🔧 DEBUG: After delay, update count: $updateCount');
 
       // Insert new user - should trigger update
+      print('🔧 DEBUG: Inserting new user');
       await dataAccess.insert('users', {
         'username': 'bob',
         'email': 'bob@example.com',
         'age': 25,
         'status': 'active',
       });
+      print('🔧 DEBUG: Insert completed');
 
+      print('🔧 DEBUG: Waiting for completer timeout');
       final result = await completer.future.timeout(Duration(seconds: 2));
       expect(updateCount, equals(2));
       expect(result.length, equals(2)); // 1 initial + 1 new

@@ -50,11 +50,21 @@ class ReactiveStream<T> {
   /// Timer for debouncing changes
   Timer? _debounceTimer;
   
+  /// Flag to track if this stream has ever been listened to
+  /// This prevents race conditions where cleanup deletes streams before they're listened to
+  bool _hasBeenListenedTo = false;
+  
   /// Whether this stream is currently active (has listeners)
   bool get hasListeners => _controller.hasListener;
   
+  /// Whether this stream has been listened to at least once
+  bool get hasBeenListenedTo => _hasBeenListenedTo;
+  
   /// The stream that clients listen to
-  Stream<T> get stream => _controller.stream;
+  Stream<T> get stream {
+    _hasBeenListenedTo = true; // Mark as listened to when accessed
+    return _controller.stream;
+  }
   
   /// Last emitted value
   T? _lastValue;
@@ -148,8 +158,8 @@ class ReactiveStreamManager {
     // Store the stream
     _streams[streamId] = stream;
     
-    // Generate initial data asynchronously
-    Future.microtask(() => stream.refresh());
+    // Generate initial data with a small delay to ensure listener can be attached
+    Timer(Duration(milliseconds: 1), () => stream.refresh());
     
     return stream;
   }
@@ -185,8 +195,8 @@ class ReactiveStreamManager {
     // Store the stream
     _streams[streamId] = stream;
     
-    // Generate initial data asynchronously
-    Future.microtask(() => stream.refresh());
+    // Generate initial data with a small delay to ensure listener can be attached
+    Timer(Duration(milliseconds: 1), () => stream.refresh());
     
     return stream;
   }
@@ -218,8 +228,8 @@ class ReactiveStreamManager {
     // Store the stream
     _streams[streamId] = stream;
     
-    // Generate initial data asynchronously
-    Future.microtask(() => stream.refresh());
+    // Generate initial data with a small delay to ensure listener can be attached
+    Timer(Duration(milliseconds: 1), () => stream.refresh());
     
     return stream;
   }
@@ -266,11 +276,15 @@ class ReactiveStreamManager {
   }
   
   /// Cleans up inactive streams (streams with no listeners)
+  /// Only cleans up streams that have been listened to at least once to avoid race conditions
   Future<void> cleanupInactiveStreams() async {
     final inactiveStreams = <String>[];
     
     for (final entry in _streams.entries) {
-      if (!entry.value.hasListeners || entry.value.isClosed) {
+      final stream = entry.value;
+      // Only clean up streams that have been listened to at least once
+      // AND currently have no listeners (or are closed)
+      if (stream.hasBeenListenedTo && (!stream.hasListeners || stream.isClosed)) {
         inactiveStreams.add(entry.key);
       }
     }

@@ -20,15 +20,23 @@ void main() {
     schema = SchemaBuilder()
       .table('users', (table) => table
           .autoIncrementPrimaryKey('id')
-          .text('name', (col) => col.notNull()));
+          .text('username', (col) => col.notNull().unique())
+          .text('email', (col) => col.notNull())
+          .integer('age')
+          .text('status', (col) => col.notNull()));
 
     final migrator = SchemaMigrator();
     await migrator.migrate(database, schema);
 
     dataAccess = await DataAccess.create(database: database, schema: schema);
 
-    // Insert initial data
-    await dataAccess.insert('users', {'name': 'Alice'});
+    // Insert initial data like the failing test
+    await dataAccess.insert('users', {
+      'username': 'alice',
+      'email': 'alice@example.com',
+      'age': 30,
+      'status': 'active',
+    });
   });
 
   tearDown(() async {
@@ -36,7 +44,7 @@ void main() {
     await database.close();
   });
 
-  test('debug reactive stream creation', () async {
+  test('debug reactive stream with insert', () async {
     print('Creating stream...');
     final stream = dataAccess.watchTable('users');
     
@@ -47,31 +55,75 @@ void main() {
     final subscription = stream.listen((data) {
       updateCount++;
       lastData = data;
-      print('Stream update #$updateCount: $data');
+      print('Stream update #$updateCount: ${data.length} records');
     });
 
     print('Waiting for initial data...');
     await Future.delayed(Duration(milliseconds: 500));
     
-    print('Update count: $updateCount');
-    print('Last data: $lastData');
+    print('Update count after initial: $updateCount');
     
-    if (updateCount == 0) {
-      print('No updates received. Testing direct DataAccess...');
-      final directData = await dataAccess.getAll('users');
-      print('Direct query result: $directData');
-    }
+    print('Inserting new user...');
+    await dataAccess.insert('users', {
+      'username': 'bob2',
+      'email': 'bob2@example.com',
+      'age': 25,
+      'status': 'active',
+    });
+    
+    print('Waiting after insert...');
+    await Future.delayed(Duration(milliseconds: 500));
+    
+    print('Final update count: $updateCount');
+    print('Final data: $lastData');
+    
+    // Check dependency stats
+    final stats = dataAccess.getDependencyStats();
+    print('Dependency stats: $stats');
 
     await subscription.cancel();
     
-    // Basic assertion
-    expect(updateCount, greaterThan(0), reason: 'Stream should emit at least one update');
+    // Should have at least 2 updates: initial + insert
+    expect(updateCount, greaterThanOrEqualTo(2), 
+      reason: 'Stream should emit initial data and update after insert');
   });
 
-  test('debug simple data access', () async {
-    print('Testing direct data access...');
-    final users = await dataAccess.getAll('users');
-    print('Users from direct query: $users');
-    expect(users.length, equals(1));
+  test('exact replica of failing test', () async {
+    final completer = Completer<List<Map<String, dynamic>>>();
+    var updateCount = 0;
+
+    print('Creating subscription...');
+    final subscription = dataAccess.watchTable('users').listen((data) {
+      updateCount++;
+      print('📢 Stream update #$updateCount: ${data.length} records');
+      if (updateCount == 2) { // Skip initial load, wait for insert
+        print('🎯 Completing completer with $updateCount updates');
+        completer.complete(data);
+      }
+    });
+
+    // Wait for initial load
+    print('⏳ Waiting for initial load...');
+    await Future.delayed(Duration(milliseconds: 100));
+    print('📊 After initial delay: $updateCount updates');
+
+    // Insert new user - should trigger update
+    print('➕ Inserting new user...');
+    await dataAccess.insert('users', {
+      'username': 'bob',
+      'email': 'bob@example.com',
+      'age': 25,
+      'status': 'active',
+    });
+    print('✅ Insert completed');
+
+    print('⏳ Waiting for completer...');
+    final result = await completer.future.timeout(Duration(seconds: 2));
+    print('🏆 Completer completed successfully');
+    
+    expect(updateCount, equals(2));
+    expect(result.length, equals(2)); // 1 initial + 1 new
+
+    await subscription.cancel();
   });
 }
