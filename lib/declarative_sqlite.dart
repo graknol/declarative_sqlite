@@ -188,4 +188,3 @@ export 'src/data_access.dart';
 export 'src/lww_types.dart';
 export 'src/server_sync_manager.dart';
 export 'src/stream_dependency_tracker.dart';
-export 'src/reactive_data_access.dart';

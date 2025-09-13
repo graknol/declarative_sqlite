@@ -1,12 +1,292 @@
 import 'package:sqflite_common/sqflite.dart';
 import 'package:meta/meta.dart';
 import 'dart:math';
+import 'dart:async';
 import 'schema_builder.dart';
 import 'table_builder.dart';
 import 'column_builder.dart';
 import 'data_types.dart';
 import 'lww_types.dart';
 import 'relationship_builder.dart';
+import 'stream_dependency_tracker.dart';
+
+/// A function that generates data for a stream when it needs to be refreshed
+typedef StreamDataGenerator<T> = Future<T> Function();
+
+/// A reactive stream that automatically updates when its dependencies change
+class ReactiveStream<T> {
+  ReactiveStream({
+    required this.streamId,
+    required this.dataGenerator,
+    this.initialData,
+    this.bufferChanges = false,
+    this.debounceTime = const Duration(milliseconds: 100),
+  }) : _controller = StreamController<T>.broadcast() {
+    
+    // Generate initial data if provided
+    if (initialData != null) {
+      _controller.add(initialData!);
+    }
+  }
+  
+  /// Unique identifier for this stream
+  final String streamId;
+  
+  /// Function that generates the data for this stream
+  final StreamDataGenerator<T> dataGenerator;
+  
+  /// Optional initial data
+  final T? initialData;
+  
+  /// Whether to buffer rapid changes and emit only the latest
+  final bool bufferChanges;
+  
+  /// Debounce time for buffered changes
+  final Duration debounceTime;
+  
+  /// Internal stream controller
+  final StreamController<T> _controller;
+  
+  /// Timer for debouncing changes
+  Timer? _debounceTimer;
+  
+  /// Whether this stream is currently active (has listeners)
+  bool get hasListeners => _controller.hasListener;
+  
+  /// The stream that clients listen to
+  Stream<T> get stream => _controller.stream;
+  
+  /// Last emitted value
+  T? _lastValue;
+  T? get lastValue => _lastValue;
+  
+  /// Refreshes the stream by calling the data generator
+  Future<void> refresh() async {
+    if (_controller.isClosed) return;
+    
+    try {
+      final newData = await dataGenerator();
+      _lastValue = newData;
+      
+      if (bufferChanges) {
+        _scheduleBufferedUpdate(newData);
+      } else {
+        _controller.add(newData);
+      }
+    } catch (error, stackTrace) {
+      _controller.addError(error, stackTrace);
+    }
+  }
+  
+  /// Schedules a buffered update with debouncing
+  void _scheduleBufferedUpdate(T data) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(debounceTime, () {
+      if (!_controller.isClosed) {
+        _controller.add(data);
+      }
+    });
+  }
+  
+  /// Closes the stream and cleans up resources
+  Future<void> close() async {
+    _debounceTimer?.cancel();
+    await _controller.close();
+  }
+  
+  /// Whether the stream is closed
+  bool get isClosed => _controller.isClosed;
+}
+
+/// Manages reactive streams with automatic dependency-based invalidation
+class ReactiveStreamManager {
+  ReactiveStreamManager({
+    required this.dataAccess,
+    required this.schema,
+  }) : _dependencyTracker = StreamDependencyTracker(schema);
+
+  final DataAccess dataAccess;
+  final SchemaBuilder schema;
+  final StreamDependencyTracker _dependencyTracker;
+  final Map<String, ReactiveStream> _streams = {};
+
+  /// Creates a reactive stream for table data
+  ReactiveStream<List<Map<String, dynamic>>> createTableStream(
+    String streamId,
+    String tableName, {
+    String? where,
+    List<dynamic>? whereArgs,
+    String? orderBy,
+    int? limit,
+    int? offset,
+    bool bufferChanges = true,
+    Duration debounceTime = const Duration(milliseconds: 100),
+  }) {
+    // Create the reactive stream
+    final stream = ReactiveStream<List<Map<String, dynamic>>>(
+      streamId: streamId,
+      dataGenerator: () => dataAccess.getAllWhere(
+        tableName,
+        where: where,
+        whereArgs: whereArgs,
+        orderBy: orderBy,
+        limit: limit,
+        offset: offset,
+      ),
+      bufferChanges: bufferChanges,
+      debounceTime: debounceTime,
+    );
+    
+    // Register dependencies
+    _dependencyTracker.registerStream(
+      streamId,
+      tableName,
+      where: where,
+      whereArgs: whereArgs,
+    );
+    
+    // Store the stream
+    _streams[streamId] = stream;
+    
+    // Generate initial data asynchronously
+    Future.microtask(() => stream.refresh());
+    
+    return stream;
+  }
+
+  /// Creates a reactive stream for aggregated data
+  ReactiveStream<T> createAggregateStream<T>(
+    String streamId,
+    String tableName,
+    StreamDataGenerator<T> aggregateFunction, {
+    String? where,
+    List<dynamic>? whereArgs,
+    List<String>? dependentColumns,
+    bool bufferChanges = true,
+    Duration debounceTime = const Duration(milliseconds: 100),
+  }) {
+    // Create the reactive stream
+    final stream = ReactiveStream<T>(
+      streamId: streamId,
+      dataGenerator: aggregateFunction,
+      bufferChanges: bufferChanges,
+      debounceTime: debounceTime,
+    );
+    
+    // Register dependencies
+    _dependencyTracker.registerStream(
+      streamId,
+      tableName,
+      where: where,
+      whereArgs: whereArgs,
+      columns: dependentColumns,
+    );
+    
+    // Store the stream
+    _streams[streamId] = stream;
+    
+    // Generate initial data asynchronously
+    Future.microtask(() => stream.refresh());
+    
+    return stream;
+  }
+
+  /// Creates a reactive stream for raw SQL queries
+  ReactiveStream<List<Map<String, dynamic>>> createRawQueryStream(
+    String streamId,
+    String query,
+    List<dynamic>? arguments, {
+    bool bufferChanges = true,
+    Duration debounceTime = const Duration(milliseconds: 100),
+  }) {
+    // Create the reactive stream
+    final stream = ReactiveStream<List<Map<String, dynamic>>>(
+      streamId: streamId,
+      dataGenerator: () => dataAccess.database.rawQuery(query, arguments),
+      bufferChanges: bufferChanges,
+      debounceTime: debounceTime,
+    );
+    
+    // Register dependencies based on query analysis
+    // For now, use a conservative approach and register dependency on all tables
+    // TODO: Implement proper query parsing to determine specific table dependencies
+    final allTables = schema.tables.map((table) => table.name).toList();
+    if (allTables.isNotEmpty) {
+      _dependencyTracker.registerStream(streamId, allTables.first);
+    }
+    
+    // Store the stream
+    _streams[streamId] = stream;
+    
+    // Generate initial data asynchronously
+    Future.microtask(() => stream.refresh());
+    
+    return stream;
+  }
+  
+  /// Notifies the manager about a database change
+  Future<void> notifyChange(DatabaseChange change) async {
+    // Get affected streams
+    final affectedStreams = _dependencyTracker.getAffectedStreams(change);
+    
+    // Refresh affected streams
+    final refreshFutures = <Future<void>>[];
+    for (final streamId in affectedStreams) {
+      final stream = _streams[streamId];
+      if (stream != null && stream.hasListeners && !stream.isClosed) {
+        refreshFutures.add(stream.refresh());
+      }
+    }
+    
+    // Wait for all refreshes to complete
+    await Future.wait(refreshFutures);
+  }
+  
+  /// Removes a stream and cleans up its dependencies
+  Future<void> removeStream(String streamId) async {
+    final stream = _streams.remove(streamId);
+    if (stream != null) {
+      await stream.close();
+    }
+    
+    _dependencyTracker.unregisterStream(streamId);
+  }
+  
+  /// Gets a stream by ID
+  ReactiveStream? getStream(String streamId) {
+    return _streams[streamId];
+  }
+  
+  /// Gets all active stream IDs
+  Set<String> get activeStreams => _streams.keys.toSet();
+  
+  /// Gets dependency statistics
+  DependencyStats getDependencyStats() {
+    return _dependencyTracker.getStats();
+  }
+  
+  /// Cleans up inactive streams (streams with no listeners)
+  Future<void> cleanupInactiveStreams() async {
+    final inactiveStreams = <String>[];
+    
+    for (final entry in _streams.entries) {
+      if (!entry.value.hasListeners || entry.value.isClosed) {
+        inactiveStreams.add(entry.key);
+      }
+    }
+    
+    for (final streamId in inactiveStreams) {
+      await removeStream(streamId);
+    }
+  }
+  
+  /// Disposes all streams and cleans up resources
+  Future<void> dispose() async {
+    final disposeFutures = _streams.values.map((stream) => stream.close()).toList();
+    await Future.wait(disposeFutures);
+    _streams.clear();
+  }
+}
 
 /// Utilities for generating system column values
 class SystemColumnUtils {
@@ -162,6 +442,17 @@ class DataAccess {
       await instance._initializeLWWTables();
     }
     
+    // Initialize reactive functionality
+    instance._streamManager = ReactiveStreamManager(
+      dataAccess: instance,
+      schema: schema,
+    );
+    
+    // Start auto-cleanup timer for inactive streams
+    instance._autoCleanupTimer = Timer.periodic(_defaultAutoCleanupInterval, (_) {
+      instance._streamManager.cleanupInactiveStreams();
+    });
+    
     return instance;
   }
 
@@ -180,6 +471,15 @@ class DataAccess {
   
   /// Queue of pending operations waiting to be synced to server
   final Map<String, PendingOperation> _pendingOperations = {};
+
+  /// Reactive stream manager for change notifications and dependency tracking
+  late final ReactiveStreamManager _streamManager;
+  
+  /// Timer for automatic cleanup of inactive streams
+  Timer? _autoCleanupTimer;
+  
+  /// Auto-cleanup interval for inactive streams
+  static const Duration _defaultAutoCleanupInterval = Duration(minutes: 5);
 
   /// Checks if the schema contains any tables with LWW columns
   bool _hasAnyLWWColumns() {
@@ -2059,6 +2359,180 @@ class DataAccess {
     }
     
     return results;
+  }
+
+  // ============= Reactive Stream Methods =============
+
+  /// Creates a reactive stream for table data
+  Stream<List<Map<String, dynamic>>> watchTable(
+    String tableName, {
+    String? where,
+    List<dynamic>? whereArgs,
+    String? orderBy,
+    int? limit,
+    int? offset,
+    String? streamId,
+  }) {
+    final id = streamId ?? 'watch_${tableName}_${DateTime.now().millisecondsSinceEpoch}';
+    
+    final reactiveStream = _streamManager.createTableStream(
+      id,
+      tableName,
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: orderBy,
+      limit: limit,
+      offset: offset,
+    );
+    
+    return reactiveStream.stream;
+  }
+
+  /// Creates a reactive stream for aggregated data
+  Stream<T> watchAggregate<T>(
+    String tableName,
+    StreamDataGenerator<T> aggregateFunction, {
+    String? where,
+    List<dynamic>? whereArgs,
+    List<String>? dependentColumns,
+    String? streamId,
+  }) {
+    final id = streamId ?? 'aggregate_${tableName}_${DateTime.now().millisecondsSinceEpoch}';
+    
+    final reactiveStream = _streamManager.createAggregateStream<T>(
+      id,
+      tableName,
+      aggregateFunction,
+      where: where,
+      whereArgs: whereArgs,
+      dependentColumns: dependentColumns,
+    );
+    
+    return reactiveStream.stream;
+  }
+
+  /// Creates a reactive stream for raw SQL queries
+  Stream<List<Map<String, dynamic>>> watchRawQuery(
+    String query,
+    List<dynamic>? arguments, {
+    String? streamId,
+  }) {
+    final id = streamId ?? 'raw_query_${DateTime.now().millisecondsSinceEpoch}';
+    
+    final reactiveStream = _streamManager.createRawQueryStream(
+      id,
+      query,
+      arguments,
+    );
+    
+    return reactiveStream.stream;
+  }
+
+  /// Creates a reactive stream for raw aggregate queries with custom data types
+  Stream<T> watchRawAggregate<T>(
+    String query,
+    List<dynamic>? arguments,
+    T Function(List<Map<String, dynamic>>) transformer, {
+    String? streamId,
+  }) {
+    final id = streamId ?? 'raw_aggregate_${DateTime.now().millisecondsSinceEpoch}';
+    
+    final reactiveStream = _streamManager.createRawQueryStream(
+      id,
+      query,
+      arguments,
+    );
+    
+    return reactiveStream.stream.map(transformer);
+  }
+
+  /// Creates a reactive stream for counting records
+  Stream<int> watchCount(
+    String tableName, {
+    String? where,
+    List<dynamic>? whereArgs,
+    String? streamId,
+  }) {
+    return watchAggregate<int>(
+      tableName,
+      () => count(tableName, where: where, whereArgs: whereArgs),
+      where: where,
+      whereArgs: whereArgs,
+      streamId: streamId,
+    );
+  }
+
+  /// Creates a reactive stream for a single record by primary key
+  Stream<Map<String, dynamic>?> watchByPrimaryKey(
+    String tableName,
+    dynamic primaryKeyValue, {
+    String? streamId,
+  }) {
+    final id = streamId ?? 'pk_${tableName}_${primaryKeyValue}_${DateTime.now().millisecondsSinceEpoch}';
+    
+    return watchAggregate<Map<String, dynamic>?>(
+      tableName,
+      () => getByPrimaryKey(tableName, primaryKeyValue),
+      streamId: id,
+    );
+  }
+
+  // ============= Pull-to-Refresh Methods =============
+
+  /// Manually refreshes a specific stream by stream ID
+  Future<void> refreshStream(String streamId) async {
+    final stream = _streamManager.getStream(streamId);
+    if (stream != null && !stream.isClosed) {
+      await stream.refresh();
+    }
+  }
+
+  /// Refreshes all streams watching a specific table (useful for pull-to-refresh)
+  Future<void> refreshTable(String tableName) async {
+    // Get all active streams and refresh those that might be affected by this table
+    final activeStreams = _streamManager.activeStreams;
+    final refreshFutures = <Future<void>>[];
+    
+    for (final streamId in activeStreams) {
+      // For now, refresh all streams that contain the table name in their ID
+      // This is a simple heuristic that works for most common patterns
+      if (streamId.contains(tableName)) {
+        refreshFutures.add(refreshStream(streamId));
+      }
+    }
+    
+    // If no streams match the heuristic, refresh all streams
+    // This ensures pull-to-refresh always works even if naming doesn't match
+    if (refreshFutures.isEmpty) {
+      for (final streamId in activeStreams) {
+        refreshFutures.add(refreshStream(streamId));
+      }
+    }
+    
+    await Future.wait(refreshFutures);
+  }
+
+  /// Refreshes all active streams (useful for global pull-to-refresh)
+  Future<void> refreshAll() async {
+    final activeStreams = _streamManager.activeStreams;
+    final refreshFutures = activeStreams.map((streamId) => refreshStream(streamId));
+    await Future.wait(refreshFutures);
+  }
+
+  /// Manually cleans up inactive streams
+  Future<void> cleanupInactiveStreams() async {
+    await _streamManager.cleanupInactiveStreams();
+  }
+
+  /// Gets dependency statistics for reactive streams
+  DependencyStats getDependencyStats() {
+    return _streamManager.getDependencyStats();
+  }
+
+  /// Disposes all reactive streams and cleans up resources
+  Future<void> dispose() async {
+    _autoCleanupTimer?.cancel();
+    await _streamManager.dispose();
   }
 }
 
