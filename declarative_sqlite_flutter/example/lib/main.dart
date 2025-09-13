@@ -20,7 +20,6 @@ class MyApp extends StatelessWidget {
       home: DatabaseServiceProvider(
         schema: _createSchema(),
         databaseName: 'demo.db',
-        enableLWW: true,
         child: const HomePage(),
       ),
     );
@@ -69,7 +68,7 @@ class HomePage extends StatelessWidget {
             tabs: [
               Tab(text: 'Users', icon: Icon(Icons.people)),
               Tab(text: 'Add User', icon: Icon(Icons.person_add)),
-              Tab(text: 'Master-Detail', icon: Icon(Icons.list)),
+              Tab(text: 'Record Builder', icon: Icon(Icons.edit)),
             ],
           ),
         ),
@@ -77,7 +76,7 @@ class HomePage extends StatelessWidget {
           children: [
             UserListTab(dataAccess: service!.dataAccess!),
             AddUserTab(dataAccess: service.dataAccess!),
-            MasterDetailTab(dataAccess: service.dataAccess!),
+            RecordBuilderTab(dataAccess: service.dataAccess!),
           ],
         ),
       ),
@@ -304,24 +303,240 @@ class _AddUserTabState extends State<AddUserTab> {
   }
 }
 
-class MasterDetailTab extends StatelessWidget {
+class RecordBuilderTab extends StatefulWidget {
   final DataAccess dataAccess;
 
-  const MasterDetailTab({super.key, required this.dataAccess});
+  const RecordBuilderTab({super.key, required this.dataAccess});
+
+  @override
+  State<RecordBuilderTab> createState() => _RecordBuilderTabState();
+}
+
+class _RecordBuilderTabState extends State<RecordBuilderTab> {
+  int? _selectedUserId;
 
   @override
   Widget build(BuildContext context) {
-    return SimpleMasterDetailView(
-      dataAccess: dataAccess,
-      masterTable: 'users',
-      detailTable: 'posts',
-      foreignKeyColumn: 'user_id',
-      masterSectionTitle: 'Users',
-      detailSectionTitle: 'Posts',
-      masterTitle: (user) => user['name'],
-      masterSubtitle: (user) => user['email'],
-      detailTitle: (post) => post['title'] ?? 'Untitled',
-      detailSubtitle: (post) => 'Status: ${post['status']}',
+    return Column(
+      children: [
+        // User selector section
+        Expanded(
+          flex: 1,
+          child: Card(
+            margin: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Select a User to Edit',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Expanded(
+                  child: ReactiveListView(
+                    dataAccess: widget.dataAccess,
+                    tableName: 'users',
+                    itemBuilder: (context, user) {
+                      final isSelected = _selectedUserId == user['id'];
+                      return Card(
+                        elevation: isSelected ? 8 : 1,
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : null,
+                        child: ListTile(
+                          title: Text(user['name'] ?? 'Unknown'),
+                          subtitle: Text(user['email'] ?? ''),
+                          trailing: Text('Age: ${user['age'] ?? 'N/A'}'),
+                          onTap: () {
+                            setState(() {
+                              _selectedUserId = user['id'];
+                            });
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        
+        // Record builder section
+        Expanded(
+          flex: 1,
+          child: Card(
+            margin: const EdgeInsets.all(16),
+            child: _selectedUserId == null
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.touch_app, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          'Select a user above to edit their details',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  )
+                : ReactiveRecordBuilder(
+                    dataAccess: widget.dataAccess,
+                    tableName: 'users',
+                    primaryKey: _selectedUserId!,
+                    builder: (context, recordData) {
+                      if (recordData == null) {
+                        return const Center(
+                          child: Text('User not found'),
+                        );
+                      }
+
+                      return Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Edit User Details',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // Name field
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    initialValue: recordData.getValue<String>('name') ?? '',
+                                    decoration: const InputDecoration(
+                                      labelText: 'Name',
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    onFieldSubmitted: (value) {
+                                      recordData.updateColumn('name', value);
+                                    },
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.save),
+                                  onPressed: () {
+                                    // Show save confirmation
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Changes saved automatically'),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // Email field
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    initialValue: recordData.getValue<String>('email') ?? '',
+                                    decoration: const InputDecoration(
+                                      labelText: 'Email',
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    onFieldSubmitted: (value) {
+                                      recordData.updateColumn('email', value);
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // Age slider
+                            Text('Age: ${recordData.getValue<int>('age') ?? 0}'),
+                            Slider(
+                              value: (recordData.getValue<int>('age') ?? 0).toDouble(),
+                              min: 0,
+                              max: 120,
+                              divisions: 120,
+                              onChanged: (value) {
+                                recordData.updateColumn('age', value.round());
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // Action buttons
+                            Row(
+                              children: [
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    recordData.updateColumns({
+                                      'name': 'Updated Name',
+                                      'age': 25,
+                                    });
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Bulk update applied'),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.update),
+                                  label: const Text('Bulk Update'),
+                                ),
+                                const SizedBox(width: 16),
+                                ElevatedButton.icon(
+                                  onPressed: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (context) => AlertDialog(
+                                        title: const Text('Delete User'),
+                                        content: const Text('Are you sure you want to delete this user?'),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.of(context).pop(false),
+                                            child: const Text('Cancel'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () => Navigator.of(context).pop(true),
+                                            child: const Text('Delete'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    
+                                    if (confirm == true) {
+                                      await recordData.delete();
+                                      setState(() {
+                                        _selectedUserId = null;
+                                      });
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('User deleted'),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  icon: const Icon(Icons.delete),
+                                  label: const Text('Delete'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ),
+      ],
     );
   }
 }

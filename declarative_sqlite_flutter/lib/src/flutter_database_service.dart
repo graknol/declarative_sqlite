@@ -33,7 +33,6 @@ class FlutterDatabaseService extends ChangeNotifier {
     required SchemaBuilder schema,
     String? databaseName,
     String? databasePath,
-    bool enableLWW = false,
     int version = 1,
     void Function(Database db, int oldVersion, int newVersion)? onUpgrade,
   }) async {
@@ -71,7 +70,6 @@ class FlutterDatabaseService extends ChangeNotifier {
       _dataAccess = await DataAccess.create(
         database: _database!,
         schema: _schema!,
-        enableLWW: enableLWW,
       );
 
       _isInitialized = true;
@@ -254,9 +252,6 @@ class DatabaseServiceProvider extends StatefulWidget {
   /// Custom database path
   final String? databasePath;
   
-  /// Whether to enable LWW (Last-Write-Wins) support
-  final bool enableLWW;
-  
   /// Database version
   final int version;
   
@@ -278,7 +273,6 @@ class DatabaseServiceProvider extends StatefulWidget {
     required this.child,
     this.databaseName,
     this.databasePath,
-    this.enableLWW = false,
     this.version = 1,
     this.onUpgrade,
     this.loadingWidget,
@@ -306,7 +300,6 @@ class _DatabaseServiceProviderState extends State<DatabaseServiceProvider> {
         schema: widget.schema,
         databaseName: widget.databaseName,
         databasePath: widget.databasePath,
-        enableLWW: widget.enableLWW,
         version: widget.version,
         onUpgrade: widget.onUpgrade,
       );

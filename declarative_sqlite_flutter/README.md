@@ -5,8 +5,8 @@ A Flutter package that provides seamless integration of [declarative_sqlite](../
 ## Features
 
 - **Reactive ListView Widgets**: Automatically update when database changes
-- **LWW Form Integration**: Form widgets with Last-Write-Wins column binding
-- **Master-Detail Patterns**: Built-in support for database-driven navigation
+- **LWW Form Integration**: Form widgets with Last-Write-Wins column binding  
+- **Low-level Record Builders**: Building blocks for custom reactive widgets
 - **Input Field Widgets**: Text fields, sliders, dropdowns that sync with database columns
 - **Stream-based UI Updates**: Reactive widgets that respond to database changes
 - **Helper Utilities**: Validators, formatters, and common UI patterns
@@ -40,7 +40,6 @@ class MyApp extends StatelessWidget {
       home: DatabaseServiceProvider(
         schema: _createSchema(),
         databaseName: 'app.db',
-        enableLWW: true,
         child: HomePage(),
       ),
     );
@@ -133,18 +132,32 @@ LWWForm(
 )
 ```
 
-### Master-Detail Views
+### Reactive Record Builder
 
-Built-in support for master-detail patterns:
+Low-level building block for custom reactive widgets:
 
 ```dart
-SimpleMasterDetailView(
+ReactiveRecordBuilder(
   dataAccess: dataAccess,
-  masterTable: 'orders',
-  detailTable: 'order_items',
-  foreignKeyColumn: 'order_id',
-  masterTitle: (order) => 'Order #${order['id']}',
-  detailTitle: (item) => item['product_name'],
+  tableName: 'users',
+  primaryKey: userId,
+  builder: (context, recordData) {
+    if (recordData == null) return Text('User not found');
+    
+    return Column(
+      children: [
+        Text('Name: ${recordData.getValue<String>('name')}'),
+        ElevatedButton(
+          onPressed: () => recordData.updateColumn('name', 'New Name'),
+          child: Text('Update Name'),
+        ),
+        ElevatedButton(
+          onPressed: () => recordData.delete(),
+          child: Text('Delete'),
+        ),
+      ],
+    );
+  },
 )
 ```
 

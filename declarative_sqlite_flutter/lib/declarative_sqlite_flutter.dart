@@ -3,10 +3,10 @@
 /// 
 /// This library builds upon the declarative_sqlite package to provide:
 /// - Reactive ListView widgets that automatically update when database changes
-/// - Form widgets with automatic LWW (Last-Write-Wins) column binding
-/// - Master-detail navigation patterns for database-driven content
+/// - Form widgets with automatic LWW (Last-Write-Wins) column binding  
 /// - Input field widgets that sync with database columns
 /// - Stream-based UI updates using reactive database functionality
+/// - Low-level record builder widgets for custom reactive components
 /// 
 /// ## Quick Start
 /// 
@@ -51,28 +51,16 @@
 ///   ),
 /// )
 /// ```
-/// 
-/// ### Master-Detail Pattern
-/// ```dart
-/// // Navigate to detail view with automatic data binding
-/// MasterDetailView(
-///   dataAccess: dataAccess,
-///   masterTable: 'orders',
-///   detailTable: 'order_items',
-///   relationship: 'order_items',
-///   masterBuilder: (context, order) => OrderCard(order: order),
-///   detailBuilder: (context, item) => OrderItemCard(item: item),
-/// )
-/// ```
 library declarative_sqlite_flutter;
 
 // Core functionality
 export 'src/reactive_list_view.dart';
+export 'src/reactive_record_builder.dart';
 export 'src/lww_form.dart';
 export 'src/lww_text_field.dart';
 export 'src/lww_slider.dart';
 export 'src/lww_dropdown.dart';
-export 'src/master_detail_view.dart';
+
 export 'src/database_stream_builder.dart';
 export 'src/reactive_widgets.dart';
 
