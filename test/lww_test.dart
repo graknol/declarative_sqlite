@@ -35,8 +35,8 @@ void main() {
     });
 
     setUp(() {
-      // Clear operations before each test to avoid interference
-      dataAccess.clearSyncedOperations();
+      // Clear all operations before each test to avoid interference
+      dataAccess.clearAllOperations();
     });
 
     test('can create table with LWW columns', () async {

@@ -39,8 +39,8 @@ void main() {
     });
 
     setUp(() {
-      // Clear operations before each test
-      dataAccess.clearSyncedOperations();
+      // Clear all operations before each test
+      dataAccess.clearAllOperations();
     });
 
     test('scenario: user modifies quantity while offline, app closes, reopens, syncs later', () async {

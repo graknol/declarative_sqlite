@@ -12,7 +12,8 @@ void main() {
     late SchemaBuilder schema;
     late DataAccess dataAccess;
 
-    setUpAll(() async {
+    setUp(() async {
+      // Create a fresh database for each test
       database = await databaseFactory.openDatabase(':memory:');
       
       schema = SchemaBuilder()
@@ -36,12 +37,9 @@ void main() {
       dataAccess = await DataAccess.create(database: database, schema: schema);
     });
 
-    tearDownAll(() async {
+    tearDown(() async {
+      await dataAccess.dispose();
       await database.close();
-    });
-
-    setUp(() {
-      dataAccess.clearSyncedOperations();
     });
 
     test('rejects LWW column updates without HLC timestamps', () async {

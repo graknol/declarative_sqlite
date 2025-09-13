@@ -36,8 +36,8 @@ void main() {
     });
 
     setUp(() {
-      // Clear operations before each test
-      dataAccess.clearSyncedOperations();
+      // Clear all operations before each test to ensure clean state
+      dataAccess.clearAllOperations();
     });
 
     test('can create ServerSyncManager with callback', () {

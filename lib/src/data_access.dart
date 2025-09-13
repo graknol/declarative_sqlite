@@ -1,12 +1,342 @@
 import 'package:sqflite_common/sqflite.dart';
 import 'package:meta/meta.dart';
 import 'dart:math';
+import 'dart:async';
 import 'schema_builder.dart';
 import 'table_builder.dart';
 import 'column_builder.dart';
 import 'data_types.dart';
 import 'lww_types.dart';
 import 'relationship_builder.dart';
+import 'stream_dependency_tracker.dart';
+import 'query_builder.dart';
+
+/// A function that generates data for a stream when it needs to be refreshed
+typedef StreamDataGenerator<T> = Future<T> Function();
+
+/// A reactive stream that automatically updates when its dependencies change
+class ReactiveStream<T> {
+  ReactiveStream({
+    required this.streamId,
+    required this.dataGenerator,
+    this.initialData,
+    this.bufferChanges = false,
+    this.debounceTime = const Duration(milliseconds: 100),
+  }) {
+    _controller = StreamController<T>(
+      onListen: () {
+        _hasBeenListenedTo = true;
+      },
+    );
+    
+    // Generate initial data if provided
+    if (initialData != null) {
+      _controller.add(initialData!);
+    }
+  }
+  
+  /// Unique identifier for this stream
+  final String streamId;
+  
+  /// Function that generates the data for this stream
+  final StreamDataGenerator<T> dataGenerator;
+  
+  /// Optional initial data
+  final T? initialData;
+  
+  /// Whether to buffer rapid changes and emit only the latest
+  final bool bufferChanges;
+  
+  /// Debounce time for buffered changes
+  final Duration debounceTime;
+  
+  /// Internal stream controller
+  late final StreamController<T> _controller;
+  
+  /// Timer for debouncing changes
+  Timer? _debounceTimer;
+  
+  /// Flag to track if this stream has ever been listened to
+  /// This prevents race conditions where cleanup deletes streams before they're listened to
+  bool _hasBeenListenedTo = false;
+  
+  /// Whether this stream is currently active (has listeners)
+  bool get hasListeners => _controller.hasListener;
+  
+  /// Whether this stream has been listened to at least once
+  bool get hasBeenListenedTo => _hasBeenListenedTo;
+  
+  /// The stream that clients listen to
+  Stream<T> get stream {
+    return _controller.stream;
+  }
+  
+  /// Last emitted value
+  T? _lastValue;
+  T? get lastValue => _lastValue;
+  
+  /// Refreshes the stream by calling the data generator
+  Future<void> refresh() async {
+    if (_controller.isClosed) return;
+    
+    try {
+      final newData = await dataGenerator();
+      _lastValue = newData;
+      
+      if (bufferChanges) {
+        _scheduleBufferedUpdate(newData);
+      } else {
+        _controller.add(newData);
+      }
+    } catch (error, stackTrace) {
+      _controller.addError(error, stackTrace);
+    }
+  }
+  
+  /// Schedules a buffered update with debouncing
+  void _scheduleBufferedUpdate(T data) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(debounceTime, () {
+      if (!_controller.isClosed) {
+        _controller.add(data);
+      }
+    });
+  }
+  
+  /// Closes the stream and cleans up resources
+  Future<void> close() async {
+    _debounceTimer?.cancel();
+    await _controller.close();
+  }
+  
+  /// Whether the stream is closed
+  bool get isClosed => _controller.isClosed;
+}
+
+/// Manages reactive streams with automatic dependency-based invalidation
+class ReactiveStreamManager {
+  ReactiveStreamManager({
+    required this.dataAccess,
+    required this.schema,
+  }) : _dependencyTracker = StreamDependencyTracker(schema);
+
+  final DataAccess dataAccess;
+  final SchemaBuilder schema;
+  final StreamDependencyTracker _dependencyTracker;
+  final Map<String, ReactiveStream> _streams = {};
+
+  /// Creates a reactive stream for table data
+  ReactiveStream<List<Map<String, dynamic>>> createTableStream(
+    String streamId,
+    String tableName, {
+    String? where,
+    List<dynamic>? whereArgs,
+    String? orderBy,
+    int? limit,
+    int? offset,
+    bool bufferChanges = true,
+    Duration debounceTime = const Duration(milliseconds: 100),
+  }) {
+    // Create the reactive stream
+    final stream = ReactiveStream<List<Map<String, dynamic>>>(
+      streamId: streamId,
+      dataGenerator: () => dataAccess.getAllWhere(
+        tableName,
+        where: where,
+        whereArgs: whereArgs,
+        orderBy: orderBy,
+        limit: limit,
+        offset: offset,
+      ),
+      bufferChanges: bufferChanges,
+      debounceTime: debounceTime,
+    );
+    
+    // Register dependencies
+    _dependencyTracker.registerStream(
+      streamId,
+      tableName,
+      where: where,
+      whereArgs: whereArgs,
+    );
+    
+    // Store the stream
+    _streams[streamId] = stream;
+    
+    // Generate initial data with a small delay to ensure listener can be attached
+    Timer(Duration(milliseconds: 1), () => stream.refresh());
+    
+    return stream;
+  }
+
+  /// Creates a reactive stream for aggregated data
+  ReactiveStream<T> createAggregateStream<T>(
+    String streamId,
+    String tableName,
+    StreamDataGenerator<T> aggregateFunction, {
+    String? where,
+    List<dynamic>? whereArgs,
+    List<String>? dependentColumns,
+    bool bufferChanges = true,
+    Duration debounceTime = const Duration(milliseconds: 100),
+  }) {
+    // Create the reactive stream
+    final stream = ReactiveStream<T>(
+      streamId: streamId,
+      dataGenerator: aggregateFunction,
+      bufferChanges: bufferChanges,
+      debounceTime: debounceTime,
+    );
+    
+    // Register dependencies
+    _dependencyTracker.registerStream(
+      streamId,
+      tableName,
+      where: where,
+      whereArgs: whereArgs,
+      columns: dependentColumns,
+    );
+    
+    // Store the stream
+    _streams[streamId] = stream;
+    
+    // Generate initial data with a small delay to ensure listener can be attached
+    Timer(Duration(milliseconds: 1), () => stream.refresh());
+    
+    return stream;
+  }
+
+  /// Creates a reactive stream for raw SQL queries
+  ReactiveStream<List<Map<String, dynamic>>> createRawQueryStream(
+    String streamId,
+    String query,
+    List<dynamic>? arguments, {
+    bool bufferChanges = true,
+    Duration debounceTime = const Duration(milliseconds: 100),
+  }) {
+    // Create the reactive stream
+    final stream = ReactiveStream<List<Map<String, dynamic>>>(
+      streamId: streamId,
+      dataGenerator: () => dataAccess.database.rawQuery(query, arguments),
+      bufferChanges: bufferChanges,
+      debounceTime: debounceTime,
+    );
+    
+    // Register dependencies based on query analysis
+    // For now, use a conservative approach and register dependency on all tables
+    // TODO: Implement proper query parsing to determine specific table dependencies
+    final allTables = schema.tables.map((table) => table.name).toList();
+    if (allTables.isNotEmpty) {
+      _dependencyTracker.registerStream(streamId, allTables.first);
+    }
+    
+    // Store the stream
+    _streams[streamId] = stream;
+    
+    // Generate initial data with a small delay to ensure listener can be attached
+    Timer(Duration(milliseconds: 1), () => stream.refresh());
+    
+    return stream;
+  }
+  
+  /// Creates a reactive stream for QueryBuilder queries
+  /// Uses metadata from QueryBuilder for precise dependency tracking
+  ReactiveStream<List<Map<String, dynamic>>> createQueryBuilderStream(
+    String streamId,
+    QueryBuilder queryBuilder, {
+    bool bufferChanges = true,
+    Duration debounceTime = const Duration(milliseconds: 100),
+  }) {
+    // Create the reactive stream  
+    final stream = ReactiveStream<List<Map<String, dynamic>>>(
+      streamId: streamId,
+      dataGenerator: () async {
+        final sql = queryBuilder.toSql();
+        return await dataAccess.database.rawQuery(sql);
+      },
+      bufferChanges: bufferChanges,
+      debounceTime: debounceTime,
+    );
+    
+    // Register dependencies using QueryBuilder metadata
+    _dependencyTracker.registerQueryBuilderStream(streamId, queryBuilder);
+    
+    // Store the stream
+    _streams[streamId] = stream;
+    
+    // Generate initial data with a small delay to ensure listener can be attached
+    Timer(Duration(milliseconds: 1), () => stream.refresh());
+    
+    return stream;
+  }
+  
+  /// Notifies the manager about a database change
+  Future<void> notifyChange(DatabaseChange change) async {
+    // Get affected streams
+    final affectedStreams = _dependencyTracker.getAffectedStreams(change);
+    
+    // Refresh affected streams
+    final refreshFutures = <Future<void>>[];
+    for (final streamId in affectedStreams) {
+      final stream = _streams[streamId];
+      if (stream != null && stream.hasListeners && !stream.isClosed) {
+        refreshFutures.add(stream.refresh());
+      }
+    }
+    
+    // Wait for all refreshes to complete
+    await Future.wait(refreshFutures);
+  }
+  
+  /// Removes a stream and cleans up its dependencies
+  Future<void> removeStream(String streamId) async {
+    final stream = _streams.remove(streamId);
+    if (stream != null) {
+      await stream.close();
+    }
+    
+    _dependencyTracker.unregisterStream(streamId);
+  }
+  
+  /// Gets a stream by ID
+  ReactiveStream? getStream(String streamId) {
+    return _streams[streamId];
+  }
+  
+  /// Gets all active stream IDs
+  Set<String> get activeStreams => _streams.keys.toSet();
+  
+  /// Gets dependency statistics
+  DependencyStats getDependencyStats() {
+    return _dependencyTracker.getStats();
+  }
+  
+  /// Cleans up inactive streams (streams with no listeners)
+  /// Only cleans up streams that have been listened to at least once to avoid race conditions
+  Future<void> cleanupInactiveStreams() async {
+    final inactiveStreams = <String>[];
+    
+    for (final entry in _streams.entries) {
+      final stream = entry.value;
+      // Only clean up streams that have been listened to at least once
+      // AND currently have no listeners (or are closed)
+      if (stream.hasBeenListenedTo && (!stream.hasListeners || stream.isClosed)) {
+        inactiveStreams.add(entry.key);
+      }
+    }
+    
+    for (final streamId in inactiveStreams) {
+      await removeStream(streamId);
+    }
+  }
+  
+  /// Disposes all streams and cleans up resources
+  Future<void> dispose() async {
+    final disposeFutures = _streams.values.map((stream) => stream.close()).toList();
+    await Future.wait(disposeFutures);
+    _streams.clear();
+  }
+}
 
 /// Utilities for generating system column values
 class SystemColumnUtils {
@@ -162,6 +492,17 @@ class DataAccess {
       await instance._initializeLWWTables();
     }
     
+    // Initialize reactive functionality
+    instance._streamManager = ReactiveStreamManager(
+      dataAccess: instance,
+      schema: schema,
+    );
+    
+    // Start auto-cleanup timer for inactive streams
+    instance._autoCleanupTimer = Timer.periodic(_defaultAutoCleanupInterval, (_) {
+      instance._streamManager.cleanupInactiveStreams();
+    });
+    
     return instance;
   }
 
@@ -180,6 +521,18 @@ class DataAccess {
   
   /// Queue of pending operations waiting to be synced to server
   final Map<String, PendingOperation> _pendingOperations = {};
+
+  /// Reactive stream manager for change notifications and dependency tracking
+  late final ReactiveStreamManager _streamManager;
+  
+  /// Timer for automatic cleanup of inactive streams
+  Timer? _autoCleanupTimer;
+  
+  /// Auto-cleanup interval for inactive streams
+  static const Duration _defaultAutoCleanupInterval = Duration(minutes: 5);
+  
+  /// Counter for generating unique stream IDs
+  int _streamIdCounter = 0;
 
   /// Checks if the schema contains any tables with LWW columns
   bool _hasAnyLWWColumns() {
@@ -298,7 +651,72 @@ class DataAccess {
     
     _validateInsertValues(table, processedValues);
     
-    return await database.insert(tableName, processedValues);
+    final result = await database.insert(tableName, processedValues);
+    
+    // Handle LWW columns if present
+    if (_hasLWWColumns(tableName)) {
+      final lwwColumns = table.columns.where((col) => col.isLWW).toList();
+      final primaryKeyColumns = table.getPrimaryKeyColumns();
+      final currentTimestamp = SystemColumnUtils.generateHLCTimestamp();
+      
+      // Determine the primary key value based on table type
+      dynamic primaryKeyValue;
+      if (primaryKeyColumns.length == 1 && table.columns.any((col) => 
+          col.name == primaryKeyColumns.first && 
+          col.constraints.contains(ConstraintType.primaryKey))) {
+        // Single auto-increment primary key - use the returned ID
+        primaryKeyValue = result;
+      } else {
+        // Composite primary key or custom primary key - extract from values
+        if (primaryKeyColumns.length == 1) {
+          primaryKeyValue = values[primaryKeyColumns.first];
+        } else {
+          // Composite key - create map
+          primaryKeyValue = <String, dynamic>{};
+          for (final keyCol in primaryKeyColumns) {
+            primaryKeyValue[keyCol] = values[keyCol];
+          }
+        }
+      }
+      
+      // Process each LWW column that was provided in the insert
+      for (final lwwColumn in lwwColumns) {
+        if (values.containsKey(lwwColumn.name)) {
+          final value = values[lwwColumn.name];
+          
+          // Store timestamp in database
+          await _storeLWWTimestamp(
+            tableName,
+            primaryKeyValue,
+            lwwColumn.name,
+            currentTimestamp,
+            isFromServer: false,
+          );
+          
+          // Store in cache for immediate access
+          final lwwValue = LWWColumnValue(
+            value: value,
+            timestamp: currentTimestamp,
+            columnName: lwwColumn.name,
+            isFromServer: false,
+          );
+          
+          _lwwCache
+              .putIfAbsent(tableName, () => {})
+              .putIfAbsent(primaryKeyValue, () => {})[lwwColumn.name] = lwwValue;
+        }
+      }
+    }
+    
+    // Notify reactive streams about the change
+    await _streamManager.notifyChange(DatabaseChange(
+      tableName: tableName,
+      operation: DatabaseOperation.insert,
+      affectedColumns: processedValues.keys.toSet(),
+      newValues: processedValues,
+    ));
+    
+    return result;
   }
 
   /// Updates specific columns of a row identified by primary key.
@@ -334,6 +752,9 @@ class DataAccess {
       throw ArgumentError('At least one column value must be provided for update');
     }
     
+    // Get old values for reactive change notification
+    final oldRow = await getByPrimaryKey(tableName, primaryKeyValue);
+    
     // Encode date columns and update system version
     var processedValues = DataTypeUtils.encodeRow(values, metadata.columns);
     processedValues[SystemColumns.systemVersion] = SystemColumnUtils.generateHLCTimestamp();
@@ -342,12 +763,24 @@ class DataAccess {
     
     final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue, table);
     
-    return await database.update(
+    final result = await database.update(
       tableName,
       processedValues,
       where: whereClause,
       whereArgs: whereArgs,
     );
+    
+    // Notify reactive streams about the change
+    await _streamManager.notifyChange(DatabaseChange(
+      tableName: tableName,
+      operation: DatabaseOperation.update,
+      affectedColumns: processedValues.keys.toSet(),
+      primaryKeyValue: primaryKeyValue,
+      oldValues: oldRow,
+      newValues: processedValues,
+    ));
+    
+    return result;
   }
 
   /// Updates rows matching the specified where condition.
@@ -406,11 +839,21 @@ class DataAccess {
     
     final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue, table);
     
-    return await database.delete(
+    final result = await database.delete(
       tableName,
       where: whereClause,
       whereArgs: whereArgs,
     );
+    
+    // Notify reactive streams about the change
+    await _streamManager.notifyChange(DatabaseChange(
+      tableName: tableName,
+      operation: DatabaseOperation.delete,
+      affectedColumns: {}, // Delete affects all columns conceptually
+      primaryKeyValue: primaryKeyValue,
+    ));
+    
+    return result;
   }
 
   /// Deletes rows matching the specified where condition.
@@ -692,6 +1135,19 @@ class DataAccess {
         await batch.commit(noResult: true);
       }
     });
+    
+    // Notify reactive streams about the bulk changes
+    if (rowsInserted > 0 || rowsUpdated > 0) {
+      final operation = options.upsertMode 
+          ? DatabaseOperation.bulkUpdate 
+          : DatabaseOperation.bulkInsert;
+      
+      await _streamManager.notifyChange(DatabaseChange(
+        tableName: tableName,
+        operation: operation,
+        affectedColumns: datasetColumns,
+      ));
+    }
     
     return BulkLoadResult(
       rowsProcessed: rowsProcessed,
@@ -1151,18 +1607,22 @@ class DataAccess {
   }
 
   /// Updates a specific LWW column with conflict resolution
-  Future<void> updateLWWColumn(
+  /// Returns the effective value after conflict resolution (may be different from input if rejected)
+  Future<dynamic> updateLWWColumn(
     String tableName,
     dynamic primaryKeyValue,
     String columnName,
     dynamic value, {
     String? timestamp,
+    String? explicitTimestamp,
+    bool isFromServer = false,
   }) async {
     if (!_hasLWWColumns(tableName)) {
       throw StateError('Table "$tableName" has no LWW columns. Mark columns with .lww() in the schema definition.');
     }
 
-    final actualTimestamp = timestamp ?? SystemColumnUtils.generateHLCTimestamp();
+    // Use explicitTimestamp if provided, then timestamp, then generate new one
+    final actualTimestamp = explicitTimestamp ?? timestamp ?? SystemColumnUtils.generateHLCTimestamp();
     final table = _getTableOrThrow(tableName);
     
     // Check if column is LWW-enabled
@@ -1175,11 +1635,25 @@ class DataAccess {
       throw ArgumentError('Column "$columnName" is not marked as LWW (.lww())');
     }
 
+    // CRITICAL FIX: Check existing timestamp for conflict resolution
+    final currentTimestamp = await _getLWWTimestamp(tableName, primaryKeyValue, columnName);
+    
+    // Only update if the new timestamp is newer or equal (Last-Writer-Wins)
+    bool shouldUpdate = true;
+    if (currentTimestamp != null) {
+      shouldUpdate = actualTimestamp.compareTo(currentTimestamp) >= 0;
+    }
+    
+    // If update should be rejected due to older timestamp, return current value
+    if (!shouldUpdate) {
+      return await getLWWColumnValue(tableName, primaryKeyValue, columnName);
+    }
+
     final lwwValue = LWWColumnValue(
       value: value,
       timestamp: actualTimestamp,
       columnName: columnName,
-      isFromServer: false,
+      isFromServer: isFromServer,
     );
 
     // Store in cache for immediate UI feedback
@@ -1193,21 +1667,27 @@ class DataAccess {
       primaryKeyValue,
       columnName,
       actualTimestamp,
+      isFromServer: isFromServer,
     );
 
     // Update the actual table with the new value
     await updateByPrimaryKey(tableName, primaryKeyValue, {columnName: value});
 
-    // Add to pending operations queue
-    final operationId = '${SystemColumnUtils.generateGuid()}_${DateTime.now().millisecondsSinceEpoch}';
-    _pendingOperations[operationId] = PendingOperation(
-      id: operationId,
-      tableName: tableName,
-      primaryKeyValue: primaryKeyValue,
-      columnUpdates: {columnName: lwwValue},
-      timestamp: actualTimestamp,
-      operationType: OperationType.update,
-    );
+    // Add to pending operations queue (only if not from server)
+    if (!isFromServer) {
+      final operationId = '${SystemColumnUtils.generateGuid()}_${DateTime.now().millisecondsSinceEpoch}';
+      _pendingOperations[operationId] = PendingOperation(
+        id: operationId,
+        tableName: tableName,
+        primaryKeyValue: primaryKeyValue,
+        columnUpdates: {columnName: lwwValue},
+        timestamp: actualTimestamp,
+        operationType: OperationType.update,
+      );
+    }
+    
+    // Return the value that was actually set
+    return value;
   }
 
   /// Gets the current effective value of an LWW column
@@ -1264,7 +1744,8 @@ class DataAccess {
   }
 
   /// Applies server update with conflict resolution
-  Future<void> applyServerUpdate(
+  /// Returns the effective values after conflict resolution
+  Future<Map<String, dynamic>> applyServerUpdate(
     String tableName,
     dynamic primaryKeyValue,
     Map<String, dynamic> serverData,
@@ -1274,13 +1755,20 @@ class DataAccess {
       throw StateError('Table "$tableName" has no LWW columns. Mark columns with .lww() in the schema definition.');
     }
 
+    final effectiveValues = <String, dynamic>{};
+
     await database.transaction((txn) async {
       for (final entry in serverData.entries) {
         final columnName = entry.key;
         final newValue = entry.value;
 
-        // Get current timestamp for this column
-        final currentTimestamp = await _getLWWTimestamp(tableName, primaryKeyValue, columnName);
+        // Get current timestamp for this column using transaction-safe method
+        final currentTimestamp = await _getLWWTimestampTxn(
+          txn,
+          tableName,
+          primaryKeyValue,
+          columnName,
+        );
 
         // Compare timestamps - server wins if timestamp is newer or equal
         if (currentTimestamp == null || serverTimestamp.compareTo(currentTimestamp) >= 0) {
@@ -1300,7 +1788,8 @@ class DataAccess {
             ).$2,
           );
 
-          await _storeLWWTimestamp(
+          await _storeLWWTimestampTxn(
+            txn,
             tableName,
             primaryKeyValue,
             columnName,
@@ -1317,10 +1806,34 @@ class DataAccess {
             columnName: columnName,
             isFromServer: true,
           );
+
+          effectiveValues[columnName] = newValue;
+        } else {
+          // Local timestamp is newer, local value wins - get from cache or database
+          final cachedValue = _lwwCache[tableName]?[primaryKeyValue]?[columnName];
+          if (cachedValue != null) {
+            effectiveValues[columnName] = cachedValue.value;
+          } else {
+            // Get current value from database within the same transaction
+            final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(
+              _getTableOrThrow(tableName).getPrimaryKeyColumns(),
+              primaryKeyValue,
+              _getTableOrThrow(tableName),
+            );
+            final result = await txn.query(
+              tableName,
+              columns: [columnName],
+              where: whereClause,
+              whereArgs: whereArgs,
+              limit: 1,
+            );
+            effectiveValues[columnName] = result.isNotEmpty ? result.first[columnName] : null;
+          }
         }
-        // If local timestamp is newer, local value wins (do nothing)
       }
     });
+
+    return effectiveValues;
   }
 
   /// Gets the current timestamp for an LWW column
@@ -1342,18 +1855,34 @@ class DataAccess {
     return result.isNotEmpty ? result.first['timestamp'] as String? : null;
   }
 
-  /// Gets all pending operations waiting for server sync
+  /// Gets all unsynced pending operations waiting for server sync
   List<PendingOperation> getPendingOperations() {
-    return _pendingOperations.values.toList();
+    return _pendingOperations.values.where((op) => !op.isSynced).toList();
   }
 
-  /// Marks an operation as synced and removes it from the pending queue
+  /// Marks an operation as synced (but keeps it for clearing later)
   void markOperationSynced(String operationId) {
-    _pendingOperations.remove(operationId);
+    final operation = _pendingOperations[operationId];
+    if (operation != null) {
+      _pendingOperations[operationId] = PendingOperation(
+        id: operation.id,
+        tableName: operation.tableName,
+        operationType: operation.operationType,
+        primaryKeyValue: operation.primaryKeyValue,
+        columnUpdates: operation.columnUpdates,
+        timestamp: operation.timestamp,
+        isSynced: true, // Mark as synced
+      );
+    }
   }
 
   /// Clears all synced operations from the pending queue
   void clearSyncedOperations() {
+    _pendingOperations.removeWhere((key, operation) => operation.isSynced);
+  }
+
+  /// Clears all pending operations (useful for testing)
+  void clearAllOperations() {
     _pendingOperations.clear();
   }
 
@@ -1986,6 +2515,82 @@ class DataAccess {
     }
     
     return results;
+  }
+
+  // ============= Reactive Stream Methods =============
+
+  /// Creates a reactive stream for any query using QueryBuilder
+  /// This is the unified method for all reactive queries as requested by @graknol
+  Stream<List<Map<String, dynamic>>> watch(
+    QueryBuilder queryBuilder, {
+    String? streamId,
+  }) {
+    final id = streamId ?? 'query_${DateTime.now().millisecondsSinceEpoch}_${++_streamIdCounter}';
+    
+    final reactiveStream = _streamManager.createQueryBuilderStream(
+      id,
+      queryBuilder,
+    );
+    
+    return reactiveStream.stream;
+  }
+
+  // ============= Pull-to-Refresh Methods =============
+
+  /// Manually refreshes a specific stream by stream ID
+  Future<void> refreshStream(String streamId) async {
+    final stream = _streamManager.getStream(streamId);
+    if (stream != null && !stream.isClosed) {
+      await stream.refresh();
+    }
+  }
+
+  /// Refreshes all streams watching a specific table (useful for pull-to-refresh)
+  Future<void> refreshTable(String tableName) async {
+    // Get all active streams and refresh those that might be affected by this table
+    final activeStreams = _streamManager.activeStreams;
+    final refreshFutures = <Future<void>>[];
+    
+    for (final streamId in activeStreams) {
+      // For now, refresh all streams that contain the table name in their ID
+      // This is a simple heuristic that works for most common patterns
+      if (streamId.contains(tableName)) {
+        refreshFutures.add(refreshStream(streamId));
+      }
+    }
+    
+    // If no streams match the heuristic, refresh all streams
+    // This ensures pull-to-refresh always works even if naming doesn't match
+    if (refreshFutures.isEmpty) {
+      for (final streamId in activeStreams) {
+        refreshFutures.add(refreshStream(streamId));
+      }
+    }
+    
+    await Future.wait(refreshFutures);
+  }
+
+  /// Refreshes all active streams (useful for global pull-to-refresh)
+  Future<void> refreshAll() async {
+    final activeStreams = _streamManager.activeStreams;
+    final refreshFutures = activeStreams.map((streamId) => refreshStream(streamId));
+    await Future.wait(refreshFutures);
+  }
+
+  /// Manually cleans up inactive streams
+  Future<void> cleanupInactiveStreams() async {
+    await _streamManager.cleanupInactiveStreams();
+  }
+
+  /// Gets dependency statistics for reactive streams
+  DependencyStats getDependencyStats() {
+    return _streamManager.getDependencyStats();
+  }
+
+  /// Disposes all reactive streams and cleans up resources
+  Future<void> dispose() async {
+    _autoCleanupTimer?.cancel();
+    await _streamManager.dispose();
   }
 }
 

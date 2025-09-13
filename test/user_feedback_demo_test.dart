@@ -79,8 +79,9 @@ void main() {
         'notes': 'Testing unified API',
       });
 
-      // LWW operations with controlled timestamp
-      await dataAccess.updateLWWColumn('tasks', id, 'hours', 8, timestamp: '1000');
+      // LWW operations with controlled timestamp (use very recent timestamp)
+      final futureTimestamp = (DateTime.now().microsecondsSinceEpoch + 100000).toString();
+      await dataAccess.updateLWWColumn('tasks', id, 'hours', 8, timestamp: futureTimestamp);
       final hours = await dataAccess.getLWWColumnValue('tasks', id, 'hours');
       expect(hours, equals(8));
 
