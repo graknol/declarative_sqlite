@@ -109,6 +109,7 @@ class RecordData {
 /// 
 /// ```dart
 /// ReactiveRecordBuilder(
+///   dataAccess: dataAccess,
 ///   tableName: 'users',
 ///   primaryKey: userId,
 ///   builder: (context, recordData) {
@@ -192,7 +193,7 @@ class ReactiveRecordBuilder extends StatelessWidget {
 
         final recordData = RecordData(
           data: data,
-          dataAccess: effectiveDataAccess,
+          dataAccess: dataAccess,
           tableName: tableName,
           primaryKey: primaryKey,
           primaryKeyColumn: primaryKeyColumn,
@@ -239,7 +240,7 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
 
   const ReactiveRecordBuilderWhere({
     super.key,
-    this.dataAccess,
+    required this.dataAccess,
     required this.tableName,
     required this.builder,
     this.where,
@@ -252,12 +253,10 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveDataAccess = getDataAccess(context, dataAccess);
-    
     return DatabaseStreamBuilder<Map<String, dynamic>?>(
-      dataAccess: effectiveDataAccess,
+      dataAccess: dataAccess,
       query: () async {
-        final results = await effectiveDataAccess.getAllWhere(
+        final results = await dataAccess.getAllWhere(
           tableName,
           where: where,
           whereArgs: whereArgs,
@@ -286,7 +285,7 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
         final primaryKey = data[primaryKeyColumn];
         final recordData = RecordData(
           data: data,
-          dataAccess: effectiveDataAccess,
+          dataAccess: dataAccess,
           tableName: tableName,
           primaryKey: primaryKey,
           primaryKeyColumn: primaryKeyColumn,
@@ -308,6 +307,7 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
 /// 
 /// ```dart
 /// ReactiveRecordListBuilder(
+///   dataAccess: dataAccess,
 ///   tableName: 'users',
 ///   itemBuilder: (context, recordData) {
 ///     return ListTile(
@@ -323,8 +323,7 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
 /// ```
 class ReactiveRecordListBuilder extends StatelessWidget {
   /// The data access instance for database operations
-  /// If not provided, will be retrieved from DataAccessProvider
-  final DataAccess? dataAccess;
+  final DataAccess dataAccess;
   
   /// Name of the table to query
   final String tableName;
@@ -370,7 +369,7 @@ class ReactiveRecordListBuilder extends StatelessWidget {
 
   const ReactiveRecordListBuilder({
     super.key,
-    this.dataAccess,
+    required this.dataAccess,
     required this.tableName,
     required this.itemBuilder,
     this.where,
@@ -389,11 +388,9 @@ class ReactiveRecordListBuilder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveDataAccess = getDataAccess(context, dataAccess);
-    
     return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
-      dataAccess: effectiveDataAccess,
-      query: () => effectiveDataAccess.getAllWhere(
+      dataAccess: dataAccess,
+      query: () => dataAccess.getAllWhere(
         tableName,
         where: where,
         whereArgs: whereArgs,
@@ -440,7 +437,7 @@ class ReactiveRecordListBuilder extends StatelessWidget {
             
             final recordData = RecordData(
               data: record,
-              dataAccess: effectiveDataAccess,
+              dataAccess: dataAccess,
               tableName: tableName,
               primaryKey: primaryKey,
               primaryKeyColumn: primaryKeyColumn,
@@ -464,6 +461,7 @@ class ReactiveRecordListBuilder extends StatelessWidget {
 /// 
 /// ```dart
 /// ReactiveRecordGridBuilder(
+///   dataAccess: dataAccess,
 ///   tableName: 'products',
 ///   crossAxisCount: 2,
 ///   itemBuilder: (context, recordData) {
@@ -484,8 +482,7 @@ class ReactiveRecordListBuilder extends StatelessWidget {
 /// ```
 class ReactiveRecordGridBuilder extends StatelessWidget {
   /// The data access instance for database operations
-  /// If not provided, will be retrieved from DataAccessProvider
-  final DataAccess? dataAccess;
+  final DataAccess dataAccess;
   
   /// Name of the table to query
   final String tableName;
@@ -543,7 +540,7 @@ class ReactiveRecordGridBuilder extends StatelessWidget {
 
   const ReactiveRecordGridBuilder({
     super.key,
-    this.dataAccess,
+    required this.dataAccess,
     required this.tableName,
     required this.itemBuilder,
     required this.crossAxisCount,
@@ -566,11 +563,9 @@ class ReactiveRecordGridBuilder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveDataAccess = getDataAccess(context, dataAccess);
-    
     return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
-      dataAccess: effectiveDataAccess,
-      query: () => effectiveDataAccess.getAllWhere(
+      dataAccess: dataAccess,
+      query: () => dataAccess.getAllWhere(
         tableName,
         where: where,
         whereArgs: whereArgs,
@@ -623,7 +618,7 @@ class ReactiveRecordGridBuilder extends StatelessWidget {
             
             final recordData = RecordData(
               data: record,
-              dataAccess: effectiveDataAccess,
+              dataAccess: dataAccess,
               tableName: tableName,
               primaryKey: primaryKey,
               primaryKeyColumn: primaryKeyColumn,
@@ -643,8 +638,7 @@ class ReactiveRecordGridBuilder extends StatelessWidget {
 /// the current record data and make updates through the provided [RecordData].
 class ReactiveRecordForm extends StatelessWidget {
   /// The data access instance for database operations
-  /// If not provided, will be retrieved from DataAccessProvider
-  final DataAccess? dataAccess;
+  final DataAccess dataAccess;
   
   /// Name of the table containing the record
   final String tableName;
@@ -669,7 +663,7 @@ class ReactiveRecordForm extends StatelessWidget {
 
   const ReactiveRecordForm({
     super.key,
-    this.dataAccess,
+    required this.dataAccess,
     required this.tableName,
     required this.primaryKey,
     required this.formBuilder,

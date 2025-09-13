@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'data_access_provider.dart';
 
 /// A ListView widget that automatically updates when the underlying database table changes.
 /// 
@@ -7,7 +8,8 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 /// automatically rebuild when data in the specified table is modified.
 class ReactiveListView extends StatefulWidget {
   /// The data access instance for database operations
-  final DataAccess dataAccess;
+  /// If not provided, will be retrieved from DataAccessProvider
+  final DataAccess? dataAccess;
   
   /// Name of the table to watch for changes
   final String tableName;
@@ -47,7 +49,7 @@ class ReactiveListView extends StatefulWidget {
 
   const ReactiveListView({
     super.key,
-    required this.dataAccess,
+    this.dataAccess,
     required this.tableName,
     required this.itemBuilder,
     this.where,
@@ -65,7 +67,7 @@ class ReactiveListView extends StatefulWidget {
   /// Creates a ReactiveListView with a builder pattern similar to ListView.builder
   factory ReactiveListView.builder({
     Key? key,
-    required DataAccess dataAccess,
+    DataAccess? dataAccess,
     required String tableName,
     required Widget Function(BuildContext context, Map<String, dynamic> item) itemBuilder,
     String? where,
@@ -126,7 +128,8 @@ class _ReactiveListViewState extends State<ReactiveListView> {
 
   void _initializeStream() {
     // Create a reactive stream that watches for changes to this table
-    _dataStream = widget.dataAccess.streamQueryResults(
+    final effectiveDataAccess = getDataAccess(context, widget.dataAccess);
+    _dataStream = effectiveDataAccess.streamQueryResults(
       widget.tableName,
       where: widget.where,
       whereArgs: widget.whereArgs,
@@ -194,7 +197,8 @@ class _ReactiveListViewState extends State<ReactiveListView> {
 /// A SliverList widget that automatically updates when the underlying database table changes.
 class ReactiveSliverList extends StatefulWidget {
   /// The data access instance for database operations
-  final DataAccess dataAccess;
+  /// If not provided, will be retrieved from DataAccessProvider
+  final DataAccess? dataAccess;
   
   /// Name of the table to watch for changes
   final String tableName;
@@ -213,7 +217,7 @@ class ReactiveSliverList extends StatefulWidget {
 
   const ReactiveSliverList({
     super.key,
-    required this.dataAccess,
+    this.dataAccess,
     required this.tableName,
     required this.itemBuilder,
     this.where,
@@ -248,7 +252,8 @@ class _ReactiveSliverListState extends State<ReactiveSliverList> {
   }
 
   void _initializeStream() {
-    _dataStream = widget.dataAccess.streamQueryResults(
+    final effectiveDataAccess = getDataAccess(context, widget.dataAccess);
+    _dataStream = effectiveDataAccess.streamQueryResults(
       widget.tableName,
       where: widget.where,
       whereArgs: widget.whereArgs,

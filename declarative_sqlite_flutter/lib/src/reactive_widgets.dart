@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'database_stream_builder.dart';
+import 'data_access_provider.dart';
 
 /// Collection of reactive widgets that automatically update when database data changes.
 class ReactiveWidgets {

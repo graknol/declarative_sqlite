@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'data_access_provider.dart';
 
 /// A form widget that provides automatic synchronization with LWW (Last-Write-Wins) columns.
 /// 
@@ -8,7 +9,8 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 /// with conflict resolution using LWW timestamps.
 class LWWForm extends StatefulWidget {
   /// The data access instance for database operations
-  final DataAccess dataAccess;
+  /// If not provided, will be retrieved from DataAccessProvider
+  final DataAccess? dataAccess;
   
   /// Name of the table containing the form data
   final String tableName;
@@ -33,7 +35,7 @@ class LWWForm extends StatefulWidget {
 
   const LWWForm({
     super.key,
-    required this.dataAccess,
+    this.dataAccess,
     required this.tableName,
     required this.primaryKey,
     required this.child,
@@ -93,9 +95,11 @@ class _LWWFormState extends State<LWWForm> {
     setState(() => _isSaving = true);
 
     try {
+      final effectiveDataAccess = getDataAccess(context, widget.dataAccess);
+      
       // Update each changed column with LWW semantics
       for (final entry in _pendingChanges.entries) {
-        await widget.dataAccess.updateLWWColumn(
+        await effectiveDataAccess.updateLWWColumn(
           widget.tableName,
           widget.primaryKey,
           entry.key,
@@ -128,7 +132,8 @@ class _LWWFormState extends State<LWWForm> {
   /// Get current form data including pending changes
   Future<Map<String, dynamic>?> getCurrentData() async {
     try {
-      final currentData = await widget.dataAccess.getByPrimaryKey(
+      final effectiveDataAccess = getDataAccess(context, widget.dataAccess);
+      final currentData = await effectiveDataAccess.getByPrimaryKey(
         widget.tableName,
         widget.primaryKey,
       );

@@ -11,10 +11,36 @@
 /// 
 /// ## Quick Start
 /// 
-/// ### Setting up Database-Backed Lists
+/// ### Option 1: Using DataAccessProvider (Recommended)
+/// 
+/// Wrap your app with DataAccessProvider to make DataAccess available throughout the widget tree:
+/// 
 /// ```dart
 /// import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
 /// 
+/// // Setup provider at app root
+/// DataAccessProvider(
+///   dataAccess: dataAccess,
+///   child: MaterialApp(
+///     home: MyHomePage(),
+///   ),
+/// )
+/// 
+/// // Then use widgets without specifying dataAccess
+/// ReactiveListView.builder(
+///   tableName: 'users',
+///   itemBuilder: (context, user) => ListTile(
+///     title: Text(user['name']),
+///     subtitle: Text(user['email']),
+///   ),
+/// )
+/// ```
+/// 
+/// ### Option 2: Explicit DataAccess Parameter
+/// 
+/// Pass dataAccess explicitly to each widget:
+/// 
+/// ```dart
 /// // Create a reactive ListView that updates when the database changes
 /// ReactiveListView.builder(
 ///   dataAccess: dataAccess,
@@ -28,12 +54,11 @@
 /// 
 /// ### Building Reactive Lists with CRUD Operations
 /// ```dart
-/// // Create a list where each item has CRUD operations
+/// // Create a list where each item has CRUD operations (no dataAccess needed with provider)
 /// ReactiveRecordListBuilder(
-///   dataAccess: dataAccess,
 ///   tableName: 'users',
 ///   itemBuilder: (context, recordData) => ListTile(
-///     title: Text(recordData.getValue<String>('name') ?? ''),
+///     title: Text(recordData['name'] ?? ''),
 ///     trailing: IconButton(
 ///       icon: Icon(Icons.edit),
 ///       onPressed: () => recordData.updateColumn('name', 'Updated'),
@@ -44,15 +69,14 @@
 /// 
 /// ### Building Reactive Grids
 /// ```dart
-/// // Create a grid where each item has CRUD operations
+/// // Create a grid where each item has CRUD operations (no dataAccess needed with provider)
 /// ReactiveRecordGridBuilder(
-///   dataAccess: dataAccess,
 ///   tableName: 'products',
 ///   crossAxisCount: 2,
 ///   itemBuilder: (context, recordData) => Card(
 ///     child: Column(
 ///       children: [
-///         Text(recordData.getValue<String>('name') ?? ''),
+///         Text(recordData['name'] ?? ''),
 ///         ElevatedButton(
 ///           onPressed: () => recordData.delete(),
 ///           child: Text('Delete'),
@@ -65,9 +89,8 @@
 /// 
 /// ### Form Integration with LWW
 /// ```dart
-/// // Create a form that automatically syncs with LWW columns
+/// // Create a form that automatically syncs with LWW columns (no dataAccess needed with provider)
 /// LWWForm(
-///   dataAccess: dataAccess,
 ///   tableName: 'users',
 ///   primaryKey: userId,
 ///   child: Column(
@@ -99,6 +122,7 @@ export 'src/lww_text_field.dart';
 export 'src/lww_slider.dart';
 export 'src/lww_dropdown.dart';
 
+export 'src/data_access_provider.dart';
 export 'src/database_stream_builder.dart';
 export 'src/reactive_widgets.dart';
 

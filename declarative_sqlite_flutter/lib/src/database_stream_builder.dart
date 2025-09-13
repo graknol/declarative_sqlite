@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'data_access_provider.dart';
 
 /// A widget that builds its child based on a reactive database stream.
 /// 
