@@ -136,7 +136,7 @@ void main() {
       });
 
       // Wait for initial load
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Insert new user - should trigger update
       await dataAccess.insert('users', {
@@ -191,7 +191,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Delete user - should trigger
       await dataAccess.deleteByPrimaryKey('users', 3);
@@ -335,7 +335,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Add new post for user 1 - should trigger user stats update
       await dataAccess.insert('posts', {
@@ -448,7 +448,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Bulk load affecting only names - should trigger name stream only
       await dataAccess.bulkLoad('bulk_test', [
@@ -490,7 +490,7 @@ void main() {
         }
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Update post likes - should trigger query update
       await dataAccess.updateByPrimaryKey('posts', 1, {'likes': 50});
@@ -514,7 +514,7 @@ void main() {
         updates.add(List.from(data));
       });
 
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(Duration(milliseconds: 200));
 
       // Make rapid consecutive changes
       await Future.wait([
@@ -541,7 +541,7 @@ void main() {
       // Wait for debouncing to settle
       await Future.delayed(Duration(milliseconds: 300));
 
-      expect(updateCount, greaterThan(1));
+      expect(updateCount, equals(2)); // Initial + debounced batch
       expect(updates.last.length, equals(6)); // 3 initial + 3 rapid
 
       await subscription.cancel();

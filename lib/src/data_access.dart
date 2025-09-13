@@ -530,6 +530,9 @@ class DataAccess {
   
   /// Auto-cleanup interval for inactive streams
   static const Duration _defaultAutoCleanupInterval = Duration(minutes: 5);
+  
+  /// Counter for generating unique stream IDs
+  int _streamIdCounter = 0;
 
   /// Checks if the schema contains any tables with LWW columns
   bool _hasAnyLWWColumns() {
@@ -2467,7 +2470,7 @@ class DataAccess {
     QueryBuilder queryBuilder, {
     String? streamId,
   }) {
-    final id = streamId ?? 'query_${DateTime.now().millisecondsSinceEpoch}';
+    final id = streamId ?? 'query_${DateTime.now().millisecondsSinceEpoch}_${++_streamIdCounter}';
     
     final reactiveStream = _streamManager.createQueryBuilderStream(
       id,

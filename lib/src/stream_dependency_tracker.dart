@@ -776,9 +776,19 @@ class StreamDependencyTracker {
       // Convert WHERE clause to lowercase for easier parsing
       final lowerWhere = whereClause.toLowerCase();
       
+      // Handle simple equality checks with hardcoded strings: column = 'value'
+      final stringEqualityPattern = RegExp(r"(\w+)\s*=\s*'([^']*)'");
+      var match = stringEqualityPattern.firstMatch(lowerWhere);
+      if (match != null) {
+        final columnName = match.group(1)!;
+        final expectedValue = match.group(2)!;
+        final actualValue = values[columnName]?.toString();
+        return actualValue == expectedValue;
+      }
+      
       // Handle simple equality checks: column = ?
       final equalityPattern = RegExp(r'(\w+)\s*=\s*\?');
-      var match = equalityPattern.firstMatch(lowerWhere);
+      match = equalityPattern.firstMatch(lowerWhere);
       if (match != null && whereArgs != null && whereArgs.isNotEmpty) {
         final columnName = match.group(1)!;
         final expectedValue = whereArgs[0];
@@ -796,6 +806,34 @@ class StreamDependencyTracker {
         final actualValue = values[columnName];
         
         if (actualValue is num && expectedValue is num) {
+          switch (operator) {
+            case '>':
+              return actualValue > expectedValue;
+            case '<':
+              return actualValue < expectedValue;
+            case '>=':
+              return actualValue >= expectedValue;
+            case '<=':
+              return actualValue <= expectedValue;
+            case '=':
+              return actualValue == expectedValue;
+            case '!=':
+            case '<>':
+              return actualValue != expectedValue;
+          }
+        }
+      }
+      
+      // Handle hardcoded numeric comparisons: column > 10, column < 5, etc.
+      final hardcodedNumericPattern = RegExp(r'(\w+)\s*([><=!]+)\s*(\d+(?:\.\d+)?)');
+      match = hardcodedNumericPattern.firstMatch(lowerWhere);
+      if (match != null) {
+        final columnName = match.group(1)!;
+        final operator = match.group(2)!;
+        final expectedValue = double.parse(match.group(3)!);
+        final actualValue = values[columnName];
+        
+        if (actualValue is num) {
           switch (operator) {
             case '>':
               return actualValue > expectedValue;
