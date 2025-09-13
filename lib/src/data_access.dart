@@ -653,6 +653,61 @@ class DataAccess {
     
     final result = await database.insert(tableName, processedValues);
     
+    // Handle LWW columns if present
+    if (_hasLWWColumns(tableName)) {
+      final lwwColumns = table.columns.where((col) => col.isLWW).toList();
+      final primaryKeyColumns = table.getPrimaryKeyColumns();
+      final currentTimestamp = SystemColumnUtils.generateHLCTimestamp();
+      
+      // Determine the primary key value based on table type
+      dynamic primaryKeyValue;
+      if (primaryKeyColumns.length == 1 && table.columns.any((col) => 
+          col.name == primaryKeyColumns.first && 
+          col.constraints.contains(ConstraintType.primaryKey))) {
+        // Single auto-increment primary key - use the returned ID
+        primaryKeyValue = result;
+      } else {
+        // Composite primary key or custom primary key - extract from values
+        if (primaryKeyColumns.length == 1) {
+          primaryKeyValue = values[primaryKeyColumns.first];
+        } else {
+          // Composite key - create map
+          primaryKeyValue = <String, dynamic>{};
+          for (final keyCol in primaryKeyColumns) {
+            primaryKeyValue[keyCol] = values[keyCol];
+          }
+        }
+      }
+      
+      // Process each LWW column that was provided in the insert
+      for (final lwwColumn in lwwColumns) {
+        if (values.containsKey(lwwColumn.name)) {
+          final value = values[lwwColumn.name];
+          
+          // Store timestamp in database
+          await _storeLWWTimestamp(
+            tableName,
+            primaryKeyValue,
+            lwwColumn.name,
+            currentTimestamp,
+            isFromServer: false,
+          );
+          
+          // Store in cache for immediate access
+          final lwwValue = LWWColumnValue(
+            value: value,
+            timestamp: currentTimestamp,
+            columnName: lwwColumn.name,
+            isFromServer: false,
+          );
+          
+          _lwwCache
+              .putIfAbsent(tableName, () => {})
+              .putIfAbsent(primaryKeyValue, () => {})[lwwColumn.name] = lwwValue;
+        }
+      }
+    }
+    
     // Notify reactive streams about the change
     await _streamManager.notifyChange(DatabaseChange(
       tableName: tableName,

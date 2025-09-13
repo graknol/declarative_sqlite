@@ -401,8 +401,8 @@ void main() {
                 .text('name', (col) => col.notNull())
                 .integer('parent_id', (col) => col.notNull()))
             .oneToMany('parents', 'children',
-                parentColumn: 'id',
-                childColumn: 'parent_id',
+                parentColumns: ['id'],
+                childColumns: ['parent_id'],
                 onDelete: CascadeAction.restrict);
 
         // Apply schema and create data access

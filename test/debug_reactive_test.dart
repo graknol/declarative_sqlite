@@ -106,7 +106,7 @@ void main() {
 
     // Wait for initial load
     print('⏳ Waiting for initial load...');
-    await Future.delayed(Duration(milliseconds: 100));
+    await Future.delayed(Duration(milliseconds: 200)); // Increased from 100ms to 200ms
     print('📊 After initial delay: $updateCount updates');
 
     // Insert new user - should trigger update
