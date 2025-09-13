@@ -43,8 +43,8 @@ class ReactiveRecordBuildersExample extends StatelessWidget {
                       orderBy: 'name ASC',
                       itemBuilder: (context, recordData) {
                         return ListTile(
-                          title: Text(recordData.getValue<String>('name') ?? 'Unknown'),
-                          subtitle: Text(recordData.getValue<String>('email') ?? ''),
+                          title: Text(recordData['name'] ?? 'Unknown'),
+                          subtitle: Text(recordData['email'] ?? ''),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -105,7 +105,7 @@ class ReactiveRecordBuildersExample extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  recordData.getValue<String>('name') ?? 'Unknown Product',
+                                  recordData['name'] ?? 'Unknown Product',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
@@ -115,7 +115,7 @@ class ReactiveRecordBuildersExample extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '\$${recordData.getValue<double>('price')?.toStringAsFixed(2) ?? '0.00'}',
+                                  '\$${(recordData['price'] as double?)?.toStringAsFixed(2) ?? '0.00'}',
                                   style: const TextStyle(
                                     color: Colors.green,
                                     fontSize: 14,
@@ -124,7 +124,7 @@ class ReactiveRecordBuildersExample extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  recordData.getValue<String>('description') ?? '',
+                                  recordData['description'] ?? '',
                                   style: const TextStyle(fontSize: 12),
                                   maxLines: 3,
                                   overflow: TextOverflow.ellipsis,
@@ -136,7 +136,7 @@ class ReactiveRecordBuildersExample extends StatelessWidget {
                                       child: ElevatedButton(
                                         onPressed: () async {
                                           // Update price (simulate discount)
-                                          final currentPrice = recordData.getValue<double>('price') ?? 0.0;
+                                          final currentPrice = recordData['price'] as double? ?? 0.0;
                                           final newPrice = (currentPrice * 0.9).round().toDouble();
                                           await recordData.updateColumn('price', newPrice);
                                         },

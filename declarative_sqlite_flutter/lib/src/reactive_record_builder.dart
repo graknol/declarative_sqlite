@@ -59,7 +59,15 @@ class RecordData {
     );
   }
 
-  /// Get the value of a specific column
+  /// Get the value of a specific column using index operator
+  dynamic operator [](String columnName) {
+    return data[columnName];
+  }
+
+  /// Get the value of a specific column with type safety
+  /// 
+  /// @deprecated Use the index operator [] instead: recordData['columnName']
+  @Deprecated('Use the index operator [] instead: recordData[\'columnName\']')
   T? getValue<T>(String columnName) {
     return data[columnName] as T?;
   }
@@ -110,7 +118,7 @@ class RecordData {
 ///     
 ///     return Column(
 ///       children: [
-///         Text('Name: ${recordData.getValue<String>('name')}'),
+///         Text('Name: ${recordData['name']}'),
 ///         ElevatedButton(
 ///           onPressed: () => recordData.updateColumn('name', 'New Name'),
 ///           child: Text('Update Name'),
@@ -298,8 +306,8 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
 ///   tableName: 'users',
 ///   itemBuilder: (context, recordData) {
 ///     return ListTile(
-///       title: Text(recordData.getValue<String>('name') ?? ''),
-///       subtitle: Text(recordData.getValue<String>('email') ?? ''),
+///       title: Text(recordData['name'] ?? ''),
+///       subtitle: Text(recordData['email'] ?? ''),
 ///       trailing: IconButton(
 ///         icon: Icon(Icons.edit),
 ///         onPressed: () => recordData.updateColumn('name', 'Updated Name'),
@@ -455,8 +463,8 @@ class ReactiveRecordListBuilder extends StatelessWidget {
 ///     return Card(
 ///       child: Column(
 ///         children: [
-///           Text(recordData.getValue<String>('name') ?? ''),
-///           Text('\$${recordData.getValue<double>('price')}'),
+///           Text(recordData['name'] ?? ''),
+///           Text('\$${recordData['price']}'),
 ///           ElevatedButton(
 ///             onPressed: () => recordData.delete(),
 ///             child: Text('Delete'),
