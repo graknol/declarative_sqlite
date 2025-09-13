@@ -7,8 +7,8 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 /// This addresses @graknol's specific concerns about bulkLoad coverage
 void main() {
   late Database database;
+  
   late DataAccess dataAccess;
-  late ReactiveDataAccess reactiveDataAccess;
   late SchemaBuilder schema;
 
   setUpAll(() async {
@@ -41,14 +41,10 @@ void main() {
     await migrator.migrate(database, schema);
 
     dataAccess = await DataAccess.create(database: database, schema: schema);
-    reactiveDataAccess = ReactiveDataAccess(
-      dataAccess: dataAccess,
-      schema: schema,
-    );
   });
 
   tearDown(() async {
-    await reactiveDataAccess.dispose();
+    await dataAccess.dispose();
     await database.close();
   });
 
@@ -58,7 +54,7 @@ void main() {
       var updateCount = 0;
 
       // Watch the entire products table
-      final subscription = reactiveDataAccess.watchTable('products').listen((data) {
+      final subscription = dataAccess.watchTable('products').listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -68,7 +64,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Bulk insert products
-      await reactiveDataAccess.bulkLoad('products', [
+      await dataAccess.bulkLoad('products', [
         {'id': 'p1', 'name': 'Laptop', 'category': 'electronics', 'price': 999.99, 'stock_quantity': 10, 'description': 'Gaming laptop'},
         {'id': 'p2', 'name': 'Mouse', 'category': 'electronics', 'price': 29.99, 'stock_quantity': 50, 'description': 'Wireless mouse'},
         {'id': 'p3', 'name': 'Desk', 'category': 'furniture', 'price': 199.99, 'stock_quantity': 5, 'description': 'Standing desk'},
@@ -86,12 +82,12 @@ void main() {
       var updateCount = 0;
 
       // Pre-populate with some data
-      await reactiveDataAccess.bulkLoad('products', [
+      await dataAccess.bulkLoad('products', [
         {'id': 'p1', 'name': 'Old Laptop', 'category': 'electronics', 'price': 799.99, 'stock_quantity': 5, 'description': 'Old model'},
       ]);
 
       // Watch the table
-      final subscription = reactiveDataAccess.watchTable('products').listen((data) {
+      final subscription = dataAccess.watchTable('products').listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -101,7 +97,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Bulk upsert - should update existing and insert new
-      await reactiveDataAccess.bulkLoad('products', [
+      await dataAccess.bulkLoad('products', [
         {'id': 'p1', 'name': 'New Laptop', 'category': 'electronics', 'price': 1199.99, 'stock_quantity': 8, 'description': 'Latest model'},
         {'id': 'p2', 'name': 'Keyboard', 'category': 'electronics', 'price': 89.99, 'stock_quantity': 25, 'description': 'Mechanical keyboard'},
       ], options: BulkLoadOptions(upsertMode: true));
@@ -126,7 +122,7 @@ void main() {
       final expensiveCompleter = Completer<List<Map<String, dynamic>>>();
 
       // Watch electronics products only
-      final electronicsSubscription = reactiveDataAccess.watchTable(
+      final electronicsSubscription = dataAccess.watchTable(
         'products',
         where: 'category = ?',
         whereArgs: ['electronics'],
@@ -139,7 +135,7 @@ void main() {
       });
 
       // Watch expensive products only (> $500)
-      final expensiveSubscription = reactiveDataAccess.watchTable(
+      final expensiveSubscription = dataAccess.watchTable(
         'products',
         where: 'price > ?',
         whereArgs: [500.0],
@@ -154,7 +150,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 200));
 
       // Bulk load mixed data
-      await reactiveDataAccess.bulkLoad('products', [
+      await dataAccess.bulkLoad('products', [
         {'id': 'p1', 'name': 'Smartphone', 'category': 'electronics', 'price': 699.99, 'stock_quantity': 20}, // Electronics + Expensive
         {'id': 'p2', 'name': 'Charger', 'category': 'electronics', 'price': 19.99, 'stock_quantity': 100}, // Electronics only
         {'id': 'p3', 'name': 'Sofa', 'category': 'furniture', 'price': 899.99, 'stock_quantity': 3}, // Expensive only
@@ -181,7 +177,7 @@ void main() {
       final stockCompleter = Completer<List<Map<String, dynamic>>>();
 
       // Watch price-related changes only
-      final priceSubscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
+      final priceSubscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
         'products',
         () async {
           final result = await dataAccess.getAllWhere('products');
@@ -196,7 +192,7 @@ void main() {
       });
 
       // Watch stock-related changes only
-      final stockSubscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
+      final stockSubscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
         'products',
         () async {
           final result = await dataAccess.getAllWhere('products');
@@ -213,7 +209,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Bulk load affecting both columns
-      await reactiveDataAccess.bulkLoad('products', [
+      await dataAccess.bulkLoad('products', [
         {'id': 'p1', 'name': 'Product 1', 'category': 'test', 'price': 100.0, 'stock_quantity': 10},
         {'id': 'p2', 'name': 'Product 2', 'category': 'test', 'price': 200.0, 'stock_quantity': 20},
       ]);
@@ -234,7 +230,7 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = reactiveDataAccess.watchTable('products').listen((data) {
+      final subscription = dataAccess.watchTable('products').listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -253,7 +249,7 @@ void main() {
         'description': 'Bulk product description $i',
       });
 
-      await reactiveDataAccess.bulkLoad(
+      await dataAccess.bulkLoad(
         'products', 
         largeDataset,
         options: BulkLoadOptions(batchSize: 10), // Small batch size
@@ -270,7 +266,7 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = reactiveDataAccess.watchTable('products').listen((data) {
+      final subscription = dataAccess.watchTable('products').listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -281,7 +277,7 @@ void main() {
 
       // Bulk load with some invalid data (but allowPartialData enabled)
       try {
-        await reactiveDataAccess.bulkLoad('products', [
+        await dataAccess.bulkLoad('products', [
           {'id': 'p1', 'name': 'Valid Product', 'category': 'electronics', 'price': 99.99, 'stock_quantity': 10},
           {'id': 'p2', 'name': 'Missing Category'}, // Missing required fields - should be skipped
           {'id': 'p3', 'name': 'Another Valid', 'category': 'furniture', 'price': 199.99, 'stock_quantity': 5},
@@ -302,7 +298,7 @@ void main() {
       final updates = <int>[];
       final completer = Completer<void>();
 
-      final subscription = reactiveDataAccess.watchTable('products').listen((data) {
+      final subscription = dataAccess.watchTable('products').listen((data) {
         updates.add(data.length);
         // Wait for at least 2 updates after the initial one (if any)
         if (updates.length >= 2 && updates.last >= 3) { 
@@ -314,14 +310,14 @@ void main() {
       await Future.delayed(Duration(milliseconds: 200));
 
       // First bulk load
-      await reactiveDataAccess.bulkLoad('products', [
+      await dataAccess.bulkLoad('products', [
         {'id': 'batch1_p1', 'name': 'Batch 1 Product 1', 'category': 'electronics', 'price': 100.0, 'stock_quantity': 10},
       ]);
 
       await Future.delayed(Duration(milliseconds: 100));
 
       // Second bulk load
-      await reactiveDataAccess.bulkLoad('products', [
+      await dataAccess.bulkLoad('products', [
         {'id': 'batch2_p1', 'name': 'Batch 2 Product 1', 'category': 'furniture', 'price': 200.0, 'stock_quantity': 5},
         {'id': 'batch2_p2', 'name': 'Batch 2 Product 2', 'category': 'furniture', 'price': 300.0, 'stock_quantity': 3},
       ]);
@@ -339,7 +335,7 @@ void main() {
       var updateCount = 0;
 
       // Complex aggregate stream that depends on bulk-loaded data
-      final subscription = reactiveDataAccess.watchAggregate<Map<String, dynamic>>(
+      final subscription = dataAccess.watchAggregate<Map<String, dynamic>>(
         'products',
         () async {
           final result = await database.rawQuery('''
@@ -366,7 +362,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Bulk load data that will affect the aggregate
-      await reactiveDataAccess.bulkLoad('products', [
+      await dataAccess.bulkLoad('products', [
         {'id': 'luxury1', 'name': 'Premium Laptop', 'category': 'electronics', 'price': 2000.0, 'stock_quantity': 5},
         {'id': 'luxury2', 'name': 'Gaming Monitor', 'category': 'electronics', 'price': 800.0, 'stock_quantity': 10},
         {'id': 'luxury3', 'name': 'Designer Chair', 'category': 'furniture', 'price': 500.0, 'stock_quantity': 3},
@@ -387,7 +383,7 @@ void main() {
       final updates = <int>[];
       final completer = Completer<void>();
 
-      final subscription = reactiveDataAccess.watchTable('products').listen((data) {
+      final subscription = dataAccess.watchTable('products').listen((data) {
         updates.add(data.length);
         // Wait for final count of 3 products
         if (data.length >= 3) {
@@ -399,13 +395,13 @@ void main() {
 
       // Fire multiple bulk loads rapidly
       final futures = [
-        reactiveDataAccess.bulkLoad('products', [
+        dataAccess.bulkLoad('products', [
           {'id': 'rapid1', 'name': 'Rapid 1', 'category': 'test', 'price': 10.0, 'stock_quantity': 1},
         ]),
-        reactiveDataAccess.bulkLoad('products', [
+        dataAccess.bulkLoad('products', [
           {'id': 'rapid2', 'name': 'Rapid 2', 'category': 'test', 'price': 20.0, 'stock_quantity': 2},
         ]),
-        reactiveDataAccess.bulkLoad('products', [
+        dataAccess.bulkLoad('products', [
           {'id': 'rapid3', 'name': 'Rapid 3', 'category': 'test', 'price': 30.0, 'stock_quantity': 3},
         ]),
       ];
@@ -423,7 +419,7 @@ void main() {
       final updates = <List<Map<String, dynamic>>>[];
       final completer = Completer<void>();
 
-      final subscription = reactiveDataAccess.watchTable('products').listen((data) {
+      final subscription = dataAccess.watchTable('products').listen((data) {
         updates.add(List.from(data));
         // Wait for final count of 3 products
         if (data.length >= 3) {
@@ -435,11 +431,11 @@ void main() {
 
       // Concurrent bulk load and regular operations
       await Future.wait([
-        reactiveDataAccess.bulkLoad('products', [
+        dataAccess.bulkLoad('products', [
           {'id': 'concurrent1', 'name': 'Concurrent 1', 'category': 'test', 'price': 100.0, 'stock_quantity': 10},
           {'id': 'concurrent2', 'name': 'Concurrent 2', 'category': 'test', 'price': 200.0, 'stock_quantity': 20},
         ]),
-        reactiveDataAccess.insert('products', {
+        dataAccess.insert('products', {
           'id': 'regular1',
           'name': 'Regular Insert',
           'category': 'test',

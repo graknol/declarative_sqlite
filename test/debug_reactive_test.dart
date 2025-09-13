@@ -7,7 +7,6 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 void main() {
   late Database database;
   late DataAccess dataAccess;
-  late ReactiveDataAccess reactiveDataAccess;
   late SchemaBuilder schema;
 
   setUpAll(() async {
@@ -27,23 +26,19 @@ void main() {
     await migrator.migrate(database, schema);
 
     dataAccess = await DataAccess.create(database: database, schema: schema);
-    reactiveDataAccess = ReactiveDataAccess(
-      dataAccess: dataAccess,
-      schema: schema,
-    );
 
     // Insert initial data
     await dataAccess.insert('users', {'name': 'Alice'});
   });
 
   tearDown(() async {
-    await reactiveDataAccess.dispose();
+    await dataAccess.dispose();
     await database.close();
   });
 
   test('debug reactive stream creation', () async {
     print('Creating stream...');
-    final stream = reactiveDataAccess.watchTable('users');
+    final stream = dataAccess.watchTable('users');
     
     print('Stream created, adding listener...');
     var updateCount = 0;

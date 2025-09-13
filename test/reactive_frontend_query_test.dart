@@ -7,8 +7,8 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 /// Addressing @graknol's concerns about queries performed in the frontend and views
 void main() {
   late Database database;
+  
   late DataAccess dataAccess;
-  late ReactiveDataAccess reactiveDataAccess;
   late SchemaBuilder schema;
 
   setUpAll(() async {
@@ -47,10 +47,6 @@ void main() {
     await migrator.migrate(database, schema);
 
     dataAccess = await DataAccess.create(database: database, schema: schema);
-    reactiveDataAccess = ReactiveDataAccess(
-      dataAccess: dataAccess,
-      schema: schema,
-    );
 
     // Insert test data
     await dataAccess.insert('customers', {
@@ -103,7 +99,7 @@ void main() {
   });
 
   tearDown(() async {
-    await reactiveDataAccess.dispose();
+    await dataAccess.dispose();
     await database.close();
   });
 
@@ -113,7 +109,7 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - simple customer list
-      final subscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
+      final subscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
         'customers',
         () => database.rawQuery('SELECT id, name, email FROM customers WHERE status = ?', ['active']),
       ).listen((data) {
@@ -126,7 +122,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Update customer status - should trigger because it affects the WHERE clause
-      await reactiveDataAccess.updateByPrimaryKey('customers', 1, {'status': 'inactive'});
+      await dataAccess.updateByPrimaryKey('customers', 1, {'status': 'inactive'});
 
       final result = await completer.future.timeout(Duration(seconds: 2));
       expect(updateCount, equals(2));
@@ -140,7 +136,7 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - customer orders with JOIN
-      final subscription = reactiveDataAccess.watchRawQuery('''
+      final subscription = dataAccess.watchRawQuery('''
         SELECT c.name, c.email, COUNT(o.id) as order_count, COALESCE(SUM(o.total_amount), 0) as total_spent
         FROM customers c
         LEFT JOIN orders o ON c.id = o.customer_id
@@ -157,7 +153,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Add new order - should trigger because it affects the JOIN results
-      await reactiveDataAccess.insert('orders', {
+      await dataAccess.insert('orders', {
         'customer_id': 1,
         'order_date': '2024-01-15',
         'total_amount': 250.0,
@@ -180,7 +176,7 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - daily revenue aggregate
-      final subscription = reactiveDataAccess.watchAggregate<Map<String, dynamic>>(
+      final subscription = dataAccess.watchAggregate<Map<String, dynamic>>(
         'orders',
         () async {
           final result = await database.rawQuery('''
@@ -208,13 +204,13 @@ void main() {
 
       // Add multiple orders for same date
       await Future.wait([
-        reactiveDataAccess.insert('orders', {
+        dataAccess.insert('orders', {
           'customer_id': 1,
           'order_date': '2024-01-01',
           'total_amount': 500.0,
           'status': 'completed',
         }),
-        reactiveDataAccess.insert('orders', {
+        dataAccess.insert('orders', {
           'customer_id': 2,
           'order_date': '2024-01-01',
           'total_amount': 300.0,
@@ -235,7 +231,7 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - customers with above-average order values
-      final subscription = reactiveDataAccess.watchRawQuery('''
+      final subscription = dataAccess.watchRawQuery('''
         SELECT c.name, c.email, AVG(o.total_amount) as avg_order_value
         FROM customers c
         JOIN orders o ON c.id = o.customer_id
@@ -254,7 +250,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Add a large order that should affect the subquery average
-      await reactiveDataAccess.insert('orders', {
+      await dataAccess.insert('orders', {
         'customer_id': 1,
         'order_date': '2024-01-20',
         'total_amount': 1000.0,
@@ -273,7 +269,7 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - customer ranking by total spent
-      final subscription = reactiveDataAccess.watchRawQuery('''
+      final subscription = dataAccess.watchRawQuery('''
         SELECT 
           c.name,
           c.email,
@@ -293,7 +289,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Add order that should change rankings
-      await reactiveDataAccess.insert('orders', {
+      await dataAccess.insert('orders', {
         'customer_id': 2, // Bob
         'order_date': '2024-01-25',
         'total_amount': 500.0,
@@ -312,7 +308,7 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - CTE for complex customer analytics
-      final subscription = reactiveDataAccess.watchRawQuery('''
+      final subscription = dataAccess.watchRawQuery('''
         WITH customer_stats AS (
           SELECT 
             c.id,
@@ -349,7 +345,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Add high-value order that should affect customer tiers
-      await reactiveDataAccess.insert('orders', {
+      await dataAccess.insert('orders', {
         'customer_id': 2,
         'order_date': '2024-01-30',
         'total_amount': 800.0,
@@ -374,7 +370,7 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - dashboard metrics
-      final subscription = reactiveDataAccess.watchAggregate<Map<String, dynamic>>(
+      final subscription = dataAccess.watchAggregate<Map<String, dynamic>>(
         'orders', // Primary dependency table
         () async {
           final result = await database.rawQuery('''
@@ -400,7 +396,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Add new customer and order
-      final newCustomerId = await reactiveDataAccess.insert('customers', {
+      final newCustomerId = await dataAccess.insert('customers', {
         'name': 'Charlie Brown',
         'email': 'charlie@example.com',
         'city': 'Chicago',
@@ -409,7 +405,7 @@ void main() {
         'status': 'active',
       });
 
-      await reactiveDataAccess.insert('orders', {
+      await dataAccess.insert('orders', {
         'customer_id': newCustomerId,
         'order_date': '2024-02-01',
         'total_amount': 150.0,
@@ -429,7 +425,7 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - search customers by city with orders
-      final subscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
+      final subscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
         'customers',
         () => database.rawQuery('''
           SELECT 
@@ -456,7 +452,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Add customer in matching city
-      final newCustomerId = await reactiveDataAccess.insert('customers', {
+      final newCustomerId = await dataAccess.insert('customers', {
         'name': 'David York',
         'email': 'david@example.com',
         'city': 'New York',
@@ -466,7 +462,7 @@ void main() {
       });
 
       // Add order for this customer
-      await reactiveDataAccess.insert('orders', {
+      await dataAccess.insert('orders', {
         'customer_id': newCustomerId,
         'order_date': '2024-02-05',
         'total_amount': 75.0,
@@ -488,7 +484,7 @@ void main() {
       var updateCount = 0;
 
       // Frontend query - real-time sales report
-      final subscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
+      final subscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
         'orders',
         () => database.rawQuery('''
           SELECT 
@@ -512,13 +508,13 @@ void main() {
 
       // Add orders in new month
       await Future.wait([
-        reactiveDataAccess.insert('orders', {
+        dataAccess.insert('orders', {
           'customer_id': 1,
           'order_date': '2024-02-10',
           'total_amount': 200.0,
           'status': 'completed',
         }),
-        reactiveDataAccess.insert('orders', {
+        dataAccess.insert('orders', {
           'customer_id': 2,
           'order_date': '2024-02-15',
           'total_amount': 300.0,

@@ -7,7 +7,6 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 void main() {
   late Database database;
   late DataAccess dataAccess;
-  late ReactiveDataAccess reactiveDataAccess;
   late SchemaBuilder schema;
 
   setUpAll(() async {
@@ -30,10 +29,6 @@ void main() {
     await migrator.migrate(database, schema);
 
     dataAccess = await DataAccess.create(database: database, schema: schema);
-    reactiveDataAccess = ReactiveDataAccess(
-      dataAccess: dataAccess,
-      schema: schema,
-    );
 
     // Insert test data
     await dataAccess.insert('users', {
@@ -45,7 +40,7 @@ void main() {
   });
 
   tearDown(() async {
-    await reactiveDataAccess.dispose();
+    await dataAccess.dispose();
     await database.close();
   });
 
@@ -54,7 +49,7 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = reactiveDataAccess.watchTable('users').listen((data) {
+      final subscription = dataAccess.watchTable('users').listen((data) {
         updateCount++;
         if (updateCount == 2) { // Skip initial load, wait for insert
           completer.complete(data);
@@ -65,7 +60,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Insert new user - should trigger update
-      await reactiveDataAccess.insert('users', {
+      await dataAccess.insert('users', {
         'username': 'bob',
         'email': 'bob@example.com',
         'age': 25,
@@ -83,7 +78,7 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = reactiveDataAccess.watchTable('users').listen((data) {
+      final subscription = dataAccess.watchTable('users').listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -93,7 +88,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Bulk load data - should trigger stream
-      await reactiveDataAccess.bulkLoad('users', [
+      await dataAccess.bulkLoad('users', [
         {'username': 'charlie', 'email': 'charlie@example.com', 'age': 35, 'status': 'active'},
         {'username': 'david', 'email': 'david@example.com', 'age': 28, 'status': 'inactive'},
       ]);
@@ -106,15 +101,15 @@ void main() {
     });
 
     test('should get dependency statistics', () async {
-      final stream1 = reactiveDataAccess.watchTable('users');
-      final stream2 = reactiveDataAccess.watchTable('users', where: 'status = ?', whereArgs: ['active']);
+      final stream1 = dataAccess.watchTable('users');
+      final stream2 = dataAccess.watchTable('users', where: 'status = ?', whereArgs: ['active']);
       
       final subscription1 = stream1.listen((_) {});
       final subscription2 = stream2.listen((_) {});
 
       await Future.delayed(Duration(milliseconds: 100));
 
-      final stats = reactiveDataAccess.getDependencyStats();
+      final stats = dataAccess.getDependencyStats();
       expect(stats.totalStreams, greaterThan(0));
       expect(stats.totalDependencies, greaterThan(0));
 

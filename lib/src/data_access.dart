@@ -598,7 +598,17 @@ class DataAccess {
     
     _validateInsertValues(table, processedValues);
     
-    return await database.insert(tableName, processedValues);
+    final result = await database.insert(tableName, processedValues);
+    
+    // Notify reactive streams about the change
+    await _streamManager.notifyChange(DatabaseChange(
+      tableName: tableName,
+      operation: DatabaseOperation.insert,
+      affectedColumns: processedValues.keys.toSet(),
+      newValues: processedValues,
+    ));
+    
+    return result;
   }
 
   /// Updates specific columns of a row identified by primary key.
@@ -634,6 +644,9 @@ class DataAccess {
       throw ArgumentError('At least one column value must be provided for update');
     }
     
+    // Get old values for reactive change notification
+    final oldRow = await getByPrimaryKey(tableName, primaryKeyValue);
+    
     // Encode date columns and update system version
     var processedValues = DataTypeUtils.encodeRow(values, metadata.columns);
     processedValues[SystemColumns.systemVersion] = SystemColumnUtils.generateHLCTimestamp();
@@ -642,12 +655,24 @@ class DataAccess {
     
     final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue, table);
     
-    return await database.update(
+    final result = await database.update(
       tableName,
       processedValues,
       where: whereClause,
       whereArgs: whereArgs,
     );
+    
+    // Notify reactive streams about the change
+    await _streamManager.notifyChange(DatabaseChange(
+      tableName: tableName,
+      operation: DatabaseOperation.update,
+      affectedColumns: processedValues.keys.toSet(),
+      primaryKeyValue: primaryKeyValue,
+      oldValues: oldRow,
+      newValues: processedValues,
+    ));
+    
+    return result;
   }
 
   /// Updates rows matching the specified where condition.

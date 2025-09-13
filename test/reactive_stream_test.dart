@@ -63,8 +63,8 @@ Future<void> insertTestData(DataAccess dataAccess) async {
 /// Testing all scenarios and edge cases to ensure no invalidations are missed
 void main() {
   late Database database;
+  
   late DataAccess dataAccess;
-  late ReactiveDataAccess reactiveDataAccess;
   late SchemaBuilder schema;
 
   setUpAll(() async {
@@ -112,17 +112,13 @@ void main() {
     await migrator.migrate(database, schema);
 
     dataAccess = await DataAccess.create(database: database, schema: schema);
-    reactiveDataAccess = ReactiveDataAccess(
-      dataAccess: dataAccess,
-      schema: schema,
-    );
 
     // Insert initial test data
     await insertTestData(dataAccess);
   });
 
   tearDown(() async {
-    await reactiveDataAccess.dispose();
+    await dataAccess.dispose();
     await database.close();
   });
 
@@ -131,7 +127,7 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = reactiveDataAccess.watchTable('users').listen((data) {
+      final subscription = dataAccess.watchTable('users').listen((data) {
         updateCount++;
         if (updateCount == 2) { // Skip initial load, wait for insert
           completer.complete(data);
@@ -142,7 +138,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Insert new user - should trigger update
-      await reactiveDataAccess.insert('users', {
+      await dataAccess.insert('users', {
         'username': 'new_user',
         'email': 'new@example.com',
         'age': 25,
@@ -160,7 +156,7 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = reactiveDataAccess.watchTable('users').listen((data) {
+      final subscription = dataAccess.watchTable('users').listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -170,7 +166,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Update user - should trigger
-      await reactiveDataAccess.updateByPrimaryKey('users', 1, {'age': 35});
+      await dataAccess.updateByPrimaryKey('users', 1, {'age': 35});
 
       final result = await completer.future.timeout(Duration(seconds: 2));
       expect(updateCount, equals(2));
@@ -185,7 +181,7 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
       var updateCount = 0;
 
-      final subscription = reactiveDataAccess.watchTable('users').listen((data) {
+      final subscription = dataAccess.watchTable('users').listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -195,7 +191,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Delete user - should trigger
-      await reactiveDataAccess.deleteByPrimaryKey('users', 3);
+      await dataAccess.deleteByPrimaryKey('users', 3);
 
       final result = await completer.future.timeout(Duration(seconds: 2));
       expect(updateCount, equals(2));
@@ -214,7 +210,7 @@ void main() {
       final statusCompleter = Completer<List<Map<String, dynamic>>>();
 
       // Watch only email changes
-      final emailSubscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
+      final emailSubscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
         'users',
         () async {
           final result = await dataAccess.getAllWhere('users');
@@ -229,7 +225,7 @@ void main() {
       });
 
       // Watch only status changes
-      final statusSubscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
+      final statusSubscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
         'users',
         () async {
           final result = await dataAccess.getAllWhere('users');
@@ -246,21 +242,21 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Update age - should NOT trigger either stream
-      await reactiveDataAccess.updateByPrimaryKey('users', 1, {'age': 35});
+      await dataAccess.updateByPrimaryKey('users', 1, {'age': 35});
       await Future.delayed(Duration(milliseconds: 200));
 
       expect(emailUpdateCount, equals(1)); // Only initial load
       expect(statusUpdateCount, equals(1)); // Only initial load
 
       // Update email - should trigger email stream only
-      await reactiveDataAccess.updateByPrimaryKey('users', 1, {'email': 'alice.new@example.com'});
+      await dataAccess.updateByPrimaryKey('users', 1, {'email': 'alice.new@example.com'});
 
       final emailResult = await emailCompleter.future.timeout(Duration(seconds: 2));
       expect(emailUpdateCount, equals(2));
       expect(statusUpdateCount, equals(1)); // Still only initial
 
       // Update status - should trigger status stream only
-      await reactiveDataAccess.updateByPrimaryKey('users', 2, {'status': 'inactive'});
+      await dataAccess.updateByPrimaryKey('users', 2, {'status': 'inactive'});
 
       final statusResult = await statusCompleter.future.timeout(Duration(seconds: 2));
       expect(statusUpdateCount, equals(2));
@@ -279,7 +275,7 @@ void main() {
       final popularCompleter = Completer<List<Map<String, dynamic>>>();
 
       // Watch active users only
-      final activeSubscription = reactiveDataAccess.watchTable(
+      final activeSubscription = dataAccess.watchTable(
         'users',
         where: 'status = ?',
         whereArgs: ['active'],
@@ -291,7 +287,7 @@ void main() {
       });
 
       // Watch popular posts only (likes > 10)
-      final popularSubscription = reactiveDataAccess.watchTable(
+      final popularSubscription = dataAccess.watchTable(
         'posts',
         where: 'likes > ?',
         whereArgs: [10],
@@ -305,21 +301,21 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Update inactive user - should NOT trigger active users stream
-      await reactiveDataAccess.updateByPrimaryKey('users', 3, {'age': 40});
+      await dataAccess.updateByPrimaryKey('users', 3, {'age': 40});
       await Future.delayed(Duration(milliseconds: 200));
 
       expect(activeUserUpdateCount, equals(1)); // Only initial
       expect(popularPostUpdateCount, equals(1)); // Only initial
 
       // Update active user status to inactive - should trigger active users stream
-      await reactiveDataAccess.updateByPrimaryKey('users', 1, {'status': 'inactive'});
+      await dataAccess.updateByPrimaryKey('users', 1, {'status': 'inactive'});
 
       final activeResult = await activeCompleter.future.timeout(Duration(seconds: 2));
       expect(activeUserUpdateCount, equals(2));
       expect(activeResult.length, equals(1)); // One less active user
 
       // Update post likes to make it popular - should trigger popular posts stream
-      await reactiveDataAccess.updateByPrimaryKey('posts', 2, {'likes': 15});
+      await dataAccess.updateByPrimaryKey('posts', 2, {'likes': 15});
 
       final popularResult = await popularCompleter.future.timeout(Duration(seconds: 2));
       expect(popularPostUpdateCount, equals(2));
@@ -336,7 +332,7 @@ void main() {
       final completer = Completer<Map<String, dynamic>>();
 
       // Create aggregate stream that depends on both users and posts
-      final subscription = reactiveDataAccess.watchAggregate<Map<String, dynamic>>(
+      final subscription = dataAccess.watchAggregate<Map<String, dynamic>>(
         'users',
         () async {
           final result = await database.rawQuery('''
@@ -358,7 +354,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Add new post for user 1 - should trigger user stats update
-      await reactiveDataAccess.insert('posts', {
+      await dataAccess.insert('posts', {
         'user_id': 1,
         'title': 'New Post',
         'content': 'Content',
@@ -380,7 +376,7 @@ void main() {
       var updateCount = 0;
       final completer = Completer<List<Map<String, dynamic>>>();
 
-      final subscription = reactiveDataAccess.watchTable('bulk_test').listen((data) {
+      final subscription = dataAccess.watchTable('bulk_test').listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -397,7 +393,7 @@ void main() {
         'category': i % 2 == 0 ? 'even' : 'odd',
       });
 
-      await reactiveDataAccess.bulkLoad('bulk_test', bulkData);
+      await dataAccess.bulkLoad('bulk_test', bulkData);
 
       final result = await completer.future.timeout(Duration(seconds: 2));
       expect(updateCount, equals(2));
@@ -411,12 +407,12 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
 
       // First insert some data
-      await reactiveDataAccess.bulkLoad('bulk_test', [
+      await dataAccess.bulkLoad('bulk_test', [
         {'id': 'test1', 'name': 'Original', 'value': 100, 'category': 'test'},
         {'id': 'test2', 'name': 'Original2', 'value': 200, 'category': 'test'},
       ]);
 
-      final subscription = reactiveDataAccess.watchTable('bulk_test').listen((data) {
+      final subscription = dataAccess.watchTable('bulk_test').listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -426,7 +422,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Bulk upsert - should trigger stream
-      await reactiveDataAccess.bulkLoad('bulk_test', [
+      await dataAccess.bulkLoad('bulk_test', [
         {'id': 'test1', 'name': 'Updated', 'value': 150, 'category': 'test'},
         {'id': 'test3', 'name': 'New', 'value': 300, 'category': 'test'},
       ], options: BulkLoadOptions(upsertMode: true));
@@ -449,7 +445,7 @@ void main() {
       final valueCompleter = Completer<List<Map<String, dynamic>>>();
 
       // Watch name changes only
-      final nameSubscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
+      final nameSubscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
         'bulk_test',
         () async {
           final result = await dataAccess.getAllWhere('bulk_test');
@@ -464,7 +460,7 @@ void main() {
       });
 
       // Watch value changes only
-      final valueSubscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
+      final valueSubscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
         'bulk_test',
         () async {
           final result = await dataAccess.getAllWhere('bulk_test');
@@ -481,7 +477,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Bulk load affecting only names - should trigger name stream only
-      await reactiveDataAccess.bulkLoad('bulk_test', [
+      await dataAccess.bulkLoad('bulk_test', [
         {'id': 'name_test', 'name': 'Name Only', 'category': 'test'},
       ]);
 
@@ -500,7 +496,7 @@ void main() {
       final completer = Completer<List<Map<String, dynamic>>>();
 
       // Create stream with complex raw query
-      final subscription = reactiveDataAccess.watchAggregate<List<Map<String, dynamic>>>(
+      final subscription = dataAccess.watchAggregate<List<Map<String, dynamic>>>(
         'users',
         () => database.rawQuery('''
           SELECT u.username, COUNT(p.id) as posts, AVG(p.likes) as avg_likes
@@ -521,7 +517,7 @@ void main() {
       await Future.delayed(Duration(milliseconds: 100));
 
       // Update post likes - should trigger query update
-      await reactiveDataAccess.updateByPrimaryKey('posts', 1, {'likes': 50});
+      await dataAccess.updateByPrimaryKey('posts', 1, {'likes': 50});
 
       final result = await completer.future.timeout(Duration(seconds: 2));
       expect(updateCount, equals(2));
@@ -536,7 +532,7 @@ void main() {
       var updateCount = 0;
       final updates = <List<Map<String, dynamic>>>[];
 
-      final subscription = reactiveDataAccess.watchTable('users').listen((data) {
+      final subscription = dataAccess.watchTable('users').listen((data) {
         updateCount++;
         updates.add(List.from(data));
       });
@@ -545,19 +541,19 @@ void main() {
 
       // Make rapid consecutive changes
       await Future.wait([
-        reactiveDataAccess.insert('users', {
+        dataAccess.insert('users', {
           'username': 'rapid1',
           'email': 'rapid1@example.com',
           'age': 25,
           'created_at': DateTime.now().toIso8601String(),
         }),
-        reactiveDataAccess.insert('users', {
+        dataAccess.insert('users', {
           'username': 'rapid2',
           'email': 'rapid2@example.com',
           'age': 26,
           'created_at': DateTime.now().toIso8601String(),
         }),
-        reactiveDataAccess.insert('users', {
+        dataAccess.insert('users', {
           'username': 'rapid3',
           'email': 'rapid3@example.com',
           'age': 27,
@@ -576,9 +572,9 @@ void main() {
 
     test('should clean up inactive streams', () async {
       // Create multiple streams
-      final stream1 = reactiveDataAccess.watchTable('users');
-      final stream2 = reactiveDataAccess.watchTable('posts');
-      final stream3 = reactiveDataAccess.watchTable('bulk_test');
+      final stream1 = dataAccess.watchTable('users');
+      final stream2 = dataAccess.watchTable('posts');
+      final stream3 = dataAccess.watchTable('bulk_test');
 
       final subscription1 = stream1.listen((_) {});
       final subscription2 = stream2.listen((_) {});
@@ -591,7 +587,7 @@ void main() {
       await subscription2.cancel();
 
       // Manually trigger cleanup
-      await reactiveDataAccess.cleanupInactiveStreams();
+      await dataAccess.cleanupInactiveStreams();
 
       // Check that streams were cleaned up (we can't access internals but test doesn't error)
       expect(true, isTrue); // Simple check that cleanup doesn't error
@@ -603,7 +599,7 @@ void main() {
       var updateCount = 0;
       final completer = Completer<void>();
 
-      final subscription = reactiveDataAccess.watchTable('users').listen((data) {
+      final subscription = dataAccess.watchTable('users').listen((data) {
         updateCount++;
         if (updateCount == 1) {
           completer.complete();
@@ -616,7 +612,7 @@ void main() {
 
       // Attempt operation that will fail (duplicate username)
       try {
-        await reactiveDataAccess.insert('users', {
+        await dataAccess.insert('users', {
           'username': 'alice', // Duplicate username
           'email': 'duplicate@example.com',
           'age': 25,
@@ -643,14 +639,14 @@ void main() {
       final subscriptions = <StreamSubscription>[];
 
       for (int i = 0; i < 10; i++) {
-        final stream = reactiveDataAccess.watchTable('users');
+        final stream = dataAccess.watchTable('users');
         streams.add(stream);
         subscriptions.add(stream.listen((_) {}));
       }
 
       await Future.delayed(Duration(milliseconds: 100));
 
-      final stats = reactiveDataAccess.getDependencyStats();
+      final stats = dataAccess.getDependencyStats();
       
       // Should have efficient dependency management
       expect(stats.totalStreams, equals(10));
