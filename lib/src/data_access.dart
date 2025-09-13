@@ -22,7 +22,12 @@ class ReactiveStream<T> {
     this.initialData,
     this.bufferChanges = false,
     this.debounceTime = const Duration(milliseconds: 100),
-  }) : _controller = StreamController<T>.broadcast() {
+  }) {
+    _controller = StreamController<T>(
+      onListen: () {
+        _hasBeenListenedTo = true;
+      },
+    );
     
     // Generate initial data if provided
     if (initialData != null) {
@@ -46,7 +51,7 @@ class ReactiveStream<T> {
   final Duration debounceTime;
   
   /// Internal stream controller
-  final StreamController<T> _controller;
+  late final StreamController<T> _controller;
   
   /// Timer for debouncing changes
   Timer? _debounceTimer;
@@ -63,7 +68,6 @@ class ReactiveStream<T> {
   
   /// The stream that clients listen to
   Stream<T> get stream {
-    _hasBeenListenedTo = true; // Mark as listened to when accessed
     return _controller.stream;
   }
   
