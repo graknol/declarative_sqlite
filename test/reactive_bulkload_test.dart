@@ -54,7 +54,8 @@ void main() {
       var updateCount = 0;
 
       // Watch the entire products table
-      final subscription = dataAccess.watchTable('products').listen((data) {
+      final query = QueryBuilder().selectAll().from('products');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -87,7 +88,8 @@ void main() {
       ]);
 
       // Watch the table
-      final subscription = dataAccess.watchTable('products').listen((data) {
+      final query = QueryBuilder().selectAll().from('products');
+      final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
           completer.complete(data);
@@ -121,12 +123,12 @@ void main() {
       final electronicsCompleter = Completer<List<Map<String, dynamic>>>();
       final expensiveCompleter = Completer<List<Map<String, dynamic>>>();
 
-      // Watch electronics products only
-      final electronicsSubscription = dataAccess.watchTable(
-        'products',
-        where: 'category = ?',
-        whereArgs: ['electronics'],
-      ).listen((data) {
+      // Watch electronics products only  
+      final electronicsQuery = QueryBuilder()
+        .selectAll()
+        .from('products')
+        .where("category = 'electronics'");
+      final electronicsSubscription = dataAccess.watch(electronicsQuery).listen((data) {
         electronicsUpdateCount++;
         // Complete when we have the expected data, regardless of update count
         if (data.length >= 2 && !electronicsCompleter.isCompleted) {
@@ -135,11 +137,11 @@ void main() {
       });
 
       // Watch expensive products only (> $500)
-      final expensiveSubscription = dataAccess.watchTable(
-        'products',
-        where: 'price > ?',
-        whereArgs: [500.0],
-      ).listen((data) {
+      final expensiveQuery = QueryBuilder()
+        .selectAll()
+        .from('products')
+        .where('price > 500.0');
+      final expensiveSubscription = dataAccess.watch(expensiveQuery).listen((data) {
         expensiveUpdateCount++;
         // Complete when we have the expected data, regardless of update count
         if (data.length >= 2 && !expensiveCompleter.isCompleted) {

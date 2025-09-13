@@ -4,6 +4,7 @@ import 'schema_builder.dart';
 import 'table_builder.dart';
 import 'column_builder.dart';
 import 'relationship_builder.dart';
+import 'query_builder.dart';
 
 /// Represents different types of dependencies that can invalidate a stream
 enum DependencyType {
@@ -260,6 +261,105 @@ class DependencyAnalyzer {
     return dependencies;
   }
   
+  /// Analyzes a QueryBuilder to determine dependencies using metadata
+  /// This is the preferred method as it uses metadata instead of SQL parsing
+  Set<StreamDependency> analyzeQueryBuilder(String streamId, QueryBuilder queryBuilder) {
+    final dependencies = <StreamDependency>{};
+    
+    // Get the main table from the FROM clause
+    final mainTableName = queryBuilder.fromTable;
+    if (mainTableName == null) {
+      return dependencies; // No table to analyze
+    }
+    
+    final mainTable = schema.getTable(mainTableName);
+    if (mainTable == null) return dependencies;
+    
+    // Get all referenced tables (main table + joined tables)
+    final allTables = <String>{mainTableName};
+    for (final join in queryBuilder.joins) {
+      allTables.add(join.tableName);
+    }
+    
+    // Determine dependency type based on query complexity
+    final hasJoins = queryBuilder.joins.isNotEmpty;
+    final hasWhereCondition = queryBuilder.whereCondition != null && queryBuilder.whereCondition!.isNotEmpty;
+    final hasSpecificColumns = queryBuilder.selectExpressions.any((expr) => 
+      !expr.toSql().contains('*') && _isColumnExpression(expr.toSql())
+    );
+    
+    if (hasJoins) {
+      // Complex query with joins - use whole-table dependencies for all tables
+      for (final tableName in allTables) {
+        dependencies.add(StreamDependency(
+          streamId: streamId,
+          tableName: tableName,
+          dependencyType: DependencyType.wholeTable,
+        ));
+      }
+    } else if (hasWhereCondition) {
+      // Simple query with WHERE clause - use where-clause dependency
+      dependencies.add(StreamDependency(
+        streamId: streamId,
+        tableName: mainTableName,
+        dependencyType: DependencyType.whereClauseWise,
+        whereCondition: queryBuilder.whereCondition,
+      ));
+    } else if (hasSpecificColumns) {
+      // Query with specific columns - use column-wise dependency
+      final dependentColumns = <String>{};
+      for (final expr in queryBuilder.selectExpressions) {
+        if (_isColumnExpression(expr.toSql())) {
+          final columnName = _extractColumnNameFromExpression(expr.toSql());
+          if (columnName != null) {
+            dependentColumns.add(columnName);
+          }
+        }
+      }
+      
+      // Also include columns from WHERE, GROUP BY, ORDER BY
+      if (queryBuilder.whereCondition != null) {
+        dependentColumns.addAll(_extractColumnsFromCondition(queryBuilder.whereCondition!));
+      }
+      
+      dependentColumns.addAll(queryBuilder.groupByColumns);
+      
+      for (final orderSpec in queryBuilder.orderByColumns) {
+        final columnName = _extractColumnNameFromOrderSpec(orderSpec);
+        if (columnName != null) {
+          dependentColumns.add(columnName);
+        }
+      }
+      
+      dependencies.add(StreamDependency(
+        streamId: streamId,
+        tableName: mainTableName,
+        dependencyType: DependencyType.columnWise,
+        dependentColumns: dependentColumns,
+      ));
+    } else {
+      // Simple query without specific filters - whole table dependency
+      dependencies.add(StreamDependency(
+        streamId: streamId,
+        tableName: mainTableName,
+        dependencyType: DependencyType.wholeTable,
+      ));
+    }
+    
+    // Add related table dependencies based on schema relationships
+    final relatedTables = _extractRelatedTables(mainTableName);
+    if (relatedTables.isNotEmpty) {
+      dependencies.add(StreamDependency(
+        streamId: streamId,
+        tableName: mainTableName,
+        dependencyType: DependencyType.relatedTable,
+        relatedTables: relatedTables,
+      ));
+    }
+    
+    return dependencies;
+  }
+  
   /// Checks if a query is complex and requires conservative dependency tracking
   bool _isComplexQuery(String query) {
     return query.contains('join') ||
@@ -389,6 +489,82 @@ class DependencyAnalyzer {
     
     return relatedTables;
   }
+  
+  /// Extracts column name from an expression SQL string
+  String? _extractColumnNameFromExpression(String expressionSql) {
+    // Remove table prefixes and aliases
+    final parts = expressionSql.split(' ');
+    final columnPart = parts[0]; // Get the first part before any alias
+    
+    if (columnPart.contains('.')) {
+      // Has table prefix like "table.column"
+      return columnPart.split('.').last;
+    }
+    
+    return columnPart == '*' ? null : columnPart;
+  }
+  
+  /// Extracts column names from a WHERE condition string
+  Set<String> _extractColumnsFromCondition(String condition) {
+    final columns = <String>{};
+    
+    // Simple regex to find column references (letters/underscore/digits)
+    final columnPattern = RegExp(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b');
+    final matches = columnPattern.allMatches(condition);
+    
+    for (final match in matches) {
+      final columnName = match.group(1);
+      if (columnName != null && !_isSqlKeyword(columnName)) {
+        columns.add(columnName);
+      }
+    }
+    
+    return columns;
+  }
+  
+  /// Extracts column name from ORDER BY specification
+  String? _extractColumnNameFromOrderSpec(String orderSpec) {
+    final parts = orderSpec.trim().split(' ');
+    final columnPart = parts[0];
+    
+    if (columnPart.contains('.')) {
+      return columnPart.split('.').last;
+    }
+    
+    return columnPart;
+  }
+  
+  /// Checks if a string is a SQL keyword to avoid false column matches
+  bool _isSqlKeyword(String word) {
+    final keywords = {
+      'select', 'from', 'where', 'and', 'or', 'not', 'in', 'like', 'between',
+      'is', 'null', 'true', 'false', 'case', 'when', 'then', 'else', 'end',
+      'join', 'inner', 'left', 'right', 'outer', 'on', 'group', 'by', 'order',
+      'having', 'limit', 'offset', 'distinct', 'as', 'exists', 'all', 'any',
+    };
+    return keywords.contains(word.toLowerCase());
+  }
+  
+  /// Determines if an expression represents a column reference
+  bool _isColumnExpression(String expressionSql) {
+    final sql = expressionSql.toLowerCase().trim();
+    
+    // Contains function calls
+    if (sql.contains('(') && sql.contains(')')) return false;
+    
+    // Contains mathematical operations
+    if (sql.contains('+') || sql.contains('-') || sql.contains('*') || sql.contains('/')) return false;
+    
+    // Contains string literals
+    if (sql.contains("'") || sql.contains('"')) return false;
+    
+    // Contains SQL keywords that indicate it's not a simple column
+    if (sql.contains('case') || sql.contains('when') || sql.contains('then')) return false;
+    
+    // Check if it looks like a column name (optionally table-qualified)
+    final columnPattern = RegExp(r'^([a-zA-Z_][a-zA-Z0-9_]*\.)?[a-zA-Z_][a-zA-Z0-9_]*$');
+    return columnPattern.hasMatch(sql);
+  }
 }
 
 /// Manages stream dependencies and determines when streams should be invalidated
@@ -432,6 +608,31 @@ class StreamDependencyTracker {
         orderBy: orderBy,
       );
     }
+    
+    // Store dependencies
+    _streamDependencies[streamId] = dependencies;
+    
+    // Update reverse mapping
+    for (final dependency in dependencies) {
+      _tableDependents
+          .putIfAbsent(dependency.tableName, () => <String>{})
+          .add(streamId);
+          
+      // Also add related tables
+      if (dependency.relatedTables != null) {
+        for (final relatedTable in dependency.relatedTables!) {
+          _tableDependents
+              .putIfAbsent(relatedTable, () => <String>{})
+              .add(streamId);
+        }
+      }
+    }
+  }
+  
+  /// Registers a stream with QueryBuilder-based dependency analysis
+  void registerQueryBuilderStream(String streamId, QueryBuilder queryBuilder) {
+    // Analyze dependencies using QueryBuilder metadata
+    final dependencies = _analyzer.analyzeQueryBuilder(streamId, queryBuilder);
     
     // Store dependencies
     _streamDependencies[streamId] = dependencies;

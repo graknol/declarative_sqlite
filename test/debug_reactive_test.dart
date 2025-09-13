@@ -46,7 +46,8 @@ void main() {
 
   test('debug reactive stream with insert', () async {
     print('Creating stream...');
-    final stream = dataAccess.watchTable('users');
+    final query = QueryBuilder().selectAll().from('users');
+    final stream = dataAccess.watch(query);
     
     print('Stream created, adding listener...');
     var updateCount = 0;
@@ -93,7 +94,8 @@ void main() {
     var updateCount = 0;
 
     print('Creating subscription...');
-    final subscription = dataAccess.watchTable('users').listen((data) {
+    final query = QueryBuilder().selectAll().from('users');
+    final subscription = dataAccess.watch(query).listen((data) {
       updateCount++;
       print('📢 Stream update #$updateCount: ${data.length} records');
       if (updateCount == 2) { // Skip initial load, wait for insert

@@ -9,6 +9,7 @@ import 'data_types.dart';
 import 'lww_types.dart';
 import 'relationship_builder.dart';
 import 'stream_dependency_tracker.dart';
+import 'query_builder.dart';
 
 /// A function that generates data for a stream when it needs to be refreshed
 typedef StreamDataGenerator<T> = Future<T> Function();
@@ -224,6 +225,37 @@ class ReactiveStreamManager {
     if (allTables.isNotEmpty) {
       _dependencyTracker.registerStream(streamId, allTables.first);
     }
+    
+    // Store the stream
+    _streams[streamId] = stream;
+    
+    // Generate initial data with a small delay to ensure listener can be attached
+    Timer(Duration(milliseconds: 1), () => stream.refresh());
+    
+    return stream;
+  }
+  
+  /// Creates a reactive stream for QueryBuilder queries
+  /// Uses metadata from QueryBuilder for precise dependency tracking
+  ReactiveStream<List<Map<String, dynamic>>> createQueryBuilderStream(
+    String streamId,
+    QueryBuilder queryBuilder, {
+    bool bufferChanges = true,
+    Duration debounceTime = const Duration(milliseconds: 100),
+  }) {
+    // Create the reactive stream  
+    final stream = ReactiveStream<List<Map<String, dynamic>>>(
+      streamId: streamId,
+      dataGenerator: () async {
+        final sql = queryBuilder.toSql();
+        return await dataAccess.database.rawQuery(sql);
+      },
+      bufferChanges: bufferChanges,
+      debounceTime: debounceTime,
+    );
+    
+    // Register dependencies using QueryBuilder metadata
+    _dependencyTracker.registerQueryBuilderStream(streamId, queryBuilder);
     
     // Store the stream
     _streams[streamId] = stream;
@@ -2402,118 +2434,20 @@ class DataAccess {
 
   // ============= Reactive Stream Methods =============
 
-  /// Creates a reactive stream for table data
-  Stream<List<Map<String, dynamic>>> watchTable(
-    String tableName, {
-    String? where,
-    List<dynamic>? whereArgs,
-    String? orderBy,
-    int? limit,
-    int? offset,
+  /// Creates a reactive stream for any query using QueryBuilder
+  /// This is the unified method for all reactive queries as requested by @graknol
+  Stream<List<Map<String, dynamic>>> watch(
+    QueryBuilder queryBuilder, {
     String? streamId,
   }) {
-    final id = streamId ?? 'watch_${tableName}_${DateTime.now().millisecondsSinceEpoch}';
+    final id = streamId ?? 'query_${DateTime.now().millisecondsSinceEpoch}';
     
-    final reactiveStream = _streamManager.createTableStream(
+    final reactiveStream = _streamManager.createQueryBuilderStream(
       id,
-      tableName,
-      where: where,
-      whereArgs: whereArgs,
-      orderBy: orderBy,
-      limit: limit,
-      offset: offset,
+      queryBuilder,
     );
     
     return reactiveStream.stream;
-  }
-
-  /// Creates a reactive stream for aggregated data
-  Stream<T> watchAggregate<T>(
-    String tableName,
-    StreamDataGenerator<T> aggregateFunction, {
-    String? where,
-    List<dynamic>? whereArgs,
-    List<String>? dependentColumns,
-    String? streamId,
-  }) {
-    final id = streamId ?? 'aggregate_${tableName}_${DateTime.now().millisecondsSinceEpoch}';
-    
-    final reactiveStream = _streamManager.createAggregateStream<T>(
-      id,
-      tableName,
-      aggregateFunction,
-      where: where,
-      whereArgs: whereArgs,
-      dependentColumns: dependentColumns,
-    );
-    
-    return reactiveStream.stream;
-  }
-
-  /// Creates a reactive stream for raw SQL queries
-  Stream<List<Map<String, dynamic>>> watchRawQuery(
-    String query,
-    List<dynamic>? arguments, {
-    String? streamId,
-  }) {
-    final id = streamId ?? 'raw_query_${DateTime.now().millisecondsSinceEpoch}';
-    
-    final reactiveStream = _streamManager.createRawQueryStream(
-      id,
-      query,
-      arguments,
-    );
-    
-    return reactiveStream.stream;
-  }
-
-  /// Creates a reactive stream for raw aggregate queries with custom data types
-  Stream<T> watchRawAggregate<T>(
-    String query,
-    List<dynamic>? arguments,
-    T Function(List<Map<String, dynamic>>) transformer, {
-    String? streamId,
-  }) {
-    final id = streamId ?? 'raw_aggregate_${DateTime.now().millisecondsSinceEpoch}';
-    
-    final reactiveStream = _streamManager.createRawQueryStream(
-      id,
-      query,
-      arguments,
-    );
-    
-    return reactiveStream.stream.map(transformer);
-  }
-
-  /// Creates a reactive stream for counting records
-  Stream<int> watchCount(
-    String tableName, {
-    String? where,
-    List<dynamic>? whereArgs,
-    String? streamId,
-  }) {
-    return watchAggregate<int>(
-      tableName,
-      () => count(tableName, where: where, whereArgs: whereArgs),
-      where: where,
-      whereArgs: whereArgs,
-      streamId: streamId,
-    );
-  }
-
-  /// Creates a reactive stream for a single record by primary key
-  Stream<Map<String, dynamic>?> watchByPrimaryKey(
-    String tableName,
-    dynamic primaryKeyValue, {
-    String? streamId,
-  }) {
-    final id = streamId ?? 'pk_${tableName}_${primaryKeyValue}_${DateTime.now().millisecondsSinceEpoch}';
-    
-    return watchAggregate<Map<String, dynamic>?>(
-      tableName,
-      () => getByPrimaryKey(tableName, primaryKeyValue),
-      streamId: id,
-    );
   }
 
   // ============= Pull-to-Refresh Methods =============
