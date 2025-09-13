@@ -36,7 +36,25 @@ dart run example/advanced_query_builder_demo.dart
 - ✅ **Subquery Patterns** with correlated subqueries and EXISTS clauses
 - ✅ **View-Style Queries** with CTEs and analytical functions
 
-### 3. Flutter Demo App (`flutter_demo/`)
+### 3. Data Link Layer Demo (`data_link_layer_demo.dart`)
+
+A comprehensive demonstration of building a data link layer for server-client synchronization using in-memory SQLite for maximum iteration speed on Windows.
+
+**Run the demo:**
+```bash
+dart run example/data_link_layer_demo.dart
+```
+
+**Key Features Demonstrated:**
+- ✅ **Server-Client Synchronization** with bidirectional data flow
+- ✅ **In-Memory SQLite FFI** for fast Windows development iteration
+- ✅ **Mock Server API** with realistic network conditions simulation
+- ✅ **LWW Conflict Resolution** for concurrent data modifications
+- ✅ **Offline Mode Support** with operation queuing and retry logic
+- ✅ **Real-time Updates** using reactive streams
+- ✅ **Comprehensive Test Suite** covering all sync scenarios
+
+### 4. Flutter Demo App (`flutter_demo/`)
 
 A complete Flutter application demonstrating professional UI patterns with offline-first data sync.
 
@@ -63,12 +81,18 @@ All demos showcase production-ready patterns for building offline-first applicat
    - Conflict detection and resolution strategies
    - Multi-device collaboration scenarios
 
-3. **Reactive Data Access**
+3. **Data Link Layer Patterns**
+   - Mock server API for testing synchronization logic
+   - Comprehensive error handling and retry mechanisms
+   - In-memory database for rapid development iteration
+   - Production-ready sync architecture patterns
+
+4. **Professional Architecture**
    - Stream-based UI updates with real-time synchronization
    - Query builder integration for complex filtering
    - Type-safe database operations
 
-4. **Professional Architecture**
+5. **Professional Architecture**
    - Declarative schema management with automatic migration
    - Centralized database service with global access
    - Clean separation of concerns and reusable components
@@ -167,7 +191,12 @@ final topCustomers = await database.rawQuery('''
    dart run example/advanced_query_builder_demo.dart
    ```
 
-3. **Study the Flutter App**: Examine professional UI implementation
+3. **Try Data Link Layer**: See server-client sync patterns
+   ```bash
+   dart run example/data_link_layer_demo.dart
+   ```
+
+4. **Study the Flutter App**: Examine professional UI implementation
    ```bash
    cd example/flutter_demo
    # Examine the code structure and patterns
