@@ -284,6 +284,341 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
   }
 }
 
+/// A building block widget that provides reactive access to multiple database records in a list format.
+/// 
+/// This widget automatically rebuilds when the specified records change and provides
+/// RecordData wrappers for each item, making it easy to build reactive list widgets
+/// with CRUD operations for individual items.
+/// 
+/// ## Example Usage
+/// 
+/// ```dart
+/// ReactiveRecordListBuilder(
+///   dataAccess: dataAccess,
+///   tableName: 'users',
+///   itemBuilder: (context, recordData) {
+///     return ListTile(
+///       title: Text(recordData.getValue<String>('name') ?? ''),
+///       subtitle: Text(recordData.getValue<String>('email') ?? ''),
+///       trailing: IconButton(
+///         icon: Icon(Icons.edit),
+///         onPressed: () => recordData.updateColumn('name', 'Updated Name'),
+///       ),
+///     );
+///   },
+/// )
+/// ```
+class ReactiveRecordListBuilder extends StatelessWidget {
+  /// The data access instance for database operations
+  final DataAccess dataAccess;
+  
+  /// Name of the table to query
+  final String tableName;
+  
+  /// Optional WHERE clause to filter results
+  final String? where;
+  
+  /// Optional WHERE clause arguments
+  final List<dynamic>? whereArgs;
+  
+  /// Optional ORDER BY clause
+  final String? orderBy;
+  
+  /// Optional LIMIT clause
+  final int? limit;
+  
+  /// Name of the primary key column (defaults to 'id')
+  final String primaryKeyColumn;
+  
+  /// Builder function that receives RecordData for each item
+  final Widget Function(BuildContext context, RecordData recordData) itemBuilder;
+  
+  /// Widget to display when the list is empty
+  final Widget? emptyWidget;
+  
+  /// Widget to display while loading
+  final Widget? loadingWidget;
+  
+  /// Widget to display on error
+  final Widget Function(Object error)? errorBuilder;
+  
+  /// Scroll controller for the ListView
+  final ScrollController? controller;
+  
+  /// Whether the list should be physics-enabled
+  final ScrollPhysics? physics;
+  
+  /// Whether the list should shrink-wrap
+  final bool shrinkWrap;
+  
+  /// Padding for the ListView
+  final EdgeInsetsGeometry? padding;
+
+  const ReactiveRecordListBuilder({
+    super.key,
+    required this.dataAccess,
+    required this.tableName,
+    required this.itemBuilder,
+    this.where,
+    this.whereArgs,
+    this.orderBy,
+    this.limit,
+    this.primaryKeyColumn = 'id',
+    this.emptyWidget,
+    this.loadingWidget,
+    this.errorBuilder,
+    this.controller,
+    this.physics,
+    this.shrinkWrap = false,
+    this.padding,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
+      dataAccess: dataAccess,
+      query: () => dataAccess.getAllWhere(
+        tableName,
+        where: where,
+        whereArgs: whereArgs,
+        orderBy: orderBy,
+        limit: limit,
+      ),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return loadingWidget ?? const CircularProgressIndicator();
+        }
+
+        if (snapshot.hasError) {
+          if (errorBuilder != null) {
+            return errorBuilder!(snapshot.error!);
+          }
+          return Text('Error: ${snapshot.error}');
+        }
+
+        final records = snapshot.data ?? [];
+        
+        if (records.isEmpty) {
+          return emptyWidget ?? 
+            const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.inbox, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('No records found', style: TextStyle(color: Colors.grey)),
+                ],
+              ),
+            );
+        }
+
+        return ListView.builder(
+          controller: controller,
+          physics: physics,
+          shrinkWrap: shrinkWrap,
+          padding: padding,
+          itemCount: records.length,
+          itemBuilder: (context, index) {
+            final record = records[index];
+            final primaryKey = record[primaryKeyColumn];
+            
+            final recordData = RecordData(
+              data: record,
+              dataAccess: dataAccess,
+              tableName: tableName,
+              primaryKey: primaryKey,
+              primaryKeyColumn: primaryKeyColumn,
+            );
+
+            return itemBuilder(context, recordData);
+          },
+        );
+      },
+    );
+  }
+}
+
+/// A building block widget that provides reactive access to multiple database records in a grid format.
+/// 
+/// This widget automatically rebuilds when the specified records change and provides
+/// RecordData wrappers for each item, making it easy to build reactive grid widgets
+/// with CRUD operations for individual items.
+/// 
+/// ## Example Usage
+/// 
+/// ```dart
+/// ReactiveRecordGridBuilder(
+///   dataAccess: dataAccess,
+///   tableName: 'products',
+///   crossAxisCount: 2,
+///   itemBuilder: (context, recordData) {
+///     return Card(
+///       child: Column(
+///         children: [
+///           Text(recordData.getValue<String>('name') ?? ''),
+///           Text('\$${recordData.getValue<double>('price')}'),
+///           ElevatedButton(
+///             onPressed: () => recordData.delete(),
+///             child: Text('Delete'),
+///           ),
+///         ],
+///       ),
+///     );
+///   },
+/// )
+/// ```
+class ReactiveRecordGridBuilder extends StatelessWidget {
+  /// The data access instance for database operations
+  final DataAccess dataAccess;
+  
+  /// Name of the table to query
+  final String tableName;
+  
+  /// Optional WHERE clause to filter results
+  final String? where;
+  
+  /// Optional WHERE clause arguments
+  final List<dynamic>? whereArgs;
+  
+  /// Optional ORDER BY clause
+  final String? orderBy;
+  
+  /// Optional LIMIT clause
+  final int? limit;
+  
+  /// Name of the primary key column (defaults to 'id')
+  final String primaryKeyColumn;
+  
+  /// Builder function that receives RecordData for each item
+  final Widget Function(BuildContext context, RecordData recordData) itemBuilder;
+  
+  /// Number of items per row
+  final int crossAxisCount;
+  
+  /// Child aspect ratio for grid items
+  final double childAspectRatio;
+  
+  /// Cross axis spacing between items
+  final double crossAxisSpacing;
+  
+  /// Main axis spacing between items
+  final double mainAxisSpacing;
+  
+  /// Widget to display when the grid is empty
+  final Widget? emptyWidget;
+  
+  /// Widget to display while loading
+  final Widget? loadingWidget;
+  
+  /// Widget to display on error
+  final Widget Function(Object error)? errorBuilder;
+  
+  /// Scroll controller for the GridView
+  final ScrollController? controller;
+  
+  /// Whether the grid should be physics-enabled
+  final ScrollPhysics? physics;
+  
+  /// Whether the grid should shrink-wrap
+  final bool shrinkWrap;
+  
+  /// Padding for the GridView
+  final EdgeInsetsGeometry? padding;
+
+  const ReactiveRecordGridBuilder({
+    super.key,
+    required this.dataAccess,
+    required this.tableName,
+    required this.itemBuilder,
+    required this.crossAxisCount,
+    this.where,
+    this.whereArgs,
+    this.orderBy,
+    this.limit,
+    this.primaryKeyColumn = 'id',
+    this.childAspectRatio = 1.0,
+    this.crossAxisSpacing = 0.0,
+    this.mainAxisSpacing = 0.0,
+    this.emptyWidget,
+    this.loadingWidget,
+    this.errorBuilder,
+    this.controller,
+    this.physics,
+    this.shrinkWrap = false,
+    this.padding,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
+      dataAccess: dataAccess,
+      query: () => dataAccess.getAllWhere(
+        tableName,
+        where: where,
+        whereArgs: whereArgs,
+        orderBy: orderBy,
+        limit: limit,
+      ),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return loadingWidget ?? const CircularProgressIndicator();
+        }
+
+        if (snapshot.hasError) {
+          if (errorBuilder != null) {
+            return errorBuilder!(snapshot.error!);
+          }
+          return Text('Error: ${snapshot.error}');
+        }
+
+        final records = snapshot.data ?? [];
+        
+        if (records.isEmpty) {
+          return emptyWidget ?? 
+            const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.grid_view, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('No records found', style: TextStyle(color: Colors.grey)),
+                ],
+              ),
+            );
+        }
+
+        return GridView.builder(
+          controller: controller,
+          physics: physics,
+          shrinkWrap: shrinkWrap,
+          padding: padding,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            childAspectRatio: childAspectRatio,
+            crossAxisSpacing: crossAxisSpacing,
+            mainAxisSpacing: mainAxisSpacing,
+          ),
+          itemCount: records.length,
+          itemBuilder: (context, index) {
+            final record = records[index];
+            final primaryKey = record[primaryKeyColumn];
+            
+            final recordData = RecordData(
+              data: record,
+              dataAccess: dataAccess,
+              tableName: tableName,
+              primaryKey: primaryKey,
+              primaryKeyColumn: primaryKeyColumn,
+            );
+
+            return itemBuilder(context, recordData);
+          },
+        );
+      },
+    );
+  }
+}
+
 /// A convenience widget for creating reactive forms using [ReactiveRecordBuilder].
 /// 
 /// This widget provides a form-like interface where child widgets can access

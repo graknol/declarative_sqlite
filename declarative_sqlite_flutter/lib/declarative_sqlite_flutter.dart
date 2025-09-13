@@ -3,6 +3,7 @@
 /// 
 /// This library builds upon the declarative_sqlite package to provide:
 /// - Reactive ListView widgets that automatically update when database changes
+/// - Reactive list and grid builders with per-item CRUD operations
 /// - Form widgets with automatic LWW (Last-Write-Wins) column binding  
 /// - Input field widgets that sync with database columns
 /// - Stream-based UI updates using reactive database functionality
@@ -21,6 +22,43 @@
 ///   itemBuilder: (context, user) => ListTile(
 ///     title: Text(user['name']),
 ///     subtitle: Text(user['email']),
+///   ),
+/// )
+/// ```
+/// 
+/// ### Building Reactive Lists with CRUD Operations
+/// ```dart
+/// // Create a list where each item has CRUD operations
+/// ReactiveRecordListBuilder(
+///   dataAccess: dataAccess,
+///   tableName: 'users',
+///   itemBuilder: (context, recordData) => ListTile(
+///     title: Text(recordData.getValue<String>('name') ?? ''),
+///     trailing: IconButton(
+///       icon: Icon(Icons.edit),
+///       onPressed: () => recordData.updateColumn('name', 'Updated'),
+///     ),
+///   ),
+/// )
+/// ```
+/// 
+/// ### Building Reactive Grids
+/// ```dart
+/// // Create a grid where each item has CRUD operations
+/// ReactiveRecordGridBuilder(
+///   dataAccess: dataAccess,
+///   tableName: 'products',
+///   crossAxisCount: 2,
+///   itemBuilder: (context, recordData) => Card(
+///     child: Column(
+///       children: [
+///         Text(recordData.getValue<String>('name') ?? ''),
+///         ElevatedButton(
+///           onPressed: () => recordData.delete(),
+///           child: Text('Delete'),
+///         ),
+///       ],
+///     ),
 ///   ),
 /// )
 /// ```
