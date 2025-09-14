@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+import 'package:equatable/equatable.dart';
 
 /// Types of SQL joins supported by the query builder
 enum JoinType {
@@ -30,8 +31,8 @@ enum JoinType {
 /// 
 /// Supports different join types with ON conditions using fluent syntax.
 @immutable
-class JoinBuilder {
-  const JoinBuilder._({
+class JoinBuilder extends Equatable {
+  JoinBuilder._({
     required this.joinType,
     required this.tableName,
     this.tableAlias,
@@ -102,21 +103,7 @@ class JoinBuilder {
   String toString() => toSql();
 
   @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is JoinBuilder &&
-          runtimeType == other.runtimeType &&
-          joinType == other.joinType &&
-          tableName == other.tableName &&
-          tableAlias == other.tableAlias &&
-          onCondition == other.onCondition;
-
-  @override
-  int get hashCode =>
-      joinType.hashCode ^
-      tableName.hashCode ^
-      tableAlias.hashCode ^
-      onCondition.hashCode;
+  List<Object?> get props => [joinType, tableName, tableAlias, onCondition];
 }
 
 /// Helper class for creating common join patterns

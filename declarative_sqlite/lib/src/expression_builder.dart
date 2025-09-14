@@ -1,11 +1,12 @@
 import 'package:meta/meta.dart';
+import 'package:equatable/equatable.dart';
 
 /// Builder for SQL expressions used in SELECT statements.
 /// 
 /// Supports column references, literals, functions, and aliases with fluent syntax.
 @immutable
-class ExpressionBuilder {
-  const ExpressionBuilder._({
+class ExpressionBuilder extends Equatable {
+  ExpressionBuilder._({
     required this.expression,
     this.alias,
   });
@@ -76,15 +77,7 @@ class ExpressionBuilder {
   String toString() => toSql();
 
   @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is ExpressionBuilder &&
-          runtimeType == other.runtimeType &&
-          expression == other.expression &&
-          alias == other.alias;
-
-  @override
-  int get hashCode => expression.hashCode ^ alias.hashCode;
+  List<Object?> get props => [expression, alias];
 }
 
 /// Commonly used SQL expressions
