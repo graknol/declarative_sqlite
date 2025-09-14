@@ -14,7 +14,7 @@ import 'widget_helpers.dart';
 /// - DatabaseStreamBuilder for related field lookups
 
 /// Enhanced auto-form that leverages reactive building blocks
-class ReactiveAutoForm extends StatefulWidget {
+class AutoForm extends StatefulWidget {
   /// The table name to build the form for
   final String tableName;
   
@@ -48,7 +48,7 @@ class ReactiveAutoForm extends StatefulWidget {
   /// Validation mode
   final AutovalidateMode autovalidateMode;
 
-  const ReactiveAutoForm({
+  const AutoForm({
     super.key,
     required this.tableName,
     required this.fields,
@@ -64,10 +64,10 @@ class ReactiveAutoForm extends StatefulWidget {
   });
 
   @override
-  State<ReactiveAutoForm> createState() => _ReactiveAutoFormState();
+  State<AutoForm> createState() => _AutoFormState();
 }
 
-class _ReactiveAutoFormState extends State<ReactiveAutoForm> {
+class _AutoFormState extends State<AutoForm> {
   final _formKey = GlobalKey<FormState>();
   final Map<String, dynamic> _formData = {};
   bool _isLoading = false;
@@ -413,7 +413,7 @@ class _AutoFormBatchState extends State<AutoFormBatch> {
 }
 
 /// Enhanced form dialog with reactive features
-class ReactiveAutoFormDialog {
+class AutoFormDialog {
   /// Show a dialog for creating a new record
   static Future<T?> showCreate<T>({
     required BuildContext context,
@@ -431,7 +431,7 @@ class ReactiveAutoFormDialog {
         title: title != null ? Text(title) : null,
         content: SizedBox(
           width: MediaQuery.of(context).size.width * 0.8,
-          child: ReactiveAutoForm(
+          child: AutoForm(
             tableName: tableName,
             fields: fields,
             initialData: initialData,
@@ -466,7 +466,7 @@ class ReactiveAutoFormDialog {
         title: title != null ? Text(title) : null,
         content: SizedBox(
           width: MediaQuery.of(context).size.width * 0.8,
-          child: ReactiveAutoForm(
+          child: AutoForm(
             tableName: tableName,
             primaryKey: primaryKey,
             primaryKeyColumn: primaryKeyColumn,

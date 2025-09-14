@@ -40,7 +40,7 @@
 /// ### Enhanced Reactive Forms (New!)
 /// ```dart
 /// // Enhanced form with live preview, computed fields, and conditional visibility
-/// ReactiveAutoForm(
+/// AutoForm(
 ///   tableName: 'orders',
 ///   fields: [
 ///     AutoFormField.text('customer_name', required: true),
@@ -70,7 +70,7 @@
 /// )
 /// 
 /// // Enhanced dialogs with reactive features
-/// ReactiveAutoFormDialog.showCreate(
+/// AutoFormDialog.showCreate(
 ///   context: context,
 ///   tableName: 'users',
 ///   fields: [

@@ -113,7 +113,7 @@ class _EnhancedAutoFormExampleState extends State<EnhancedAutoFormExample> {
           style: Theme.of(context).textTheme.headlineSmall,
         ),
         const SizedBox(height: 16),
-        ReactiveAutoForm(
+        AutoForm(
           tableName: 'orders',
           title: 'Create New Order',
           livePreview: false, // Disabled for new records
@@ -271,7 +271,7 @@ class _EnhancedAutoFormExampleState extends State<EnhancedAutoFormExample> {
   }
 
   Future<void> _showCreateCustomerDialog() async {
-    await ReactiveAutoFormDialog.showCreate(
+    await AutoFormDialog.showCreate(
       context: context,
       tableName: 'customers',
       title: 'New Customer',
@@ -310,7 +310,7 @@ class _EnhancedAutoFormExampleState extends State<EnhancedAutoFormExample> {
   }
 
   Future<void> _showEditOrderDialog() async {
-    await ReactiveAutoFormDialog.showEdit(
+    await AutoFormDialog.showEdit(
       context: context,
       tableName: 'orders',
       primaryKey: 1, // Edit the first order
@@ -335,7 +335,7 @@ class _EnhancedAutoFormExampleState extends State<EnhancedAutoFormExample> {
   }
 
   Future<void> _showBatchEditDialog() async {
-    await ReactiveAutoFormDialog.showBatch(
+    await AutoFormDialog.showBatch(
       context: context,
       tableName: 'customers',
       query: QueryBuilder()
