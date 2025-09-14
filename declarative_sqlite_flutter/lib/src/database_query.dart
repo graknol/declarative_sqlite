@@ -8,10 +8,13 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 /// when query parameters change.
 @immutable
 class DatabaseQuery {
-  /// Table name to query
-  final String tableName;
+  /// Table name to query (for simple table queries)
+  final String? tableName;
   
-  /// Optional WHERE clause
+  /// Custom SQL query (for complex queries, views, joins)
+  final String? customSql;
+  
+  /// Optional WHERE clause (for simple table queries)
   final String? where;
   
   /// Optional WHERE clause arguments
@@ -39,7 +42,8 @@ class DatabaseQuery {
   final String primaryKeyColumn;
 
   const DatabaseQuery({
-    required this.tableName,
+    this.tableName,
+    this.customSql,
     this.where,
     this.whereArgs,
     this.orderBy,
@@ -49,7 +53,10 @@ class DatabaseQuery {
     this.isSingleRecord = false,
     this.primaryKey,
     this.primaryKeyColumn = 'id',
-  });
+  }) : assert(
+         (tableName != null) != (customSql != null),
+         'Either tableName or customSql must be provided, but not both'
+       );
 
   /// Create a query for a single record by primary key
   factory DatabaseQuery.byPrimaryKey(
@@ -107,14 +114,41 @@ class DatabaseQuery {
     );
   }
 
+  /// Create a query with custom SQL (for views, joins, complex queries)
+  factory DatabaseQuery.custom(
+    String sql, {
+    List<dynamic>? whereArgs,
+    int? limit,
+    int? offset,
+  }) {
+    return DatabaseQuery(
+      customSql: sql,
+      whereArgs: whereArgs,
+      limit: limit,
+      offset: offset,
+      isSingleRecord: false,
+    );
+  }
+
+  /// Get the query type as a string for comparison
+  String get queryType {
+    if (customSql != null) return 'custom';
+    if (isSingleRecord) return 'single';
+    return 'table';
+  }
+
   /// Execute this query and return a single record (or null)
   Future<Map<String, dynamic>?> executeSingle(DataAccess dataAccess) async {
+    if (customSql != null) {
+      throw UnsupportedError('Custom SQL queries not supported for executeSingle. Use executeMany and take first result.');
+    }
+    
     if (isSingleRecord) {
-      return await dataAccess.getByPrimaryKey(tableName, primaryKey);
+      return await dataAccess.getByPrimaryKey(tableName!, primaryKey);
     }
     
     final results = await dataAccess.getAllWhere(
-      tableName,
+      tableName!,
       where: where,
       whereArgs: whereArgs,
       orderBy: orderBy,
@@ -127,13 +161,19 @@ class DatabaseQuery {
 
   /// Execute this query and return a list of records
   Future<List<Map<String, dynamic>>> executeMany(DataAccess dataAccess) async {
+    if (customSql != null) {
+      // For custom SQL, we'll need to use the raw database interface
+      // This is a placeholder - in practice, you'd need to implement custom SQL execution
+      throw UnsupportedError('Custom SQL queries not yet fully supported. Use table-based queries for now.');
+    }
+    
     if (isSingleRecord) {
-      final record = await dataAccess.getByPrimaryKey(tableName, primaryKey);
+      final record = await dataAccess.getByPrimaryKey(tableName!, primaryKey);
       return record != null ? [record] : [];
     }
     
     return await dataAccess.getAllWhere(
-      tableName,
+      tableName!,
       where: where,
       whereArgs: whereArgs,
       orderBy: orderBy,
@@ -146,6 +186,7 @@ class DatabaseQuery {
   /// Create a copy of this query with updated parameters
   DatabaseQuery copyWith({
     String? tableName,
+    String? customSql,
     String? where,
     List<dynamic>? whereArgs,
     String? orderBy,
@@ -158,6 +199,7 @@ class DatabaseQuery {
   }) {
     return DatabaseQuery(
       tableName: tableName ?? this.tableName,
+      customSql: customSql ?? this.customSql,
       where: where ?? this.where,
       whereArgs: whereArgs ?? this.whereArgs,
       orderBy: orderBy ?? this.orderBy,
@@ -176,6 +218,7 @@ class DatabaseQuery {
     
     return other is DatabaseQuery &&
         tableName == other.tableName &&
+        customSql == other.customSql &&
         where == other.where &&
         _listEquals(whereArgs, other.whereArgs) &&
         orderBy == other.orderBy &&
@@ -201,6 +244,7 @@ class DatabaseQuery {
   int get hashCode {
     return Object.hash(
       tableName,
+      customSql,
       where,
       whereArgs,
       orderBy,
@@ -215,6 +259,10 @@ class DatabaseQuery {
 
   @override
   String toString() {
+    if (customSql != null) {
+      return 'DatabaseQuery.custom($customSql)';
+    }
+    
     if (isSingleRecord) {
       return 'DatabaseQuery.byPrimaryKey($tableName, $primaryKey)';
     }
@@ -380,6 +428,16 @@ class DatabaseQueryBuilder {
       limit: _limit,
       offset: _offset,
       columns: _columns,
+    );
+  }
+
+  /// Build a custom SQL query
+  DatabaseQuery buildCustom(String sql) {
+    return DatabaseQuery.custom(
+      sql,
+      whereArgs: _whereArgs.isNotEmpty ? _whereArgs : null,
+      limit: _limit,
+      offset: _offset,
     );
   }
 

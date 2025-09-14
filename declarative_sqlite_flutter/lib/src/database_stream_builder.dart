@@ -381,7 +381,7 @@ class DatabaseRecordBuilder extends StatelessWidget {
 }
 
 /// A widget that streams query results and rebuilds when they change.
-class DatabaseQueryBuilder extends StatelessWidget {
+class DatabaseQueryWidget extends StatelessWidget {
   /// The data access instance
   final DataAccess dataAccess;
   
@@ -412,7 +412,7 @@ class DatabaseQueryBuilder extends StatelessWidget {
   /// Widget builder for error states
   final Widget Function(BuildContext context, Object error)? errorBuilder;
 
-  const DatabaseQueryBuilder({
+  const DatabaseQueryWidget({
     super.key,
     required this.dataAccess,
     required this.tableName,

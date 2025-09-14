@@ -29,7 +29,7 @@ AutoForm.withFields(
       DropdownMenuItem(value: 'pending', child: Text('Pending')),
       DropdownMenuItem(value: 'completed', child: Text('Completed')),
     ]),
-    AutoFormField.switch_('is_active'),
+    AutoFormField.toggle('is_active'),
   ],
   onSave: (data) => print('Form saved: \$data'),
 )

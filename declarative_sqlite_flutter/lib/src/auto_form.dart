@@ -224,7 +224,7 @@ abstract class AutoFormField {
   }
 
   /// Create a switch field descriptor
-  static AutoFormSwitchField switch_(
+  static AutoFormSwitchField toggle(
     String columnName, {
     String? label,
     bool readOnly = false,
@@ -793,6 +793,21 @@ class QueryValueSource extends ValueSource {
       dataAccess: dataAccess,
       query: query,
       valueColumn: columnName,
+    );
+  }
+
+  /// Create a value source from a full DatabaseQuery with specified value and label columns
+  factory QueryValueSource.fromQuery(
+    DatabaseQuery query, {
+    required String valueColumn,
+    String? labelColumn,
+    DataAccess? dataAccess,
+  }) {
+    return QueryValueSource(
+      dataAccess: dataAccess,
+      query: query,
+      valueColumn: valueColumn,
+      labelColumn: labelColumn,
     );
   }
 
