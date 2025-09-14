@@ -1,7 +1,7 @@
-/// Example demonstrating the new AutoForm field descriptors and QueryBuilder features.
+/// Example demonstrating the AutoForm field descriptors and QueryBuilder features.
 /// 
 /// This example shows:
-/// 1. AutoForm.withFields() using field descriptors for precise control
+/// 1. AutoForm() using field descriptors for precise control
 /// 2. QueryBuilderWidget for faceted search with hot swapping
 /// 3. ReactiveRecordListBuilder with dynamic query updates
 /// 
@@ -16,9 +16,9 @@
 
 void main() {
   // This demonstrates the API without actually running
-  print('New AutoForm Field Descriptors API:');
+  print('AutoForm Field Descriptors API:');
   print('''
-AutoForm.withFields(
+AutoForm(
   tableName: 'users',
   fields: [
     AutoFormField.text('name'),
@@ -137,30 +137,14 @@ class Text {
   const Text(this.data);
 }
 
-// This shows the key benefits of the new implementation:
+// This shows the key benefits of the AutoForm implementation:
 /*
 
-## Benefits of Field Descriptors vs Schema Auto-Generation
+## Benefits of Field Descriptors
 
-### Before (Schema Auto-Generation)
+### Current AutoForm Implementation
 ```dart
-AutoForm.fromTable(
-  tableName: 'users',
-  excludeColumns: {'created_at', 'updated_at'},
-  columnLabels: {
-    'qty': 'Quantity',
-    'delivery_date': 'Delivery Date'
-  },
-  customValidators: {
-    'email': (value) => value?.contains('@') == true ? null : 'Invalid email'
-  },
-  onSave: (data) => print('Saved: $data'),
-)
-```
-
-### After (Field Descriptors) - More Control
-```dart
-AutoForm.withFields(
+AutoForm(
   tableName: 'users',
   fields: [
     AutoFormField.text('name'),
