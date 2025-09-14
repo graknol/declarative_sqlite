@@ -15,8 +15,8 @@ import 'widget_helpers.dart';
 
 /// Enhanced auto-form that leverages reactive building blocks
 class AutoForm extends StatefulWidget {
-  /// The query builder to extract table and column information from
-  final QueryBuilder queryBuilder;
+  /// The query to extract table and column information from
+  final QueryBuilder query;
   
   /// Primary key for editing existing records (null for new records)
   final dynamic primaryKey;
@@ -50,7 +50,7 @@ class AutoForm extends StatefulWidget {
 
   const AutoForm({
     super.key,
-    required this.queryBuilder,
+    required this.query,
     this.primaryKey,
     this.primaryKeyColumn = 'id',
     this.fields,
@@ -62,36 +62,6 @@ class AutoForm extends StatefulWidget {
     this.livePreview = false,
     this.autovalidateMode = AutovalidateMode.onUserInteraction,
   });
-
-  /// Convenience constructor that creates AutoForm from a table name
-  /// This automatically creates a QueryBuilder with SELECT * FROM tableName
-  AutoForm.fromTable(
-    String tableName, {
-    Key? key,
-    dynamic primaryKey,
-    String primaryKeyColumn = 'id',
-    List<AutoFormField>? fields,
-    Function(Map<String, dynamic> data)? onSave,
-    VoidCallback? onCancel,
-    Map<String, dynamic>? initialData,
-    String? title,
-    bool showActions = true,
-    bool livePreview = false,
-    AutovalidateMode autovalidateMode = AutovalidateMode.onUserInteraction,
-  }) : this(
-    key: key,
-    queryBuilder: QueryBuilder().selectAll().from(tableName),
-    primaryKey: primaryKey,
-    primaryKeyColumn: primaryKeyColumn,
-    fields: fields,
-    onSave: onSave,
-    onCancel: onCancel,
-    initialData: initialData,
-    title: title,
-    showActions: showActions,
-    livePreview: livePreview,
-    autovalidateMode: autovalidateMode,
-  );
 
   @override
   State<AutoForm> createState() => _AutoFormState();
@@ -113,7 +83,7 @@ class _AutoFormState extends State<AutoForm> {
 
   /// Gets the table name from the QueryBuilder
   String get tableName {
-    final table = widget.queryBuilder.fromTable;
+    final table = widget.query.fromTable;
     if (table == null) {
       throw StateError('QueryBuilder must have a FROM table specified');
     }
@@ -615,7 +585,7 @@ class AutoFormDialog {
   /// Show a dialog for creating a new record
   static Future<T?> showCreate<T>({
     required BuildContext context,
-    required QueryBuilder queryBuilder,
+    required QueryBuilder query,
     List<AutoFormField>? fields,
     String? title,
     Map<String, dynamic>? initialData,
@@ -630,13 +600,13 @@ class AutoFormDialog {
         content: SizedBox(
           width: MediaQuery.of(context).size.width * 0.8,
           child: AutoForm(
-            queryBuilder: queryBuilder,
+            query: query,
             fields: fields,
             initialData: initialData,
             livePreview: livePreview,
             onSave: (data) async {
               final dataAccess = getDataAccess(context, null);
-              final tableName = queryBuilder.fromTable!;
+              final tableName = query.fromTable!;
               await dataAccess.insert(tableName, data);
               Navigator.of(context).pop(data);
             },
@@ -650,7 +620,7 @@ class AutoFormDialog {
   /// Show a dialog for editing an existing record
   static Future<T?> showEdit<T>({
     required BuildContext context,
-    required QueryBuilder queryBuilder,
+    required QueryBuilder query,
     required dynamic primaryKey,
     List<AutoFormField>? fields,
     String primaryKeyColumn = 'id',
@@ -666,14 +636,14 @@ class AutoFormDialog {
         content: SizedBox(
           width: MediaQuery.of(context).size.width * 0.8,
           child: AutoForm(
-            queryBuilder: queryBuilder,
+            query: query,
             primaryKey: primaryKey,
             primaryKeyColumn: primaryKeyColumn,
             fields: fields,
             livePreview: livePreview,
             onSave: (data) async {
               final dataAccess = getDataAccess(context, null);
-              final tableName = queryBuilder.fromTable!;
+              final tableName = query.fromTable!;
               await dataAccess.update(
                 tableName,
                 data,
@@ -716,52 +686,6 @@ class AutoFormDialog {
           ),
         ),
       ),
-    );
-  }
-
-  // Convenience methods for backward compatibility that accept tableName
-  
-  /// Show a dialog for creating a new record (convenience method)
-  static Future<T?> showCreateForTable<T>({
-    required BuildContext context,
-    required String tableName,
-    List<AutoFormField>? fields,
-    String? title,
-    Map<String, dynamic>? initialData,
-    bool livePreview = false,
-    bool barrierDismissible = true,
-  }) {
-    return showCreate<T>(
-      context: context,
-      queryBuilder: QueryBuilder().selectAll().from(tableName),
-      fields: fields,
-      title: title,
-      initialData: initialData,
-      livePreview: livePreview,
-      barrierDismissible: barrierDismissible,
-    );
-  }
-
-  /// Show a dialog for editing an existing record (convenience method)
-  static Future<T?> showEditForTable<T>({
-    required BuildContext context,
-    required String tableName,
-    required dynamic primaryKey,
-    List<AutoFormField>? fields,
-    String primaryKeyColumn = 'id',
-    String? title,
-    bool livePreview = false,
-    bool barrierDismissible = true,
-  }) {
-    return showEdit<T>(
-      context: context,
-      queryBuilder: QueryBuilder().selectAll().from(tableName),
-      primaryKey: primaryKey,
-      fields: fields,
-      primaryKeyColumn: primaryKeyColumn,
-      title: title,
-      livePreview: livePreview,
-      barrierDismissible: barrierDismissible,
     );
   }
 }

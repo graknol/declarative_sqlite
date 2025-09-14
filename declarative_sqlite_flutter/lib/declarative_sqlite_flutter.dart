@@ -41,7 +41,7 @@
 /// ```dart
 /// // Enhanced form with live preview, computed fields, and conditional visibility
 /// AutoForm(
-///   tableName: 'orders',
+///   query: QueryBuilder().selectAll().from('orders'),
 ///   fields: [
 ///     AutoFormField.text('customer_name', required: true),
 ///     AutoFormField.related('customer_id', 
@@ -60,7 +60,6 @@
 /// 
 /// // Batch editing for multiple records
 /// AutoFormBatch(
-///   tableName: 'products',
 ///   query: QueryBuilder().selectAll().from('products').where((cb) => cb.eq('category', 'electronics')),
 ///   fields: [
 ///     AutoFormField.text('price'),
@@ -72,7 +71,7 @@
 /// // Enhanced dialogs with reactive features
 /// AutoFormDialog.showCreate(
 ///   context: context,
-///   tableName: 'users',
+///   query: QueryBuilder().selectAll().from('users'),
 ///   fields: [
 ///     AutoFormField.text('name', validator: AutoFormValidation.minLength(3)),
 ///     AutoFormField.text('email', validator: AutoFormValidation.email()),
