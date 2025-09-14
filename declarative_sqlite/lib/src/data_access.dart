@@ -1897,6 +1897,11 @@ class DataAccess {
     _pendingOperations.clear();
   }
 
+  /// Discards a specific operation (for permanent failures)
+  void discardOperation(String operationId) {
+    _pendingOperations.remove(operationId);
+  }
+
   // ============= Relationship Support =============
 
   /// Gets all child records for a parent record following a relationship

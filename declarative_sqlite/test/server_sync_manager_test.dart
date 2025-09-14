@@ -108,7 +108,7 @@ void main() {
         uploadCallback: (operations) async {
           attemptCount++;
           if (attemptCount < 3) {
-            return false; // Fail first 2 attempts
+            throw Exception('Network error'); // Throw exception for retryable failures
           }
           return true; // Succeed on 3rd attempt
         },
@@ -327,7 +327,7 @@ void main() {
           attemptCount++;
           attemptTimes.add(DateTime.now());
           if (attemptCount < 3) {
-            return false; // Fail to trigger retry
+            throw Exception('Temporary failure'); // Throw exception to trigger retry
           }
           return true;
         },
