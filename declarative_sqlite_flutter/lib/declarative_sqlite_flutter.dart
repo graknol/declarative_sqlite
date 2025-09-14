@@ -4,7 +4,7 @@
 /// This library builds upon the declarative_sqlite package to provide:
 /// - Reactive ListView widgets that automatically update when database changes
 /// - Reactive list and grid builders with per-item CRUD operations
-/// - Auto-generated forms with field descriptors for precise control
+/// - Enhanced auto-generated forms with modern reactive patterns
 /// - Query builder widgets with faceted search capabilities
 /// - Hot-swappable queries with proper subscription management
 /// - Stream-based UI updates using reactive database functionality
@@ -37,19 +37,46 @@
 /// )
 /// ```
 /// 
-/// ### Option 2: Explicit DataAccess Parameter
-/// 
-/// Pass dataAccess explicitly to each widget:
-/// 
+/// ### Enhanced Reactive Forms (New!)
 /// ```dart
-/// // Create a reactive ListView that updates when the database changes
-/// ReactiveListView.builder(
-///   dataAccess: dataAccess,
+/// // Enhanced form with live preview, computed fields, and conditional visibility
+/// ReactiveAutoForm(
+///   tableName: 'orders',
+///   fields: [
+///     AutoFormField.text('customer_name', required: true),
+///     AutoFormField.related('customer_id', 
+///       relatedTable: 'customers',
+///       relatedValueColumn: 'id',
+///       relatedDisplayColumn: 'name'),
+///     AutoFormField.computed('total_amount',
+///       computation: (formData) => 
+///         (formData['quantity'] ?? 0) * (formData['unit_price'] ?? 0)),
+///     AutoFormField.text('notes', 
+///       visibilityCondition: (formData) => formData['customer_type'] == 'premium'),
+///   ],
+///   livePreview: true, // Updates database immediately
+///   onSave: (data) => print('Order saved: $data'),
+/// )
+/// 
+/// // Batch editing for multiple records
+/// AutoFormBatch(
+///   tableName: 'products',
+///   query: QueryBuilder().selectAll().from('products').where((cb) => cb.eq('category', 'electronics')),
+///   fields: [
+///     AutoFormField.text('price'),
+///     AutoFormField.text('discount_percentage'),
+///   ],
+///   onBatchSave: (records) => print('Updated ${records.length} products'),
+/// )
+/// 
+/// // Enhanced dialogs with reactive features
+/// ReactiveAutoFormDialog.showCreate(
+///   context: context,
 ///   tableName: 'users',
-///   itemBuilder: (context, user) => ListTile(
-///     title: Text(user['name']),
-///     subtitle: Text(user['email']),
-///   ),
+///   fields: [
+///     AutoFormField.text('name', validator: AutoFormValidation.minLength(3)),
+///     AutoFormField.text('email', validator: AutoFormValidation.email()),
+///   ],
 /// )
 /// ```
 /// 
@@ -88,35 +115,7 @@
 /// )
 /// ```
 /// 
-/// ### Auto-Generated Forms with Field Descriptors (New!)
-/// ```dart
-/// // Use field descriptors for precise control over form fields
-/// AutoForm.withFields(
-///   tableName: 'users',
-///   fields: [
-///     AutoFormField.text('name'),
-///     AutoFormField.text('created_by', readOnly: true),
-///     AutoFormField.date('delivery_date'),
-///     AutoFormField.counter('qty'),
-///     AutoFormField.dropdown('status', items: statusItems),
-///     // New select and multiselect fields with horizontal buttons
-///     AutoFormField.select('priority', 
-///       valueSource: StaticValueSource.fromValues(['low', 'medium', 'high'])),
-///     AutoFormField.multiselect('tags',
-///       valueSource: QueryValueSource.fromColumn('tags', 'name')),
-///   ],
-///   onSave: (data) => print('User saved: $data'),
-/// )
-/// 
-/// // Legacy auto-generation from schema
-/// AutoForm.fromTable(
-///   tableName: 'users',
-///   onSave: (data) => print('User saved: $data'),
-///   onCancel: () => Navigator.pop(context),
-/// )
-/// ```
-/// 
-/// ### Faceted Search with Query Builder (New!)
+/// ### Faceted Search with Query Builder
 /// ```dart
 /// // Build complex queries with faceted search interface
 /// QueryBuilderWidget(
