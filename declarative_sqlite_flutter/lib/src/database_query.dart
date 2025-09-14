@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'package:equatable/equatable.dart';
 
 /// A value-comparable database query specification that supports hot swapping.
 /// 
@@ -7,7 +8,7 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 /// rather than reference, enabling reactive widgets to properly unsubscribe/subscribe
 /// when query parameters change.
 @immutable
-class DatabaseQuery {
+class DatabaseQuery extends Equatable {
   /// Table name to query (for simple table queries)
   final String? tableName;
   
@@ -41,7 +42,7 @@ class DatabaseQuery {
   /// Primary key column name for single record queries
   final String primaryKeyColumn;
 
-  const DatabaseQuery({
+  DatabaseQuery({
     this.tableName,
     this.customSql,
     this.where,
@@ -213,49 +214,19 @@ class DatabaseQuery {
   }
 
   @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    
-    return other is DatabaseQuery &&
-        tableName == other.tableName &&
-        customSql == other.customSql &&
-        where == other.where &&
-        _listEquals(whereArgs, other.whereArgs) &&
-        orderBy == other.orderBy &&
-        limit == other.limit &&
-        offset == other.offset &&
-        _listEquals(columns, other.columns) &&
-        isSingleRecord == other.isSingleRecord &&
-        primaryKey == other.primaryKey &&
-        primaryKeyColumn == other.primaryKeyColumn;
-  }
-
-  /// Helper method to compare lists for equality
-  bool _listEquals<T>(List<T>? a, List<T>? b) {
-    if (a == null) return b == null;
-    if (b == null || a.length != b.length) return false;
-    for (int index = 0; index < a.length; index += 1) {
-      if (a[index] != b[index]) return false;
-    }
-    return true;
-  }
-
-  @override
-  int get hashCode {
-    return Object.hash(
-      tableName,
-      customSql,
-      where,
-      whereArgs,
-      orderBy,
-      limit,
-      offset,
-      columns,
-      isSingleRecord,
-      primaryKey,
-      primaryKeyColumn,
-    );
-  }
+  List<Object?> get props => [
+        tableName,
+        customSql,
+        where,
+        whereArgs,
+        orderBy,
+        limit,
+        offset,
+        columns,
+        isSingleRecord,
+        primaryKey,
+        primaryKeyColumn,
+      ];
 
   @override
   String toString() {

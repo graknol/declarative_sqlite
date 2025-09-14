@@ -13,6 +13,7 @@ dependencies:
   declarative_sqlite:
     path: ../declarative_sqlite
   sqflite: ^2.3.4
+  equatable: ^2.0.5
 
 dev_dependencies:
   flutter_test:

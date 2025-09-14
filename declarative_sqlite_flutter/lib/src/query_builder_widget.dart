@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'package:equatable/equatable.dart';
 import 'database_query.dart';
 import 'data_access_provider.dart';
 
 /// Base class for query field descriptors that define how search fields should be rendered
-abstract class QueryField {
+abstract class QueryField extends Equatable {
   /// The column name this field searches
   final String columnName;
   
@@ -14,11 +15,14 @@ abstract class QueryField {
   /// Whether this field is enabled by default
   final bool enabledByDefault;
 
-  const QueryField({
+  QueryField({
     required this.columnName,
     this.label,
     this.enabledByDefault = true,
   });
+
+  @override
+  List<Object?> get props => [columnName, label, enabledByDefault];
 
   /// Build the query field widget
   Widget buildField(
@@ -113,12 +117,16 @@ abstract class QueryField {
 class QueryTextField extends QueryField {
   final String? placeholder;
 
-  const QueryTextField({
+  QueryTextField(
+{
     required super.columnName,
     super.label,
     super.enabledByDefault = true,
     this.placeholder,
   });
+
+  @override
+  List<Object?> get props => [...super.props, placeholder];
 
   @override
   Widget buildField(
@@ -151,12 +159,16 @@ class QueryTextField extends QueryField {
 class QueryMultiselectField extends QueryField {
   final List<String> options;
 
-  const QueryMultiselectField({
+  QueryMultiselectField(
+{
     required super.columnName,
     super.label,
     super.enabledByDefault = true,
     required this.options,
   });
+
+  @override
+  List<Object?> get props => [...super.props, options];
 
   @override
   Widget buildField(
@@ -214,13 +226,17 @@ class QueryDateRangeField extends QueryField {
   final DateTime? minDate;
   final DateTime? maxDate;
 
-  const QueryDateRangeField({
+  QueryDateRangeField(
+{
     required super.columnName,
     super.label,
     super.enabledByDefault = true,
     this.minDate,
     this.maxDate,
   });
+
+  @override
+  List<Object?> get props => [...super.props, minDate, maxDate];
 
   @override
   Widget buildField(
@@ -307,7 +323,8 @@ class QuerySliderRangeField extends QueryField {
   final double max;
   final int? divisions;
 
-  const QuerySliderRangeField({
+  QuerySliderRangeField(
+{
     required super.columnName,
     super.label,
     super.enabledByDefault = true,
@@ -315,6 +332,9 @@ class QuerySliderRangeField extends QueryField {
     required this.max,
     this.divisions,
   });
+
+  @override
+  List<Object?> get props => [...super.props, min, max, divisions];
 
   @override
   Widget buildField(
@@ -418,7 +438,7 @@ class QueryBuilderWidget extends StatefulWidget {
   /// Initial query values
   final Map<String, dynamic>? initialValues;
 
-  const QueryBuilderWidget({
+  QueryBuilderWidget({
     super.key,
     this.dataAccess,
     required this.tableName,

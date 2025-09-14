@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'package:equatable/equatable.dart';
 import 'data_access_provider.dart';
 import 'reactive_record_builder.dart';
 import 'database_query.dart';
 
 /// Base class for form field descriptors that define how columns should be rendered
-abstract class AutoFormField {
+abstract class AutoFormField extends Equatable {
   /// The column name this field represents
   final String columnName;
   
@@ -29,7 +30,7 @@ abstract class AutoFormField {
     void Function(String columnName, dynamic value) onChanged,
   )? customBuilder;
 
-  const AutoFormField({
+  AutoFormField({
     required this.columnName,
     this.label,
     this.readOnly = false,
@@ -37,6 +38,16 @@ abstract class AutoFormField {
     this.required,
     this.customBuilder,
   });
+
+  @override
+  List<Object?> get props => [
+        columnName, 
+        label, 
+        readOnly, 
+        validator, 
+        required, 
+        customBuilder,
+      ];
 
   /// Build the form field widget
   Widget buildField(
@@ -312,7 +323,7 @@ class AutoFormTextField extends AutoFormField {
   final TextInputType? keyboardType;
   final String? hint;
 
-  const AutoFormTextField({
+  AutoFormTextField({
     required super.columnName,
     super.label,
     super.readOnly = false,
@@ -323,6 +334,9 @@ class AutoFormTextField extends AutoFormField {
     this.keyboardType,
     this.hint,
   });
+
+  @override
+  List<Object?> get props => [...super.props, maxLines, keyboardType, hint];
 
   @override
   Widget buildDefaultField(
@@ -695,7 +709,7 @@ abstract class ValueSource {
 }
 
 /// Represents an option in a select field
-class SelectOption {
+class SelectOption extends Equatable {
   /// The value to store in the database
   final dynamic value;
   
@@ -705,33 +719,27 @@ class SelectOption {
   /// Whether this option is enabled/selectable
   final bool enabled;
 
-  const SelectOption({
+  SelectOption({
     required this.value,
     required this.label,
     this.enabled = true,
   });
 
   @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is SelectOption &&
-        other.value == value &&
-        other.label == label &&
-        other.enabled == enabled;
-  }
-
-  @override
-  int get hashCode => Object.hash(value, label, enabled);
+  List<Object?> get props => [value, label, enabled];
 
   @override
   String toString() => 'SelectOption(value: $value, label: $label, enabled: $enabled)';
 }
 
 /// A static value source that provides a fixed list of options
-class StaticValueSource extends ValueSource {
+class StaticValueSource extends ValueSource with EquatableMixin {
   final List<SelectOption> options;
 
   StaticValueSource(this.options);
+
+  @override
+  List<Object?> get props => [options];
 
   /// Create from a list of simple values (value = label)
   factory StaticValueSource.fromValues(List<dynamic> values) {
@@ -752,7 +760,7 @@ class StaticValueSource extends ValueSource {
 }
 
 /// A dynamic value source that queries the database for options
-class QueryValueSource extends ValueSource {
+class QueryValueSource extends ValueSource with EquatableMixin {
   /// The data access instance to use for querying
   final DataAccess? dataAccess;
   
@@ -771,6 +779,9 @@ class QueryValueSource extends ValueSource {
     required this.valueColumn,
     this.labelColumn,
   });
+
+  @override
+  List<Object?> get props => [dataAccess, query, valueColumn, labelColumn];
 
   /// Create a value source that queries distinct values from a column
   factory QueryValueSource.fromColumn(
@@ -840,7 +851,7 @@ class AutoFormSelectField extends AutoFormField {
   final double spacing;
   final EdgeInsets buttonPadding;
 
-  const AutoFormSelectField({
+  AutoFormSelectField({
     required super.columnName,
     super.label,
     super.readOnly = false,
@@ -851,6 +862,9 @@ class AutoFormSelectField extends AutoFormField {
     this.spacing = 8.0,
     this.buttonPadding = const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
   });
+
+  @override
+  List<Object?> get props => [...super.props, valueSource, spacing, buttonPadding];
 
   @override
   Widget buildDefaultField(
