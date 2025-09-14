@@ -35,10 +35,26 @@ Flutter-specific widgets and utilities that integrate seamlessly with the core l
 dependencies:
   declarative_sqlite:
     path: declarative_sqlite
+  # Platform-specific SQLite implementation:
+  sqflite: ^2.3.4                    # For Flutter/mobile platforms
+  # OR
+  sqflite_common_ffi: ^2.3.4+4       # For desktop platforms (Windows, macOS, Linux)
 ```
 
 ```dart
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+
+// Platform initialization (choose one):
+
+// For Flutter/mobile platforms:
+import 'package:sqflite/sqflite.dart';
+// Database factory is automatically set
+
+// For desktop platforms (Windows, macOS, Linux):
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+// Initialize FFI
+sqfliteFfiInit();
+databaseFactory = databaseFactoryFfi;
 
 // Define schema
 final schema = SchemaBuilder()

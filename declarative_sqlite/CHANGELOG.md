@@ -1,3 +1,12 @@
+## 1.0.1
+
+### Breaking Changes
+
+- **Platform Dependencies**: Moved `sqflite_common` to dev_dependencies. Users must now explicitly add platform-specific SQLite dependencies:
+  - For Flutter/mobile: `sqflite: ^2.3.4`
+  - For desktop/testing: `sqflite_common_ffi: ^2.3.4+4`
+- This change provides better platform flexibility and follows SQLite package best practices
+
 ## 1.0.0
 
 ### Initial Release
