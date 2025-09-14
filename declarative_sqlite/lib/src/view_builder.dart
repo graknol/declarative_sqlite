@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'query_builder.dart';
 import 'expression_builder.dart';
+import 'condition_builder.dart';
 
 /// Builder for defining SQL VIEW specifications in a database schema.
 /// 
@@ -109,17 +110,17 @@ class ViewBuilder {
   // TODO: Mark as deprecated in a future release
   
   /// Creates a simple view that selects all columns from a table
-  static ViewBuilder simple(String viewName, String tableName, [String? whereCondition]) {
+  static ViewBuilder simple(String viewName, String tableName, [ConditionBuilder? whereCondition]) {
     return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromTable(tableName, whereCondition: whereCondition);
   }
 
   /// Creates a view with specific columns from a table
-  static ViewBuilder withColumns(String viewName, String tableName, List<String> columns, [String? whereCondition]) {
+  static ViewBuilder withColumns(String viewName, String tableName, List<String> columns, [ConditionBuilder? whereCondition]) {
     return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromTable(tableName, columns: columns, whereCondition: whereCondition);
   }
 
   /// Creates a view with expressions and aliases
-  static ViewBuilder withExpressions(String viewName, String tableName, List<ExpressionBuilder> expressions, [String? whereCondition]) {
+  static ViewBuilder withExpressions(String viewName, String tableName, List<ExpressionBuilder> expressions, [ConditionBuilder? whereCondition]) {
     return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromTable(tableName, expressions: expressions, whereCondition: whereCondition);
   }
 
@@ -146,7 +147,7 @@ class _ViewBuilderStep1 extends ViewBuilder {
     String tableName, {
     List<String>? columns,
     List<ExpressionBuilder>? expressions,
-    String? whereCondition,
+    ConditionBuilder? whereCondition,
   }) {
     QueryBuilder query;
     
@@ -214,7 +215,7 @@ class Views {
   }
 
   /// Creates a filtered view
-  static ViewBuilder filtered(String viewName, String tableName, String whereCondition) {
+  static ViewBuilder filtered(String viewName, String tableName, ConditionBuilder whereCondition) {
     return (ViewBuilder.create(viewName) as _ViewBuilderStep1).fromTable(tableName, whereCondition: whereCondition);
   }
 

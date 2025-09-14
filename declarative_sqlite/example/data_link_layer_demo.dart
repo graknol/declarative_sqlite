@@ -134,10 +134,10 @@ final appSchema = SchemaBuilder()
 
   // Add useful views for data analysis
   .addView((ViewBuilder.create('active_users') as dynamic)
-      .fromTable('users', whereCondition: 'active = 1'))
+      .fromTable('users', whereCondition: ConditionBuilder.eq('active', 1)))
       
   .addView((ViewBuilder.create('pending_sync_operations') as dynamic)
-      .fromTable('sync_operations', whereCondition: 'status = "pending"'))
+      .fromTable('sync_operations', whereCondition: ConditionBuilder.eq('status', 'pending')))
 
   .addView((ViewBuilder.create('order_summary') as dynamic)
       .fromQuery((QueryBuilder query) => query
@@ -434,7 +434,7 @@ class ClientDataManager {
       _usersController.add(users);
     });
 
-    dataAccess.watch(QueryBuilder().selectAll().from('products').where('active = 1').orderByColumn('name')).listen((products) {
+    dataAccess.watch(QueryBuilder().selectAll().from('products').where(ConditionBuilder.eq('active', 1)).orderByColumn('name')).listen((products) {
       _productsController.add(products);
     });
 

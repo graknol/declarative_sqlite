@@ -266,7 +266,7 @@ void main() {
       final popularCompleter = Completer<List<Map<String, dynamic>>>();
 
       // Watch active users only
-      final activeQuery = QueryBuilder().selectAll().from('users').where("status = 'active'");
+      final activeQuery = QueryBuilder().selectAll().from('users').where(ConditionBuilder.eq('status', 'active'));
       final activeSubscription = dataAccess.watch(activeQuery).listen((data) {
         activeUserUpdateCount++;
         if (activeUserUpdateCount == 2) {
@@ -275,7 +275,7 @@ void main() {
       });
 
       // Watch popular posts only (likes > 10)
-      final popularQuery = QueryBuilder().selectAll().from('posts').where('likes > 10');
+      final popularQuery = QueryBuilder().selectAll().from('posts').where(ConditionBuilder.gt('likes', 10));
       final popularSubscription = dataAccess.watch(popularQuery).listen((data) {
         popularPostUpdateCount++;
         if (popularPostUpdateCount == 2) {
@@ -325,7 +325,7 @@ void main() {
         ])
         .from('users', 'u')
         .leftJoin('posts', 'u.id = p.user_id', 'p')
-        .where('u.id = 1')
+        .where(ConditionBuilder.eq('u.id', 1))
         .groupBy(['u.id']);
       
       final subscription = dataAccess.watch(userStatsQuery).listen((data) {
@@ -478,9 +478,9 @@ void main() {
         ])
         .from('users', 'u')
         .leftJoin('posts', 'u.id = p.user_id', 'p')
-        .where("u.status = 'active'")
+        .where(ConditionBuilder.eq('u.status', 'active'))
         .groupBy(['u.id'])
-        .having('COUNT(p.id) > 0')
+        .having(ConditionBuilder.raw('COUNT(p.id) > 0'))
         .orderBy(['avg_likes DESC']);
         
       final subscription = dataAccess.watch(complexQuery).listen((data) {

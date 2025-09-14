@@ -126,7 +126,7 @@ void main() {
 
     test('should get dependency statistics', () async {
       final query1 = QueryBuilder().selectAll().from('users');
-      final query2 = QueryBuilder().selectAll().from('users').where('status = \'active\'');
+      final query2 = QueryBuilder().selectAll().from('users').where(ConditionBuilder.eq('status', 'active'));
       
       final stream1 = dataAccess.watch(query1);
       final stream2 = dataAccess.watch(query2);

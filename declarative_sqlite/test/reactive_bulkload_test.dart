@@ -127,7 +127,7 @@ void main() {
       final electronicsQuery = QueryBuilder()
         .selectAll()
         .from('products')
-        .where("category = 'electronics'");
+        .where(ConditionBuilder.eq('category', 'electronics'));
       final electronicsSubscription = dataAccess.watch(electronicsQuery).listen((data) {
         electronicsUpdateCount++;
         // Complete when we have the expected data, regardless of update count
@@ -140,7 +140,7 @@ void main() {
       final expensiveQuery = QueryBuilder()
         .selectAll()
         .from('products')
-        .where('price > 500.0');
+        .where(ConditionBuilder.gt('price', 500.0));
       final expensiveSubscription = dataAccess.watch(expensiveQuery).listen((data) {
         expensiveUpdateCount++;
         // Complete when we have the expected data, regardless of update count
@@ -340,7 +340,7 @@ void main() {
           ExpressionBuilder.function('SUM', ['stock_quantity']).as('total_stock'),
         ])
         .from('products')
-        .where('price > 50')
+        .where(ConditionBuilder.gt('price', 50))
         .groupBy(['category'])
         .orderBy(['avg_price DESC'])
         .limit(1);

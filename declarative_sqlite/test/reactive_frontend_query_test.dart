@@ -112,7 +112,7 @@ void main() {
       final query = QueryBuilder()
         .selectColumns(['id', 'name', 'email'])
         .from('customers')
-        .where('status = \'active\'');
+        .where(ConditionBuilder.eq('status', 'active'));
       final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
         if (updateCount == 2) {
@@ -146,7 +146,7 @@ void main() {
         ])
         .from('customers', 'c')
         .leftJoin('orders', 'c.id = o.customer_id', 'o')
-        .where('c.status = \'active\'')
+        .where(ConditionBuilder.eq('c.status', 'active'))
         .groupBy(['c.id'])
         .orderBy(['total_spent DESC']);
       final subscription = dataAccess.watch(query).listen((data) {
@@ -190,7 +190,7 @@ void main() {
           ExpressionBuilder.function('AVG', ['total_amount']).as('avg_order_value'),
         ])
         .from('orders')
-        .where('status = \'completed\'')
+        .where(ConditionBuilder.eq('status', 'completed'))
         .groupBy(['order_date'])
         .orderBy(['daily_revenue DESC'])
         .limit(1);
@@ -242,7 +242,7 @@ void main() {
         ])
         .from('customers', 'c')
         .innerJoin('orders', 'c.id = o.customer_id', 'o')
-        .where('o.total_amount > (SELECT AVG(total_amount) FROM orders WHERE status = \'completed\')')
+        .where(ConditionBuilder.raw("o.total_amount > (SELECT AVG(total_amount) FROM orders WHERE status = 'completed')"))
         .groupBy(['c.id'])
         .orderBy(['avg_order_value DESC']);
       final subscription = dataAccess.watch(query).listen((data) {
@@ -423,9 +423,9 @@ void main() {
         ])
         .from('customers', 'c')
         .leftJoin('orders', 'c.id = o.customer_id', 'o')
-        .where('c.city LIKE \'%York%\' OR c.city LIKE \'%Angeles%\'')
+        .where(ConditionBuilder.raw("c.city LIKE '%York%' OR c.city LIKE '%Angeles%'"))
         .groupBy(['c.id'])
-        .having('COUNT(o.id) > 0')
+        .having(ConditionBuilder.raw('COUNT(o.id) > 0'))
         .orderBy(['last_order_date DESC']);
       final subscription = dataAccess.watch(query).listen((data) {
         updateCount++;
@@ -477,7 +477,7 @@ void main() {
           ExpressionBuilder.function('COUNT', ['DISTINCT customer_id']).as('unique_customers'),
         ])
         .from('orders')
-        .where('status IN (\'completed\', \'shipped\')')
+        .where(ConditionBuilder.inList('status', ['completed', 'shipped']))
         .groupBy(['strftime(\'%Y-%m\', order_date)'])
         .orderBy(['month DESC']);
       final subscription = dataAccess.watch(query).listen((data) {

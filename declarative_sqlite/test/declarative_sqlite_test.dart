@@ -23,7 +23,7 @@ void main() {
               .text('username', (col) => col.notNull())
               .text('email', (col) => col.unique())
               .integer('active', (col) => col.withDefaultValue(1)))
-          .addView(ViewBuilder.simple('active_users', 'users', 'active = 1'))
+          .addView(ViewBuilder.simple('active_users', 'users', ConditionBuilder.eq('active', 1)))
           .view('user_summary', (name) => ViewBuilder.withColumns(name, 'users', ['id', 'username', 'email']));
 
       expect(schema.tableCount, equals(1));

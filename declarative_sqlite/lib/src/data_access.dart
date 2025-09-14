@@ -252,7 +252,8 @@ class ReactiveStreamManager {
       streamId: streamId,
       dataGenerator: () async {
         final sql = queryBuilder.toSql();
-        return await dataAccess.database.rawQuery(sql);
+        final args = queryBuilder.getAllArguments();
+        return await dataAccess.database.rawQuery(sql, args);
       },
       bufferChanges: bufferChanges,
       debounceTime: debounceTime,

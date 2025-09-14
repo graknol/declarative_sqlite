@@ -18,11 +18,11 @@ void main() {
       });
 
       test('can create a filtered view', () {
-        final view = ViewBuilder.simple('active_users', 'users', 'active = 1');
+        final view = ViewBuilder.simple('active_users', 'users', ConditionBuilder.eq('active', 1));
         
         final sql = view.toSql();
         expect(sql, contains('CREATE VIEW active_users AS'));
-        expect(sql, contains('WHERE active = 1'));
+        expect(sql, contains('WHERE active = ?'));
       });
 
       test('can create view with specific columns', () {
@@ -59,7 +59,7 @@ void main() {
             ])
             .from('users', 'u')
             .innerJoin('posts', 'u.id = p.user_id', 'p')
-            .where('u.active = 1')
+            .where(ConditionBuilder.eq('u.active', 1))
             .orderBy(['u.username'])
         );
         
@@ -67,7 +67,7 @@ void main() {
         expect(sql, contains('CREATE VIEW complex_view AS'));
         expect(sql, contains('FROM users u'));
         expect(sql, contains('INNER JOIN posts p ON u.id = p.user_id'));
-        expect(sql, contains('WHERE u.active = 1'));
+        expect(sql, contains('WHERE u.active = ?'));
         expect(sql, contains('ORDER BY u.username'));
       });
 
@@ -96,11 +96,11 @@ void main() {
       });
 
       test('Views.filtered creates filtered view', () {
-        final view = Views.filtered('active_users', 'users', 'active = 1');
+        final view = Views.filtered('active_users', 'users', ConditionBuilder.eq('active', 1));
         
         final sql = view.toSql();
         expect(sql, contains('CREATE VIEW active_users AS'));
-        expect(sql, contains('WHERE active = 1'));
+        expect(sql, contains('WHERE active = ?'));
       });
 
       test('Views.columns creates view with specific columns', () {
@@ -172,13 +172,13 @@ void main() {
 
     group('View SQL Generation', () {
       test('generates correct SQL format', () {
-        final view = ViewBuilder.simple('test_view', 'users', 'active = 1');
+        final view = ViewBuilder.simple('test_view', 'users', ConditionBuilder.eq('active', 1));
         
         final sql = view.toSql();
         expect(sql, startsWith('CREATE VIEW test_view AS\n'));
         expect(sql, contains('SELECT *'));
         expect(sql, contains('FROM users'));
-        expect(sql, contains('WHERE active = 1'));
+        expect(sql, contains('WHERE active = ?'));
       });
 
       test('handles view with no WHERE clause', () {

@@ -41,7 +41,7 @@ void main() async {
       
       // Simple filtered view - new way
       .addView(ViewBuilder.create('active_users')
-          .fromTable('users', whereCondition: 'active = 1'))
+          .fromTable('users', whereCondition: ConditionBuilder.eq('active', 1)))
       
       // View with specific columns and aliases - new way  
       .addView(ViewBuilder.create('user_summary').fromTable('users', expressions: [
