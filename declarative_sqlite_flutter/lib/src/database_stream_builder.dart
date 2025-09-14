@@ -115,7 +115,17 @@ class _DatabaseStreamBuilderState<T> extends State<DatabaseStreamBuilder<T>> {
         (_) async {
           try {
             final results = await widget.query!.executeMany(_dataAccess!);
-            return results as T;
+            
+            // Handle different expected return types
+            if (T == List<Map<String, dynamic>>) {
+              return results as T;
+            } else if (T == Map<String, dynamic>? || T == Map<String, dynamic>) {
+              // For single record queries, return the first result or null
+              return (results.isNotEmpty ? results.first : null) as T;
+            } else {
+              // Default to returning the full list and let the widget handle casting
+              return results as T;
+            }
           } catch (e) {
             throw e;
           }

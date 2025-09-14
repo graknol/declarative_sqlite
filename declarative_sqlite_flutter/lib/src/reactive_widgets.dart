@@ -51,19 +51,28 @@ class ReactiveWidgets {
     required DataAccess dataAccess,
     required String tableName,
     required Widget child,
-    String? where,
-    List<dynamic>? whereArgs,
+    ConditionBuilder Function(ConditionBuilder cb)? whereBuilder,
     Color? backgroundColor,
     Color? textColor,
     bool showZero = false,
   }) {
-    return DatabaseQueryBuilder(
+    var query = QueryBuilder()
+        .selectAll()
+        .from(tableName);
+    
+    if (whereBuilder != null) {
+      query = query.where(whereBuilder);
+    }
+    
+    return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
       dataAccess: dataAccess,
-      tableName: tableName,
-      where: where,
-      whereArgs: whereArgs,
-      builder: (context, results) {
-        final count = results.length;
+      query: query,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return child;
+        }
+        
+        final count = snapshot.data!.length;
         
         if (count == 0 && !showZero) {
           return child;
@@ -87,19 +96,29 @@ class ReactiveWidgets {
     required String tableName,
     required String statusColumn,
     required String completedValue,
-    String? where,
-    List<dynamic>? whereArgs,
+    ConditionBuilder Function(ConditionBuilder cb)? whereBuilder,
     Color? backgroundColor,
     Color? valueColor,
     double height = 8.0,
     bool showPercentage = true,
   }) {
-    return DatabaseQueryBuilder(
+    var query = QueryBuilder()
+        .selectAll()
+        .from(tableName);
+    
+    if (whereBuilder != null) {
+      query = query.where(whereBuilder);
+    }
+    
+    return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
       dataAccess: dataAccess,
-      tableName: tableName,
-      where: where,
-      whereArgs: whereArgs,
-      builder: (context, results) {
+      query: query,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const LinearProgressIndicator(value: 0);
+        }
+        
+        final results = snapshot.data!;
         if (results.isEmpty) {
           return const LinearProgressIndicator(value: 0);
         }
@@ -139,17 +158,32 @@ class ReactiveWidgets {
     required DataAccess dataAccess,
     required String tableName,
     required String groupColumn,
-    String? where,
-    List<dynamic>? whereArgs,
+    ConditionBuilder Function(ConditionBuilder cb)? whereBuilder,
     Color? color,
     double height = 200,
   }) {
-    return DatabaseQueryBuilder(
+    var query = QueryBuilder()
+        .selectAll()
+        .from(tableName);
+    
+    if (whereBuilder != null) {
+      query = query.where(whereBuilder);
+    }
+    
+    return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
       dataAccess: dataAccess,
-      tableName: tableName,
-      where: where,
-      whereArgs: whereArgs,
-      builder: (context, results) {
+      query: query,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return SizedBox(
+            height: height,
+            child: const Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+        
+        final results = snapshot.data!;
         if (results.isEmpty) {
           return SizedBox(
             height: height,
@@ -234,8 +268,7 @@ class ReactiveWidgets {
     required String title,
     required String valueColumn,
     dynamic primaryKey,
-    String? where,
-    List<dynamic>? whereArgs,
+    ConditionBuilder Function(ConditionBuilder cb)? whereBuilder,
     String Function(dynamic value)? formatter,
     IconData? icon,
     Color? color,
@@ -297,12 +330,23 @@ class ReactiveWidgets {
       );
     } else {
       // Aggregate value
-      return DatabaseQueryBuilder(
+      var query = QueryBuilder()
+          .selectAll()
+          .from(tableName);
+      
+      if (whereBuilder != null) {
+        query = query.where(whereBuilder);
+      }
+      
+      return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
         dataAccess: dataAccess,
-        tableName: tableName,
-        where: where,
-        whereArgs: whereArgs,
-        builder: (context, results) {
+        query: query,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return buildCard(context, '--');
+          }
+          
+          final results = snapshot.data!;
           String displayValue;
           
           if (results.isEmpty) {
@@ -331,23 +375,39 @@ class ReactiveWidgets {
     required String tableName,
     required List<String> columns,
     required Map<String, String> columnLabels,
-    String? where,
-    List<dynamic>? whereArgs,
-    String? orderBy,
+    ConditionBuilder Function(ConditionBuilder cb)? whereBuilder,
+    List<String>? orderBy,
     int? limit,
     bool sortAscending = true,
     String? sortColumn,
     void Function(String column)? onSort,
     Map<String, String Function(dynamic value)>? formatters,
   }) {
-    return DatabaseQueryBuilder(
+    var query = QueryBuilder()
+        .selectColumns(columns)
+        .from(tableName);
+    
+    if (whereBuilder != null) {
+      query = query.where(whereBuilder);
+    }
+    
+    if (orderBy != null && orderBy.isNotEmpty) {
+      query = query.orderBy(orderBy);
+    }
+    
+    if (limit != null) {
+      query = query.limit(limit);
+    }
+    
+    return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
       dataAccess: dataAccess,
-      tableName: tableName,
-      where: where,
-      whereArgs: whereArgs,
-      orderBy: orderBy,
-      limit: limit,
-      builder: (context, results) {
+      query: query,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        final results = snapshot.data!;
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(

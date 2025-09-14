@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:equatable/equatable.dart';
-import 'database_query.dart';
 import 'data_access_provider.dart';
 
 /// Base class for query field descriptors that define how search fields should be rendered
@@ -33,7 +32,7 @@ abstract class QueryField extends Equatable {
   );
 
   /// Apply this field's current value to the query builder
-  void applyToQuery(DatabaseQueryBuilder queryBuilder, dynamic value);
+  void applyToQuery(QueryBuilder queryBuilder, dynamic value);
 
   /// Get the display label for this field
   String getLabel(ColumnBuilder? columnDefinition) {
@@ -148,9 +147,10 @@ class QueryTextField extends QueryField {
   }
 
   @override
-  void applyToQuery(DatabaseQueryBuilder queryBuilder, dynamic value) {
+  void applyToQuery(QueryBuilder queryBuilder, dynamic value) {
     if (value != null && value.toString().isNotEmpty) {
-      queryBuilder.whereLike(columnName, '%$value%');
+      // Use the new condition builder approach
+      queryBuilder.where((cb) => cb.like(columnName, '%$value%'));
     }
   }
 }
@@ -214,9 +214,9 @@ class QueryMultiselectField extends QueryField {
   }
 
   @override
-  void applyToQuery(DatabaseQueryBuilder queryBuilder, dynamic value) {
+  void applyToQuery(QueryBuilder queryBuilder, dynamic value) {
     if (value is List<String> && value.isNotEmpty) {
-      queryBuilder.whereIn(columnName, value);
+      queryBuilder.where((cb) => cb.inList(columnName, value));
     }
   }
 }
@@ -310,9 +310,9 @@ class QueryDateRangeField extends QueryField {
   }
 
   @override
-  void applyToQuery(DatabaseQueryBuilder queryBuilder, dynamic value) {
+  void applyToQuery(QueryBuilder queryBuilder, dynamic value) {
     if (value is DateTimeRange) {
-      queryBuilder.whereDateRange(columnName, value.start, value.end);
+      queryBuilder.where((cb) => cb.between(columnName, value.start.toIso8601String(), value.end.toIso8601String()));
     }
   }
 }
@@ -379,9 +379,9 @@ class QuerySliderRangeField extends QueryField {
   }
 
   @override
-  void applyToQuery(DatabaseQueryBuilder queryBuilder, dynamic value) {
+  void applyToQuery(QueryBuilder queryBuilder, dynamic value) {
     if (value is RangeValues) {
-      queryBuilder.whereRange(columnName, value.start, value.end);
+      queryBuilder.where((cb) => cb.between(columnName, value.start, value.end));
     }
   }
 }
@@ -427,7 +427,7 @@ class QueryBuilderWidget extends StatefulWidget {
   final List<QueryField> fields;
   
   /// Callback when the query changes
-  final Function(DatabaseQuery query) onQueryChanged;
+  final Function(QueryBuilder query) onQueryChanged;
   
   /// Placeholder text for the free text search field
   final String? searchPlaceholder;
@@ -515,23 +515,53 @@ class _QueryBuilderWidgetState extends State<QueryBuilderWidget> {
   }
 
   void _buildAndNotifyQuery() {
-    final queryBuilder = DatabaseQueryBuilder.facetedSearch(widget.tableName);
+    var queryBuilder = QueryBuilder()
+        .selectAll()
+        .from(widget.tableName);
+    
+    // Build combined conditions
+    ConditionBuilder? finalCondition;
+    final conditions = <ConditionBuilder>[];
     
     // Add free text search
     if (_freeTextSearch.isNotEmpty && widget.freeTextSearchColumns.isNotEmpty) {
-      queryBuilder.freeTextSearch(_freeTextSearch, widget.freeTextSearchColumns);
-    }
-    
-    // Apply field constraints
-    for (final field in widget.fields) {
-      final value = _queryValues[field.columnName];
-      if (value != null) {
-        field.applyToQuery(queryBuilder, value);
+      final searchConditions = widget.freeTextSearchColumns
+          .map((col) => ConditionBuilder.like(col, '%$_freeTextSearch%'))
+          .toList();
+      if (searchConditions.isNotEmpty) {
+        conditions.add(Conditions.orAll(searchConditions));
       }
     }
     
-    final query = queryBuilder.build();
-    widget.onQueryChanged(query);
+    // Apply field constraints by directly building condition builders
+    for (final field in widget.fields) {
+      final value = _queryValues[field.columnName];
+      if (value != null) {
+        ConditionBuilder? fieldCondition;
+        
+        if (field is QueryTextField && value.toString().isNotEmpty) {
+          fieldCondition = ConditionBuilder.like(field.columnName, '%$value%');
+        } else if (field is QueryMultiselectField && value is List<String> && value.isNotEmpty) {
+          fieldCondition = ConditionBuilder.inList(field.columnName, value);
+        } else if (field is QueryDateRangeField && value is DateTimeRange) {
+          fieldCondition = ConditionBuilder.between(field.columnName, value.start.toIso8601String(), value.end.toIso8601String());
+        } else if (field is QuerySliderRangeField && value is RangeValues) {
+          fieldCondition = ConditionBuilder.between(field.columnName, value.start, value.end);
+        }
+        
+        if (fieldCondition != null) {
+          conditions.add(fieldCondition);
+        }
+      }
+    }
+    
+    // Combine all conditions with AND
+    if (conditions.isNotEmpty) {
+      finalCondition = Conditions.andAll(conditions);
+      queryBuilder = queryBuilder.where((cb) => finalCondition!);
+    }
+    
+    widget.onQueryChanged(queryBuilder);
   }
 
   @override

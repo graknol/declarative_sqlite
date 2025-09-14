@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'database_stream_builder.dart';
-import 'database_query.dart';
 import 'data_access_provider.dart';
 
 /// A data wrapper that provides CRUD operations for a specific database record.
@@ -214,17 +213,8 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
   /// If not provided, will be retrieved from DataAccessProvider
   final DataAccess? dataAccess;
   
-  /// Name of the table to query
-  final String tableName;
-  
-  /// WHERE clause for finding the record
-  final String? where;
-  
-  /// Arguments for the WHERE clause
-  final List<dynamic>? whereArgs;
-  
-  /// ORDER BY clause (useful when multiple records might match)
-  final String? orderBy;
+  /// The query builder to execute
+  final QueryBuilder query;
   
   /// Name of the primary key column (defaults to 'id')
   final String primaryKeyColumn;
@@ -241,11 +231,8 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
   const ReactiveRecordBuilderWhere({
     super.key,
     this.dataAccess,
-    required this.tableName,
+    required this.query,
     required this.builder,
-    this.where,
-    this.whereArgs,
-    this.orderBy,
     this.primaryKeyColumn = 'id',
     this.loadingWidget,
     this.errorBuilder,
@@ -254,13 +241,6 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveDataAccess = getDataAccess(context, dataAccess);
-    
-    final query = QueryBuilder()
-        .selectAll()
-        .from(tableName)
-        .whereWithArgs(where ?? '1 = 1', whereArgs ?? [])
-        .orderBy(orderBy != null ? [orderBy!] : [])
-        .limit(1);
     
     return DatabaseStreamBuilder<Map<String, dynamic>?>(
       dataAccess: effectiveDataAccess,
@@ -283,6 +263,7 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
         }
 
         final primaryKey = data[primaryKeyColumn];
+        final tableName = query.fromTable ?? 'unknown';
         final recordData = RecordData(
           data: data,
           dataAccess: effectiveDataAccess,
@@ -306,8 +287,14 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
 /// ## Example Usage
 /// 
 /// ```dart
+/// final query = QueryBuilder()
+///   .selectAll()
+///   .from('users')
+///   .where((cb) => cb.gt('age', 18))
+///   .orderBy(['name']);
+/// 
 /// ReactiveRecordListBuilder(
-///   tableName: 'users',
+///   query: query,
 ///   itemBuilder: (context, recordData) {
 ///     return ListTile(
 ///       title: Text(recordData['name'] ?? ''),
@@ -325,20 +312,8 @@ class ReactiveRecordListBuilder extends StatelessWidget {
   /// If not provided, will be retrieved from DataAccessProvider
   final DataAccess? dataAccess;
   
-  /// Name of the table to query
-  final String tableName;
-  
-  /// Optional WHERE clause to filter results
-  final String? where;
-  
-  /// Optional WHERE clause arguments
-  final List<dynamic>? whereArgs;
-  
-  /// Optional ORDER BY clause
-  final String? orderBy;
-  
-  /// Optional LIMIT clause
-  final int? limit;
+  /// The query builder to execute
+  final QueryBuilder query;
   
   /// Name of the primary key column (defaults to 'id')
   final String primaryKeyColumn;
@@ -370,12 +345,8 @@ class ReactiveRecordListBuilder extends StatelessWidget {
   const ReactiveRecordListBuilder({
     super.key,
     this.dataAccess,
-    required this.tableName,
+    required this.query,
     required this.itemBuilder,
-    this.where,
-    this.whereArgs,
-    this.orderBy,
-    this.limit,
     this.primaryKeyColumn = 'id',
     this.emptyWidget,
     this.loadingWidget,
@@ -389,14 +360,6 @@ class ReactiveRecordListBuilder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveDataAccess = getDataAccess(context, dataAccess);
-    
-    final query = QueryBuilder().selectAll().from(
-      tableName,
-      where: where,
-      whereArgs: whereArgs,
-      orderBy: orderBy,
-      limit: limit,
-    );
     
     return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
       dataAccess: effectiveDataAccess,
@@ -429,6 +392,8 @@ class ReactiveRecordListBuilder extends StatelessWidget {
             );
         }
 
+        final tableName = query.fromTable ?? 'unknown';
+        
         return ListView.builder(
           controller: controller,
           physics: physics,
@@ -464,8 +429,14 @@ class ReactiveRecordListBuilder extends StatelessWidget {
 /// ## Example Usage
 /// 
 /// ```dart
+/// final query = QueryBuilder()
+///   .selectAll()
+///   .from('products')
+///   .where((cb) => cb.gt('price', 0))
+///   .orderBy(['name']);
+/// 
 /// ReactiveRecordGridBuilder(
-///   tableName: 'products',
+///   query: query,
 ///   crossAxisCount: 2,
 ///   itemBuilder: (context, recordData) {
 ///     return Card(
@@ -488,20 +459,8 @@ class ReactiveRecordGridBuilder extends StatelessWidget {
   /// If not provided, will be retrieved from DataAccessProvider
   final DataAccess? dataAccess;
   
-  /// Name of the table to query
-  final String tableName;
-  
-  /// Optional WHERE clause to filter results
-  final String? where;
-  
-  /// Optional WHERE clause arguments
-  final List<dynamic>? whereArgs;
-  
-  /// Optional ORDER BY clause
-  final String? orderBy;
-  
-  /// Optional LIMIT clause
-  final int? limit;
+  /// The query builder to execute
+  final QueryBuilder query;
   
   /// Name of the primary key column (defaults to 'id')
   final String primaryKeyColumn;
@@ -545,13 +504,9 @@ class ReactiveRecordGridBuilder extends StatelessWidget {
   const ReactiveRecordGridBuilder({
     super.key,
     this.dataAccess,
-    required this.tableName,
+    required this.query,
     required this.itemBuilder,
     required this.crossAxisCount,
-    this.where,
-    this.whereArgs,
-    this.orderBy,
-    this.limit,
     this.primaryKeyColumn = 'id',
     this.childAspectRatio = 1.0,
     this.crossAxisSpacing = 0.0,
@@ -568,14 +523,6 @@ class ReactiveRecordGridBuilder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveDataAccess = getDataAccess(context, dataAccess);
-    
-    final query = QueryBuilder().selectAll().from(
-      tableName,
-      where: where,
-      whereArgs: whereArgs,
-      orderBy: orderBy,
-      limit: limit,
-    );
     
     return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
       dataAccess: effectiveDataAccess,
@@ -608,6 +555,8 @@ class ReactiveRecordGridBuilder extends StatelessWidget {
             );
         }
 
+        final tableName = query.fromTable ?? 'unknown';
+        
         return GridView.builder(
           controller: controller,
           physics: physics,

@@ -765,7 +765,7 @@ class QueryValueSource extends ValueSource with EquatableMixin {
   final DataAccess? dataAccess;
   
   /// The database query to execute
-  final DatabaseQuery query;
+  final QueryBuilder query;
   
   /// Column name containing the value to store
   final String valueColumn;
@@ -788,17 +788,22 @@ class QueryValueSource extends ValueSource with EquatableMixin {
     String tableName,
     String columnName, {
     DataAccess? dataAccess,
-    String? where,
-    List<dynamic>? whereArgs,
-    String? orderBy,
+    ConditionBuilder Function(ConditionBuilder cb)? whereBuilder,
+    List<String>? orderBy,
   }) {
-    final query = DatabaseQuery.where(
-      tableName,
-      where: where,
-      whereArgs: whereArgs,
-      orderBy: orderBy ?? columnName,
-      columns: [columnName],
-    );
+    var query = QueryBuilder()
+        .selectColumns([columnName])
+        .from(tableName);
+    
+    if (whereBuilder != null) {
+      query = query.where(whereBuilder);
+    }
+    
+    if (orderBy != null && orderBy.isNotEmpty) {
+      query = query.orderBy(orderBy);
+    } else {
+      query = query.orderBy([columnName]);
+    }
     
     return QueryValueSource(
       dataAccess: dataAccess,
@@ -807,9 +812,9 @@ class QueryValueSource extends ValueSource with EquatableMixin {
     );
   }
 
-  /// Create a value source from a full DatabaseQuery with specified value and label columns
+  /// Create a value source from a full QueryBuilder with specified value and label columns
   factory QueryValueSource.fromQuery(
-    DatabaseQuery query, {
+    QueryBuilder query, {
     required String valueColumn,
     String? labelColumn,
     DataAccess? dataAccess,
