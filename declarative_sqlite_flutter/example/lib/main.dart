@@ -410,7 +410,7 @@ class _RecordBuilderTabState extends State<RecordBuilderTab> {
                               children: [
                                 Expanded(
                                   child: TextFormField(
-                                    initialValue: recordData.getValue<String>('name') ?? '',
+                                    initialValue: recordData['name'] ?? '',
                                     decoration: const InputDecoration(
                                       labelText: 'Name',
                                       border: OutlineInputBorder(),
@@ -440,7 +440,7 @@ class _RecordBuilderTabState extends State<RecordBuilderTab> {
                               children: [
                                 Expanded(
                                   child: TextFormField(
-                                    initialValue: recordData.getValue<String>('email') ?? '',
+                                    initialValue: recordData['email'] ?? '',
                                     decoration: const InputDecoration(
                                       labelText: 'Email',
                                       border: OutlineInputBorder(),
@@ -455,9 +455,9 @@ class _RecordBuilderTabState extends State<RecordBuilderTab> {
                             const SizedBox(height: 16),
                             
                             // Age slider
-                            Text('Age: ${recordData.getValue<int>('age') ?? 0}'),
+                            Text('Age: ${recordData['age'] ?? 0}'),
                             Slider(
-                              value: (recordData.getValue<int>('age') ?? 0).toDouble(),
+                              value: (recordData['age'] ?? 0).toDouble(),
                               min: 0,
                               max: 120,
                               divisions: 120,

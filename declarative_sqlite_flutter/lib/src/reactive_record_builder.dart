@@ -65,13 +65,7 @@ class RecordData {
     return data[columnName];
   }
 
-  /// Get the value of a specific column with type safety
-  /// 
-  /// @deprecated Use the index operator [] instead: recordData['columnName']
-  @Deprecated('Use the index operator [] instead: recordData[\'columnName\']')
-  T? getValue<T>(String columnName) {
-    return data[columnName] as T?;
-  }
+
 
   /// Check if a column has a value (not null)
   bool hasValue(String columnName) {
