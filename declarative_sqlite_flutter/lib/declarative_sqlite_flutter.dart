@@ -4,7 +4,9 @@
 /// This library builds upon the declarative_sqlite package to provide:
 /// - Reactive ListView widgets that automatically update when database changes
 /// - Reactive list and grid builders with per-item CRUD operations
-/// - Auto-generated forms based on table schemas with validation
+/// - Auto-generated forms with field descriptors for precise control
+/// - Query builder widgets with faceted search capabilities
+/// - Hot-swappable queries with proper subscription management
 /// - Pre-built dashboard widgets for analytics and monitoring
 /// - Visual schema browser and data editor
 /// - Form widgets with automatic LWW (Last-Write-Wins) column binding  
@@ -121,27 +123,66 @@
 /// )
 /// ```
 /// 
-/// ### Auto-Generated Forms
+/// ### Auto-Generated Forms with Field Descriptors (New!)
 /// ```dart
-/// // Automatically generate a form from table schema with validation
+/// // Use field descriptors for precise control over form fields
+/// AutoForm.withFields(
+///   tableName: 'users',
+///   fields: [
+///     AutoFormField.text('name'),
+///     AutoFormField.text('created_by', readOnly: true),
+///     AutoFormField.date('delivery_date'),
+///     AutoFormField.counter('qty'),
+///     AutoFormField.dropdown('status', items: statusItems),
+///   ],
+///   onSave: (data) => print('User saved: $data'),
+/// )
+/// 
+/// // Legacy auto-generation from schema
 /// AutoForm.fromTable(
 ///   tableName: 'users',
 ///   onSave: (data) => print('User saved: $data'),
 ///   onCancel: () => Navigator.pop(context),
 /// )
+/// ```
 /// 
-/// // Edit existing records
-/// AutoForm.fromRecord(
-///   tableName: 'users',
-///   primaryKey: userId,
-///   onSave: (data) => print('User updated: $data'),
+/// ### Faceted Search with Query Builder (New!)
+/// ```dart
+/// // Build complex queries with faceted search interface
+/// QueryBuilderWidget(
+///   tableName: 'orders',
+///   freeTextSearchColumns: ['customer_name', 'product_name'],
+///   fields: [
+///     QueryField.multiselect('status', options: ['PENDING', 'SHIPPED', 'DELIVERED']),
+///     QueryField.dateRange('order_date'),
+///     QueryField.sliderRange('total_amount', min: 0, max: 1000),
+///     QueryField.text('customer_name'),
+///   ],
+///   onQueryChanged: (query) {
+///     // Query automatically supports hot swapping
+///     setState(() {
+///       currentQuery = query;
+///     });
+///   },
 /// )
 /// 
-/// // Show form in a dialog
-/// AutoFormDialog.showCreate(
-///   context: context,
-///   tableName: 'users',
-///   onSave: (data) => print('User created: $data'),
+/// // Use the query with reactive widgets
+/// ReactiveRecordListBuilder(
+///   query: currentQuery, // Hot swapping supported!
+///   itemBuilder: (context, recordData) => OrderCard(order: recordData),
+/// )
+/// ```
+/// 
+/// ### Hot-Swappable Queries
+/// ```dart
+/// // Queries are value-comparable and support hot swapping
+/// DatabaseQuery query1 = DatabaseQuery.where('users', where: 'age > ?', whereArgs: [18]);
+/// DatabaseQuery query2 = DatabaseQuery.where('users', where: 'age > ?', whereArgs: [21]);
+/// 
+/// // Reactive widgets automatically unsubscribe/subscribe when query changes
+/// ReactiveRecordListBuilder(
+///   query: selectedQuery, // Change this to hot swap
+///   itemBuilder: (context, recordData) => UserCard(user: recordData),
 /// )
 /// ```
 /// 
@@ -183,9 +224,14 @@ export 'src/lww_text_field.dart';
 export 'src/lww_slider.dart';
 export 'src/lww_dropdown.dart';
 
+// Data access and providers
 export 'src/data_access_provider.dart';
 export 'src/database_stream_builder.dart';
 export 'src/reactive_widgets.dart';
+
+// Query system
+export 'src/database_query.dart';
+export 'src/query_builder_widget.dart';
 
 // Utilities and helpers
 export 'src/flutter_database_service.dart';

@@ -1,17 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'data_access_provider.dart';
+import 'database_query.dart';
+import 'dart:async';
 
-/// A widget that builds its child based on a reactive database stream.
+/// A widget that builds its child based on a reactive database stream with hot swapping support.
 /// 
-/// Similar to StreamBuilder but specifically designed for database queries
-/// with built-in error handling and loading states.
-class DatabaseStreamBuilder<T> extends StatelessWidget {
-  /// The stream to listen to
-  final Stream<T> stream;
+/// This widget automatically handles unsubscribe/subscribe behavior when the query changes,
+/// ensuring proper resource management and supporting faceted search scenarios.
+class DatabaseStreamBuilder<T> extends StatefulWidget {
+  /// The data access instance for database operations
+  /// If not provided, will be retrieved from DataAccessProvider
+  final DataAccess? dataAccess;
+  
+  /// The database query to execute (supports hot swapping)
+  final DatabaseQuery? query;
+  
+  /// Legacy stream support (deprecated, use query instead)
+  final Stream<T>? stream;
+  
+  /// Function that creates a query result from DataAccess (legacy support)
+  final Future<T> Function()? queryFunction;
   
   /// Builder function for the widget
-  final Widget Function(BuildContext context, T data) builder;
+  final Widget Function(BuildContext context, AsyncSnapshot<T> snapshot) builder;
   
   /// Widget to display while loading
   final Widget? loadingWidget;
@@ -27,7 +39,184 @@ class DatabaseStreamBuilder<T> extends StatelessWidget {
 
   const DatabaseStreamBuilder({
     super.key,
-    required this.stream,
+    this.dataAccess,
+    this.query,
+    this.stream,
+    this.queryFunction,
+    required this.builder,
+    this.loadingWidget,
+    this.noDataWidget,
+    this.errorBuilder,
+    this.initialData,
+  });
+
+  @override
+  State<DatabaseStreamBuilder<T>> createState() => _DatabaseStreamBuilderState<T>();
+}
+
+class _DatabaseStreamBuilderState<T> extends State<DatabaseStreamBuilder<T>> {
+  StreamSubscription<T>? _subscription;
+  AsyncSnapshot<T> _snapshot = const AsyncSnapshot.waiting();
+  DatabaseQuery? _currentQuery;
+  DataAccess? _dataAccess;
+
+  @override
+  void initState() {
+    super.initState();
+    _snapshot = widget.initialData != null 
+      ? AsyncSnapshot.withData(ConnectionState.none, widget.initialData as T)
+      : const AsyncSnapshot.waiting();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateDataAccess();
+    _updateSubscription();
+  }
+
+  @override
+  void didUpdateWidget(DatabaseStreamBuilder<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Check if query changed (value comparison)
+    if (widget.query != oldWidget.query ||
+        widget.stream != oldWidget.stream ||
+        widget.queryFunction != oldWidget.queryFunction) {
+      _updateSubscription();
+    }
+  }
+
+  void _updateDataAccess() {
+    final newDataAccess = getDataAccess(context, widget.dataAccess);
+    if (_dataAccess != newDataAccess) {
+      _dataAccess = newDataAccess;
+      _updateSubscription();
+    }
+  }
+
+  void _updateSubscription() {
+    // Unsubscribe from old stream
+    _subscription?.cancel();
+    _subscription = null;
+    
+    Stream<T>? newStream;
+    
+    // Create new stream based on widget configuration
+    if (widget.stream != null) {
+      // Legacy stream mode
+      newStream = widget.stream;
+    } else if (widget.query != null && _dataAccess != null) {
+      // New query-based mode
+      _currentQuery = widget.query;
+      
+      if (widget.query!.isSingleRecord) {
+        // Single record stream
+        newStream = _dataAccess!.streamRecord(
+          widget.query!.tableName, 
+          widget.query!.primaryKey,
+        ) as Stream<T>;
+      } else {
+        // Multi-record stream
+        newStream = _dataAccess!.streamQueryResults(
+          widget.query!.tableName,
+          where: widget.query!.where,
+          whereArgs: widget.query!.whereArgs,
+          orderBy: widget.query!.orderBy,
+          limit: widget.query!.limit,
+        ) as Stream<T>;
+      }
+    } else if (widget.queryFunction != null) {
+      // Legacy function mode - create a periodic stream
+      newStream = Stream.periodic(
+        const Duration(milliseconds: 500),
+        (_) => widget.queryFunction!(),
+      ).asyncMap((future) => future).distinct() as Stream<T>;
+    }
+    
+    // Subscribe to new stream
+    if (newStream != null) {
+      setState(() {
+        _snapshot = _snapshot.inState(ConnectionState.waiting);
+      });
+      
+      _subscription = newStream.listen(
+        (data) {
+          if (mounted) {
+            setState(() {
+              _snapshot = AsyncSnapshot.withData(ConnectionState.active, data);
+            });
+          }
+        },
+        onError: (error, stackTrace) {
+          if (mounted) {
+            setState(() {
+              _snapshot = AsyncSnapshot.withError(ConnectionState.active, error, stackTrace);
+            });
+          }
+        },
+        onDone: () {
+          if (mounted) {
+            setState(() {
+              _snapshot = _snapshot.inState(ConnectionState.done);
+            });
+          }
+        },
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.builder(context, _snapshot);
+  }
+}
+
+/// A convenience widget that provides default UI handling for database streams.
+/// 
+/// This widget wraps DatabaseStreamBuilder and provides default loading, error,
+/// and empty state handling, making it easier to use in most scenarios.
+class DatabaseWidgetBuilder<T> extends StatelessWidget {
+  /// The data access instance for database operations
+  /// If not provided, will be retrieved from DataAccessProvider
+  final DataAccess? dataAccess;
+  
+  /// The database query to execute (supports hot swapping)
+  final DatabaseQuery? query;
+  
+  /// Legacy stream support (deprecated, use query instead)
+  final Stream<T>? stream;
+  
+  /// Function that creates a query result from DataAccess (legacy support)
+  final Future<T> Function()? queryFunction;
+  
+  /// Builder function that receives just the data (no snapshot handling needed)
+  final Widget Function(BuildContext context, T data) builder;
+  
+  /// Widget to display while loading
+  final Widget? loadingWidget;
+  
+  /// Widget to display when stream has no data
+  final Widget? noDataWidget;
+  
+  /// Widget builder for error states
+  final Widget Function(BuildContext context, Object error)? errorBuilder;
+  
+  /// Initial data for the stream
+  final T? initialData;
+
+  const DatabaseWidgetBuilder({
+    super.key,
+    this.dataAccess,
+    this.query,
+    this.stream,
+    this.queryFunction,
     required this.builder,
     this.loadingWidget,
     this.noDataWidget,
@@ -37,8 +226,11 @@ class DatabaseStreamBuilder<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<T>(
+    return DatabaseStreamBuilder<T>(
+      dataAccess: dataAccess,
+      query: query,
       stream: stream,
+      queryFunction: queryFunction,
       initialData: initialData,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
@@ -62,7 +254,7 @@ class DatabaseStreamBuilder<T> extends StatelessWidget {
           );
         }
 
-        if (!snapshot.hasData) {
+        if (!snapshot.hasData || snapshot.connectionState == ConnectionState.waiting) {
           return loadingWidget ??
               const Center(
                 child: CircularProgressIndicator(),
@@ -94,8 +286,6 @@ class DatabaseStreamBuilder<T> extends StatelessWidget {
     );
   }
 }
-
-/// A widget that streams a single record from the database and rebuilds when it changes.
 class DatabaseRecordBuilder extends StatelessWidget {
   /// The data access instance
   final DataAccess dataAccess;

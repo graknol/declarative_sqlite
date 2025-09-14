@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'database_stream_builder.dart';
+import 'database_query.dart';
 import 'data_access_provider.dart';
 
 /// A data wrapper that provides CRUD operations for a specific database record.
@@ -164,9 +165,15 @@ class ReactiveRecordBuilder extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveDataAccess = getDataAccess(context, dataAccess);
     
+    final query = DatabaseQuery.byPrimaryKey(
+      tableName, 
+      primaryKey,
+      primaryKeyColumn: primaryKeyColumn,
+    );
+    
     return DatabaseStreamBuilder<Map<String, dynamic>?>(
       dataAccess: effectiveDataAccess,
-      query: () => effectiveDataAccess.getByPrimaryKey(tableName, primaryKey),
+      query: query,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return loadingWidget ?? const CircularProgressIndicator();
@@ -248,18 +255,17 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveDataAccess = getDataAccess(context, dataAccess);
     
+    final query = DatabaseQuery.where(
+      tableName,
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: orderBy,
+      limit: 1,
+    );
+    
     return DatabaseStreamBuilder<Map<String, dynamic>?>(
       dataAccess: effectiveDataAccess,
-      query: () async {
-        final results = await effectiveDataAccess.getAllWhere(
-          tableName,
-          where: where,
-          whereArgs: whereArgs,
-          orderBy: orderBy,
-          limit: 1,
-        );
-        return results.isNotEmpty ? results.first : null;
-      },
+      query: query,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return loadingWidget ?? const CircularProgressIndicator();
@@ -385,15 +391,17 @@ class ReactiveRecordListBuilder extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveDataAccess = getDataAccess(context, dataAccess);
     
+    final query = DatabaseQuery.where(
+      tableName,
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: orderBy,
+      limit: limit,
+    );
+    
     return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
       dataAccess: effectiveDataAccess,
-      query: () => effectiveDataAccess.getAllWhere(
-        tableName,
-        where: where,
-        whereArgs: whereArgs,
-        orderBy: orderBy,
-        limit: limit,
-      ),
+      query: query,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return loadingWidget ?? const CircularProgressIndicator();
@@ -562,15 +570,17 @@ class ReactiveRecordGridBuilder extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveDataAccess = getDataAccess(context, dataAccess);
     
+    final query = DatabaseQuery.where(
+      tableName,
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: orderBy,
+      limit: limit,
+    );
+    
     return DatabaseStreamBuilder<List<Map<String, dynamic>>>(
       dataAccess: effectiveDataAccess,
-      query: () => effectiveDataAccess.getAllWhere(
-        tableName,
-        where: where,
-        whereArgs: whereArgs,
-        orderBy: orderBy,
-        limit: limit,
-      ),
+      query: query,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return loadingWidget ?? const CircularProgressIndicator();
