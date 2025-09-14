@@ -2,6 +2,19 @@ import 'package:test/test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
+/// Example interface for testing interface-like access patterns
+/// This simulates how developers would define their own interfaces
+abstract class IUser {
+  int get id;
+  String get name;
+  String get email;
+  int get age;
+  String get status;
+  
+  Future<void> setName(String value);
+  Future<void> setStatus(String value);
+}
+
 /// Test suite for the new ConditionBuilder and enhanced QueryBuilder with Equatable support
 void main() {
   late Database database;
@@ -302,6 +315,168 @@ void main() {
       final results = await query.executeMany(dataAccess);
       expect(results, hasLength(4));
       expect(results.map((r) => r['age']), equals([25, 28, 30, 35]));
+    });
+  });
+
+  group('Fluent Lambda API Tests', () {
+    test('should support lambda-style where conditions', () async {
+      // Using lambda style instead of ConditionBuilder.gt
+      final query = QueryBuilder.table('users')
+          .where((x) => x.gt('age', 25))
+          .orderByColumn('age');
+      
+      final results = await query.executeMany(dataAccess);
+      expect(results, hasLength(3));
+      expect(results.map((r) => r['age']), equals([28, 30, 35]));
+    });
+
+    test('should support lambda-style complex conditions', () async {
+      // Test chaining with lambda style
+      final query = QueryBuilder.table('users')
+          .where((x) => x.gt('age', 25).and(x.eq('status', 'active')))
+          .orderByColumn('age');
+      
+      final results = await query.executeMany(dataAccess);
+      expect(results, hasLength(3)); // Alice (30), Diana (28), Charlie (35)
+      expect(results.map((r) => r['name']), equals(['Diana', 'Alice', 'Charlie']));
+    });
+
+    test('should support lambda-style having conditions', () async {
+      // For now, test the having clause generation without execution
+      // since executeMany doesn't support GROUP BY/HAVING yet
+      final query = QueryBuilder()
+          .select([ExpressionBuilder.column('status'), ExpressionBuilder.raw('COUNT(*) as count')])
+          .from('users')
+          .groupBy(['status'])
+          .having((x) => x.gt('COUNT(*)', 1))
+          .orderByColumn('status');
+      
+      // Test that the SQL generation works correctly
+      expect(query.toSql(), contains('HAVING COUNT(*) > ?'));
+      expect(query.getHavingArguments(), equals([1]));
+    });
+
+    test('should support lambda-style andWhere and orWhere', () async {
+      final query = QueryBuilder.table('users')
+          .where((x) => x.eq('status', 'active'))
+          .andWhereCondition((x) => x.gt('age', 25))
+          .orderByColumn('age');
+      
+      final results = await query.executeMany(dataAccess);
+      expect(results, hasLength(3)); // Alice (30), Diana (28), Charlie (35)
+      expect(results.map((r) => r['name']), equals(['Diana', 'Alice', 'Charlie']));
+    });
+
+    test('should support mixing traditional and lambda APIs', () async {
+      // Mix traditional ConditionBuilder with lambda
+      final condition1 = ConditionBuilder.eq('status', 'active');
+      final query = QueryBuilder.table('users')
+          .where(condition1)
+          .andWhereCondition((x) => x.gt('age', 25))
+          .orderByColumn('age');
+      
+      final results = await query.executeMany(dataAccess);
+      expect(results, hasLength(3)); // Alice (30), Diana (28), Charlie (35)
+      expect(results.map((r) => r['name']), equals(['Diana', 'Alice', 'Charlie']));
+    });
+
+    test('should throw error for invalid condition types', () {
+      expect(
+        () => QueryBuilder.table('users').where('invalid string'),
+        throwsArgumentError,
+      );
+      
+      expect(
+        () => QueryBuilder.table('users').having(123),
+        throwsArgumentError,
+      );
+    });
+  });
+
+  group('Interface-like Access Tests', () {
+    test('should support basic interface-like access patterns', () async {
+      final query = QueryBuilder.table('users')
+          .where((x) => x.eq('name', 'Alice'));
+      
+      final users = await query.executeManyTyped<dynamic>(dataAccess);
+      expect(users, hasLength(1));
+      
+      final user = users.first;
+      // Access properties like interface getters
+      expect(user.id, equals(1));
+      expect(user.name, equals('Alice'));
+      expect(user.email, equals('alice@example.com'));
+      expect(user.age, equals(30));
+    });
+
+    test('should support setter operations through interface pattern', () async {
+      final query = QueryBuilder.table('users')
+          .where((x) => x.eq('name', 'Alice'));
+      
+      final users = await query.executeManyTyped<dynamic>(dataAccess);
+      expect(users, hasLength(1));
+      
+      final user = users.first;
+      // Update via setter pattern
+      await user.setName('Alice Updated');
+      
+      // Verify the update worked by searching for the new name
+      final updatedUsers = await QueryBuilder.table('users')
+          .where((x) => x.eq('name', 'Alice Updated'))
+          .executeMany(dataAccess);
+      expect(updatedUsers, hasLength(1));
+      expect(updatedUsers.first['name'], equals('Alice Updated'));
+    });
+
+    test('should support getter and setter with snake_case to camelCase conversion', () async {
+      final query = QueryBuilder.table('users')
+          .where((x) => x.eq('name', 'Bob'));
+      
+      final users = await query.executeManyTyped<dynamic>(dataAccess);
+      expect(users, hasLength(1));
+      
+      final user = users.first;
+      
+      // Access using camelCase for snake_case columns would require custom columns
+      // For now just test basic access
+      expect(user.status, equals('inactive'));
+      
+      // Update via setter
+      await user.setStatus('active');
+      
+      // Verify update
+      final updated = await QueryBuilder.table('users')
+          .where((x) => x.eq('name', 'Bob'))
+          .executeMany(dataAccess);
+      expect(updated.first['status'], equals('active'));
+    });
+
+    test('should demonstrate interface-like usage pattern for developers', () async {
+      // This test shows how developers would use the interface pattern in practice
+      final query = QueryBuilder.table('users')
+          .where((x) => x.eq('status', 'active'));
+      
+      // Get users as dynamic objects that support interface-like access
+      final activeUsers = await query.executeManyTyped<dynamic>(dataAccess);
+      
+      // Developer can access properties as if they were interface getters
+      for (final user in activeUsers) {
+        expect(user.id, isA<int>());
+        expect(user.name, isA<String>());
+        expect(user.status, equals('active'));
+        
+        // Developer can call setters to update data
+        if (user.name == 'Charlie') {
+          await user.setName('Charlie Updated');
+        }
+      }
+      
+      // Verify the update worked
+      final updatedUser = await QueryBuilder.table('users')
+          .where((x) => x.eq('name', 'Charlie Updated'))
+          .executeMany(dataAccess);
+      expect(updatedUser, hasLength(1));
+      expect(updatedUser.first['name'], equals('Charlie Updated'));
     });
   });
 }

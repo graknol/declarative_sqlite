@@ -6,6 +6,44 @@ import 'condition_builder.dart';
 import 'data_access.dart';
 import 'dynamic_record.dart';
 
+/// A proxy class that implements ConditionBuilder methods for lambda-style API
+class _ConditionProxy extends ConditionBuilder {
+  _ConditionProxy() : super('', []);
+
+  @override
+  ConditionBuilder eq(String column, dynamic value) => ConditionBuilder.eq(column, value);
+
+  @override
+  ConditionBuilder ne(String column, dynamic value) => ConditionBuilder.ne(column, value);
+
+  @override
+  ConditionBuilder lt(String column, dynamic value) => ConditionBuilder.lt(column, value);
+
+  @override
+  ConditionBuilder le(String column, dynamic value) => ConditionBuilder.le(column, value);
+
+  @override
+  ConditionBuilder gt(String column, dynamic value) => ConditionBuilder.gt(column, value);
+
+  @override
+  ConditionBuilder ge(String column, dynamic value) => ConditionBuilder.ge(column, value);
+
+  @override
+  ConditionBuilder like(String column, String pattern) => ConditionBuilder.like(column, pattern);
+
+  @override
+  ConditionBuilder between(String column, dynamic start, dynamic end) => ConditionBuilder.between(column, start, end);
+
+  @override
+  ConditionBuilder inList(String column, List<dynamic> values) => ConditionBuilder.inList(column, values);
+
+  @override
+  ConditionBuilder isNull(String column) => ConditionBuilder.isNull(column);
+
+  @override
+  ConditionBuilder isNotNull(String column) => ConditionBuilder.isNotNull(column);
+}
+
 /// Builder for constructing SQL SELECT queries with fluent syntax.
 /// 
 /// Supports SELECT expressions, FROM clause, JOINs, WHERE conditions,
@@ -145,14 +183,41 @@ class QueryBuilder extends Equatable {
     return join(joinClause);
   }
 
-  /// Sets the WHERE condition using ConditionBuilder
-  QueryBuilder where(ConditionBuilder condition) {
+  /// Sets the WHERE condition using ConditionBuilder or a lambda function
+  /// 
+  /// Example usage:
+  /// ```dart
+  /// query.where((x) => x.gt('age', 18))
+  /// query.where((x) => x.eq('status', 'active').and(x.gt('age', 18)))
+  /// ```
+  QueryBuilder where(dynamic condition) {
+    ConditionBuilder conditionBuilder;
+    
+    if (condition is ConditionBuilder) {
+      conditionBuilder = condition;
+    } else if (condition is Function) {
+      try {
+        // Create a proxy builder that captures method calls
+        final proxy = _ConditionProxy();
+        final result = condition(proxy);
+        if (result is ConditionBuilder) {
+          conditionBuilder = result;
+        } else {
+          throw ArgumentError('Function must return a ConditionBuilder');
+        }
+      } catch (e) {
+        throw ArgumentError('Invalid function provided to WHERE clause: $e');
+      }
+    } else {
+      throw ArgumentError('WHERE condition must be a ConditionBuilder or a function that returns one');
+    }
+    
     return QueryBuilder._(
       selectExpressions: selectExpressions,
       fromTable: fromTable,
       fromAlias: fromAlias,
       joins: joins,
-      whereConditionBuilder: condition,
+      whereConditionBuilder: conditionBuilder,
       groupByColumns: groupByColumns,
       havingConditionBuilder: havingConditionBuilder,
       orderByColumns: orderByColumns,
@@ -161,23 +226,63 @@ class QueryBuilder extends Equatable {
     );
   }
 
-  /// Adds AND condition to existing WHERE clause using ConditionBuilder
-  QueryBuilder andWhereCondition(ConditionBuilder condition) {
+  /// Adds AND condition to existing WHERE clause using ConditionBuilder or lambda function
+  QueryBuilder andWhereCondition(dynamic condition) {
+    ConditionBuilder conditionBuilder;
+    
+    if (condition is ConditionBuilder) {
+      conditionBuilder = condition;
+    } else if (condition is Function) {
+      try {
+        final proxy = _ConditionProxy();
+        final result = condition(proxy);
+        if (result is ConditionBuilder) {
+          conditionBuilder = result;
+        } else {
+          throw ArgumentError('Function must return a ConditionBuilder');
+        }
+      } catch (e) {
+        throw ArgumentError('Invalid function provided to AND WHERE clause: $e');
+      }
+    } else {
+      throw ArgumentError('Condition must be a ConditionBuilder or a function that returns one');
+    }
+    
     final currentCondition = whereConditionBuilder;
     if (currentCondition != null) {
-      return where(currentCondition.and(condition));
+      return where(currentCondition.and(conditionBuilder));
     } else {
-      return where(condition);
+      return where(conditionBuilder);
     }
   }
 
-  /// Adds OR condition to existing WHERE clause using ConditionBuilder
-  QueryBuilder orWhereCondition(ConditionBuilder condition) {
+  /// Adds OR condition to existing WHERE clause using ConditionBuilder or lambda function
+  QueryBuilder orWhereCondition(dynamic condition) {
+    ConditionBuilder conditionBuilder;
+    
+    if (condition is ConditionBuilder) {
+      conditionBuilder = condition;
+    } else if (condition is Function) {
+      try {
+        final proxy = _ConditionProxy();
+        final result = condition(proxy);
+        if (result is ConditionBuilder) {
+          conditionBuilder = result;
+        } else {
+          throw ArgumentError('Function must return a ConditionBuilder');
+        }
+      } catch (e) {
+        throw ArgumentError('Invalid function provided to OR WHERE clause: $e');
+      }
+    } else {
+      throw ArgumentError('Condition must be a ConditionBuilder or a function that returns one');
+    }
+    
     final currentCondition = whereConditionBuilder;
     if (currentCondition != null) {
-      return where(currentCondition.or(condition));
+      return where(currentCondition.or(conditionBuilder));
     } else {
-      return where(condition);
+      return where(conditionBuilder);
     }
   }
 
@@ -197,8 +302,35 @@ class QueryBuilder extends Equatable {
     );
   }
 
-  /// Sets HAVING condition using ConditionBuilder
-  QueryBuilder having(ConditionBuilder condition) {
+  /// Sets HAVING condition using ConditionBuilder or a lambda function
+  /// 
+  /// Example usage:
+  /// ```dart
+  /// query.having((x) => x.gt('count', 5))
+  /// query.having((x) => x.eq('status', 'active').and(x.gt('count', 5)))
+  /// ```
+  QueryBuilder having(dynamic condition) {
+    ConditionBuilder conditionBuilder;
+    
+    if (condition is ConditionBuilder) {
+      conditionBuilder = condition;
+    } else if (condition is Function) {
+      try {
+        // Create a proxy builder that captures method calls
+        final proxy = _ConditionProxy();
+        final result = condition(proxy);
+        if (result is ConditionBuilder) {
+          conditionBuilder = result;
+        } else {
+          throw ArgumentError('Function must return a ConditionBuilder');
+        }
+      } catch (e) {
+        throw ArgumentError('Invalid function provided to HAVING clause: $e');
+      }
+    } else {
+      throw ArgumentError('HAVING condition must be a ConditionBuilder or a function that returns one');
+    }
+    
     return QueryBuilder._(
       selectExpressions: selectExpressions,
       fromTable: fromTable,
@@ -206,7 +338,7 @@ class QueryBuilder extends Equatable {
       joins: joins,
       whereConditionBuilder: whereConditionBuilder,
       groupByColumns: groupByColumns,
-      havingConditionBuilder: condition,
+      havingConditionBuilder: conditionBuilder,
       orderByColumns: orderByColumns,
       limitCount: limitCount,
       offsetCount: offsetCount,
@@ -373,6 +505,32 @@ class QueryBuilder extends Equatable {
     return results.isNotEmpty ? results.first : null;
   }
 
+  /// Execute this query and return a single record cast to the specified type
+  /// This enables interface-like access patterns for strongly-typed data access
+  /// 
+  /// Example usage:
+  /// ```dart
+  /// interface IUser {
+  ///   int get id;
+  ///   String get name;
+  ///   Future<void> setName(String value);
+  /// }
+  /// 
+  /// final user = await query.executeSingle<IUser>(dataAccess);
+  /// if (user != null) {
+  ///   print(user.id);  // Access via interface
+  ///   await user.setName('New Name');  // Update via interface
+  /// }
+  /// ```
+  Future<T?> executeSingleTyped<T>(DataAccess dataAccess) async {
+    if (fromTable == null) {
+      throw StateError('FROM table must be specified to execute query');
+    }
+    
+    final results = await executeManyTyped<T>(dataAccess);
+    return results.isNotEmpty ? results.first : null;
+  }
+
   /// Execute this query and return a list of records
   /// This method requires the query to have a FROM table specified
   Future<List<Map<String, dynamic>>> executeMany(DataAccess dataAccess) async {
@@ -404,6 +562,42 @@ class QueryBuilder extends Equatable {
       limit: limitCount,
       offset: offsetCount,
     );
+  }
+
+  /// Execute this query and return a list of records cast to the specified type
+  /// This enables interface-like access patterns for strongly-typed data access
+  /// 
+  /// Example usage:
+  /// ```dart
+  /// interface IUser {
+  ///   int get id;
+  ///   String get name;
+  ///   Future<void> setName(String value);
+  /// }
+  /// 
+  /// final users = await query.executeManyTyped<IUser>(dataAccess);
+  /// for (final user in users) {
+  ///   print(user.id);  // Access via interface
+  ///   await user.setName('Updated Name');  // Update via interface
+  /// }
+  /// ```
+  Future<List<T>> executeManyTyped<T>(DataAccess dataAccess) async {
+    if (fromTable == null) {
+      throw StateError('FROM table must be specified to execute query');
+    }
+    
+    final results = await executeMany(dataAccess);
+    final primaryKeyColumn = dataAccess.getPrimaryKeyColumn(fromTable!);
+    
+    return results.map((row) {
+      final dynamicRecord = DynamicRecord(
+        row,
+        dataAccess: dataAccess,
+        tableName: fromTable,
+        primaryKeyColumn: primaryKeyColumn,
+      );
+      return dynamicRecord as T;
+    }).toList();
   }
 
   /// Execute this query and return a single DynamicRecord (or null)

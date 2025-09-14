@@ -1,25 +1,48 @@
 import 'package:meta/meta.dart';
+import 'data_access.dart';
 
 /// A wrapper around Map<String, dynamic> that provides ergonomic property-based access to column data.
 /// 
-/// This class uses `noSuchMethod` to allow accessing column values as properties:
+/// This class uses `noSuchMethod` to allow accessing column values as properties and calling setters
+/// that update the database:
 /// ```dart
 /// final row = DynamicRecord({'name': 'Alice', 'age': 30});
 /// print(row.name);  // 'Alice' - equivalent to row['name']
 /// print(row.age);   // 30 - equivalent to row['age']
 /// 
-/// // Typed getters for type safety
-/// String name = row.getStringName;     // Safely cast to String
-/// int age = row.getIntAge;             // Safely cast to int
-/// double? salary = row.getDoubleSalary; // Safely cast to double
-/// DateTime? createdAt = row.getDateCreatedAt; // Parse string to DateTime
+/// // Support for interface-like access:
+/// interface IUser {
+///   int get id;
+///   String get name;
+///   Future<void> setName(String value);
+/// }
+/// 
+/// final users = await query.executeMany<IUser>(dataAccess);
+/// final user = users.first as IUser;
+/// print(user.id);   // Access via interface getter
+/// await user.setName('Bob');  // Update via interface setter
 /// ```
 class DynamicRecord {
   /// The underlying data map
   final Map<String, dynamic> data;
+  
+  /// DataAccess instance for setter operations (optional)
+  final DataAccess? _dataAccess;
+  
+  /// Table name for setter operations (optional)
+  final String? _tableName;
+  
+  /// Primary key column name for updates (optional)
+  final String? _primaryKeyColumn;
 
   /// Creates a new DynamicRecord with the given data
-  const DynamicRecord(this.data);
+  const DynamicRecord(this.data, {
+    DataAccess? dataAccess,
+    String? tableName,
+    String? primaryKeyColumn,
+  }) : _dataAccess = dataAccess,
+       _tableName = tableName,
+       _primaryKeyColumn = primaryKeyColumn;
 
   /// Get column value using index operator (existing functionality)
   dynamic operator [](String columnName) => data[columnName];
@@ -93,14 +116,49 @@ class DynamicRecord {
       if (data.containsKey(snakeCase)) {
         return data[snakeCase];
       }
+    } else if (invocation.isMethod) {
+      // Handle setter method calls like setColumnName(value)
+      String methodName = invocation.memberName.toString();
+      if (methodName.startsWith('Symbol("') && methodName.endsWith('")')) {
+        methodName = methodName.substring(8, methodName.length - 2);
+      }
+      
+      if (methodName.startsWith('set') && methodName.length > 3) {
+        final columnName = _extractColumnName(methodName, 'set');
+        final value = invocation.positionalArguments.isNotEmpty 
+            ? invocation.positionalArguments.first 
+            : null;
+        
+        return _updateColumn(columnName, value);
+      }
     }
     
     return super.noSuchMethod(invocation);
   }
 
-  /// Extract column name from typed getter, converting from PascalCase to snake_case
-  String _extractColumnName(String getterName, String prefix) {
-    final columnPascal = getterName.substring(prefix.length);
+  /// Updates a column value in the database
+  Future<void> _updateColumn(String columnName, dynamic value) async {
+    if (_dataAccess == null || _tableName == null || _primaryKeyColumn == null) {
+      throw StateError(
+        'Cannot update column: DynamicRecord must be created with dataAccess, tableName, and primaryKeyColumn'
+      );
+    }
+    
+    final primaryKeyValue = data[_primaryKeyColumn];
+    if (primaryKeyValue == null) {
+      throw StateError('Cannot update: primary key value is null');
+    }
+    
+    // Update the database
+    await _dataAccess!.updateByPrimaryKey(_tableName!, primaryKeyValue, {columnName: value});
+    
+    // Update local data to reflect the change
+    data[columnName] = value;
+  }
+
+  /// Extract column name from typed getter/setter, converting from PascalCase to snake_case
+  String _extractColumnName(String methodName, String prefix) {
+    final columnPascal = methodName.substring(prefix.length);
     return _camelToSnakeCase(columnPascal);
   }
 

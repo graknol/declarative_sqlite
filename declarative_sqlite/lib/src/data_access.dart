@@ -549,6 +549,16 @@ class DataAccess {
     return table.columns.any((column) => column.isLWW);
   }
 
+  /// Gets the primary key column name for a table (for single primary key tables)
+  /// Returns null if the table has no primary key or a composite primary key
+  String? getPrimaryKeyColumn(String tableName) {
+    final table = schema.getTable(tableName);
+    if (table == null) return null;
+    
+    final primaryKeyColumns = table.getPrimaryKeyColumns();
+    return primaryKeyColumns.length == 1 ? primaryKeyColumns.first : null;
+  }
+
   /// Gets a single row by primary key from the specified table.
   /// 
   /// Returns null if no row is found with the given primary key value(s).
