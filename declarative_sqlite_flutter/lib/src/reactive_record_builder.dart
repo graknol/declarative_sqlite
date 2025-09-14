@@ -165,7 +165,7 @@ class ReactiveRecordBuilder extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveDataAccess = getDataAccess(context, dataAccess);
     
-    final query = DatabaseQuery.byPrimaryKey(
+    final query = QueryBuilder.byPrimaryKey(
       tableName, 
       primaryKey,
       primaryKeyColumn: primaryKeyColumn,
@@ -255,13 +255,12 @@ class ReactiveRecordBuilderWhere extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveDataAccess = getDataAccess(context, dataAccess);
     
-    final query = DatabaseQuery.where(
-      tableName,
-      where: where,
-      whereArgs: whereArgs,
-      orderBy: orderBy,
-      limit: 1,
-    );
+    final query = QueryBuilder()
+        .selectAll()
+        .from(tableName)
+        .whereWithArgs(where ?? '1 = 1', whereArgs ?? [])
+        .orderBy(orderBy != null ? [orderBy!] : [])
+        .limit(1);
     
     return DatabaseStreamBuilder<Map<String, dynamic>?>(
       dataAccess: effectiveDataAccess,
@@ -391,7 +390,7 @@ class ReactiveRecordListBuilder extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveDataAccess = getDataAccess(context, dataAccess);
     
-    final query = DatabaseQuery.where(
+    final query = QueryBuilder().selectAll().from(
       tableName,
       where: where,
       whereArgs: whereArgs,
@@ -570,7 +569,7 @@ class ReactiveRecordGridBuilder extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveDataAccess = getDataAccess(context, dataAccess);
     
-    final query = DatabaseQuery.where(
+    final query = QueryBuilder().selectAll().from(
       tableName,
       where: where,
       whereArgs: whereArgs,

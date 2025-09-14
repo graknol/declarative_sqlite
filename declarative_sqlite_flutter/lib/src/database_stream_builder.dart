@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'data_access_provider.dart';
-import 'database_query.dart';
 import 'dart:async';
 
 /// A widget that builds its child based on a reactive database stream with hot swapping support.
@@ -13,8 +12,8 @@ class DatabaseStreamBuilder<T> extends StatefulWidget {
   /// If not provided, will be retrieved from DataAccessProvider
   final DataAccess? dataAccess;
   
-  /// The database query to execute (supports hot swapping)
-  final DatabaseQuery? query;
+  /// The query builder to execute (supports hot swapping)
+  final QueryBuilder? query;
   
   /// Legacy stream support (deprecated, use query instead)
   final Stream<T>? stream;
@@ -57,7 +56,7 @@ class DatabaseStreamBuilder<T> extends StatefulWidget {
 class _DatabaseStreamBuilderState<T> extends State<DatabaseStreamBuilder<T>> {
   StreamSubscription<T>? _subscription;
   AsyncSnapshot<T> _snapshot = const AsyncSnapshot.waiting();
-  DatabaseQuery? _currentQuery;
+  QueryBuilder? _currentQuery;
   DataAccess? _dataAccess;
 
   @override
@@ -107,25 +106,21 @@ class _DatabaseStreamBuilderState<T> extends State<DatabaseStreamBuilder<T>> {
       // Legacy stream mode
       newStream = widget.stream;
     } else if (widget.query != null && _dataAccess != null) {
-      // New query-based mode
+      // New QueryBuilder-based mode with execution
       _currentQuery = widget.query;
       
-      if (widget.query!.isSingleRecord) {
-        // Single record stream
-        newStream = _dataAccess!.streamRecord(
-          widget.query!.tableName, 
-          widget.query!.primaryKey,
-        ) as Stream<T>;
-      } else {
-        // Multi-record stream
-        newStream = _dataAccess!.streamQueryResults(
-          widget.query!.tableName,
-          where: widget.query!.where,
-          whereArgs: widget.query!.whereArgs,
-          orderBy: widget.query!.orderBy,
-          limit: widget.query!.limit,
-        ) as Stream<T>;
-      }
+      // Create a periodic stream that executes the QueryBuilder
+      newStream = Stream.periodic(
+        const Duration(milliseconds: 500),
+        (_) async {
+          try {
+            final results = await widget.query!.executeMany(_dataAccess!);
+            return results as T;
+          } catch (e) {
+            throw e;
+          }
+        },
+      ).asyncMap((future) => future).distinct() as Stream<T>;
     } else if (widget.queryFunction != null) {
       // Legacy function mode - create a periodic stream
       newStream = Stream.periodic(
@@ -187,8 +182,8 @@ class DatabaseWidgetBuilder<T> extends StatelessWidget {
   /// If not provided, will be retrieved from DataAccessProvider
   final DataAccess? dataAccess;
   
-  /// The database query to execute (supports hot swapping)
-  final DatabaseQuery? query;
+  /// The query builder to execute (supports hot swapping)
+  final QueryBuilder? query;
   
   /// Legacy stream support (deprecated, use query instead)
   final Stream<T>? stream;
