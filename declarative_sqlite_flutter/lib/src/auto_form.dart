@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'data_access_provider.dart';
 import 'reactive_record_builder.dart';
+import 'database_query.dart';
 
 /// Base class for form field descriptors that define how columns should be rendered
 abstract class AutoFormField {
@@ -19,6 +20,14 @@ abstract class AutoFormField {
   
   /// Whether this field is required (overrides schema constraint)
   final bool? required;
+  
+  /// Custom widget builder for this field (overrides default implementation)
+  final Widget Function(
+    BuildContext context,
+    ColumnBuilder? columnDefinition,
+    dynamic currentValue,
+    void Function(String columnName, dynamic value) onChanged,
+  )? customBuilder;
 
   const AutoFormField({
     required this.columnName,
@@ -26,10 +35,27 @@ abstract class AutoFormField {
     this.readOnly = false,
     this.validator,
     this.required,
+    this.customBuilder,
   });
 
   /// Build the form field widget
   Widget buildField(
+    BuildContext context, 
+    ColumnBuilder? columnDefinition,
+    dynamic currentValue,
+    void Function(String columnName, dynamic value) onChanged,
+  ) {
+    // Use custom builder if provided
+    if (customBuilder != null) {
+      return customBuilder!(context, columnDefinition, currentValue, onChanged);
+    }
+    
+    // Otherwise use default implementation
+    return buildDefaultField(context, columnDefinition, currentValue, onChanged);
+  }
+
+  /// Build the default form field widget (can be overridden by subclasses)
+  Widget buildDefaultField(
     BuildContext context, 
     ColumnBuilder? columnDefinition,
     dynamic currentValue,
@@ -63,6 +89,12 @@ abstract class AutoFormField {
     int? maxLines,
     TextInputType? keyboardType,
     String? hint,
+    Widget Function(
+      BuildContext context,
+      ColumnBuilder? columnDefinition,
+      dynamic currentValue,
+      void Function(String columnName, dynamic value) onChanged,
+    )? customBuilder,
   }) {
     return AutoFormTextField(
       columnName: columnName,
@@ -70,6 +102,7 @@ abstract class AutoFormField {
       readOnly: readOnly,
       validator: validator,
       required: required,
+      customBuilder: customBuilder,
       maxLines: maxLines,
       keyboardType: keyboardType,
       hint: hint,
@@ -86,6 +119,12 @@ abstract class AutoFormField {
     bool allowDecimals = false,
     double? min,
     double? max,
+    Widget Function(
+      BuildContext context,
+      ColumnBuilder? columnDefinition,
+      dynamic currentValue,
+      void Function(String columnName, dynamic value) onChanged,
+    )? customBuilder,
   }) {
     return AutoFormNumberField(
       columnName: columnName,
@@ -93,6 +132,7 @@ abstract class AutoFormField {
       readOnly: readOnly,
       validator: validator,
       required: required,
+      customBuilder: customBuilder,
       allowDecimals: allowDecimals,
       min: min,
       max: max,
@@ -109,6 +149,12 @@ abstract class AutoFormField {
     int? min,
     int? max,
     int step = 1,
+    Widget Function(
+      BuildContext context,
+      ColumnBuilder? columnDefinition,
+      dynamic currentValue,
+      void Function(String columnName, dynamic value) onChanged,
+    )? customBuilder,
   }) {
     return AutoFormCounterField(
       columnName: columnName,
@@ -116,6 +162,7 @@ abstract class AutoFormField {
       readOnly: readOnly,
       validator: validator,
       required: required,
+      customBuilder: customBuilder,
       min: min,
       max: max,
       step: step,
@@ -131,6 +178,12 @@ abstract class AutoFormField {
     bool? required,
     DateTime? firstDate,
     DateTime? lastDate,
+    Widget Function(
+      BuildContext context,
+      ColumnBuilder? columnDefinition,
+      dynamic currentValue,
+      void Function(String columnName, dynamic value) onChanged,
+    )? customBuilder,
   }) {
     return AutoFormDateField(
       columnName: columnName,
@@ -138,6 +191,7 @@ abstract class AutoFormField {
       readOnly: readOnly,
       validator: validator,
       required: required,
+      customBuilder: customBuilder,
       firstDate: firstDate,
       lastDate: lastDate,
     );
@@ -151,6 +205,12 @@ abstract class AutoFormField {
     String? Function(dynamic value)? validator,
     bool? required,
     required List<DropdownMenuItem> items,
+    Widget Function(
+      BuildContext context,
+      ColumnBuilder? columnDefinition,
+      dynamic currentValue,
+      void Function(String columnName, dynamic value) onChanged,
+    )? customBuilder,
   }) {
     return AutoFormDropdownField(
       columnName: columnName,
@@ -158,6 +218,7 @@ abstract class AutoFormField {
       readOnly: readOnly,
       validator: validator,
       required: required,
+      customBuilder: customBuilder,
       items: items,
     );
   }
@@ -168,12 +229,79 @@ abstract class AutoFormField {
     String? label,
     bool readOnly = false,
     String? Function(dynamic value)? validator,
+    Widget Function(
+      BuildContext context,
+      ColumnBuilder? columnDefinition,
+      dynamic currentValue,
+      void Function(String columnName, dynamic value) onChanged,
+    )? customBuilder,
   }) {
     return AutoFormSwitchField(
       columnName: columnName,
       label: label,
       readOnly: readOnly,
       validator: validator,
+      customBuilder: customBuilder,
+    );
+  }
+
+  /// Create a select field descriptor with horizontal button display
+  static AutoFormSelectField select(
+    String columnName, {
+    String? label,
+    bool readOnly = false,
+    String? Function(dynamic value)? validator,
+    bool? required,
+    required ValueSource valueSource,
+    double spacing = 8.0,
+    EdgeInsets buttonPadding = const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    Widget Function(
+      BuildContext context,
+      ColumnBuilder? columnDefinition,
+      dynamic currentValue,
+      void Function(String columnName, dynamic value) onChanged,
+    )? customBuilder,
+  }) {
+    return AutoFormSelectField(
+      columnName: columnName,
+      label: label,
+      readOnly: readOnly,
+      validator: validator,
+      required: required,
+      customBuilder: customBuilder,
+      valueSource: valueSource,
+      spacing: spacing,
+      buttonPadding: buttonPadding,
+    );
+  }
+
+  /// Create a multi-select field descriptor with horizontal button display
+  static AutoFormMultiSelectField multiselect(
+    String columnName, {
+    String? label,
+    bool readOnly = false,
+    String? Function(dynamic value)? validator,
+    bool? required,
+    required ValueSource valueSource,
+    double spacing = 8.0,
+    EdgeInsets buttonPadding = const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    Widget Function(
+      BuildContext context,
+      ColumnBuilder? columnDefinition,
+      dynamic currentValue,
+      void Function(String columnName, dynamic value) onChanged,
+    )? customBuilder,
+  }) {
+    return AutoFormMultiSelectField(
+      columnName: columnName,
+      label: label,
+      readOnly: readOnly,
+      validator: validator,
+      required: required,
+      customBuilder: customBuilder,
+      valueSource: valueSource,
+      spacing: spacing,
+      buttonPadding: buttonPadding,
     );
   }
 }
@@ -190,13 +318,14 @@ class AutoFormTextField extends AutoFormField {
     super.readOnly = false,
     super.validator,
     super.required,
+    super.customBuilder,
     this.maxLines,
     this.keyboardType,
     this.hint,
   });
 
   @override
-  Widget buildField(
+  Widget buildDefaultField(
     BuildContext context, 
     ColumnBuilder? columnDefinition,
     dynamic currentValue,
@@ -244,13 +373,14 @@ class AutoFormNumberField extends AutoFormField {
     super.readOnly = false,
     super.validator,
     super.required,
+    super.customBuilder,
     this.allowDecimals = false,
     this.min,
     this.max,
   });
 
   @override
-  Widget buildField(
+  Widget buildDefaultField(
     BuildContext context, 
     ColumnBuilder? columnDefinition,
     dynamic currentValue,
@@ -319,13 +449,14 @@ class AutoFormCounterField extends AutoFormField {
     super.readOnly = false,
     super.validator,
     super.required,
+    super.customBuilder,
     this.min,
     this.max,
     this.step = 1,
   });
 
   @override
-  Widget buildField(
+  Widget buildDefaultField(
     BuildContext context, 
     ColumnBuilder? columnDefinition,
     dynamic currentValue,
@@ -404,12 +535,13 @@ class AutoFormDateField extends AutoFormField {
     super.readOnly = false,
     super.validator,
     super.required,
+    super.customBuilder,
     this.firstDate,
     this.lastDate,
   });
 
   @override
-  Widget buildField(
+  Widget buildDefaultField(
     BuildContext context, 
     ColumnBuilder? columnDefinition,
     dynamic currentValue,
@@ -483,11 +615,12 @@ class AutoFormDropdownField extends AutoFormField {
     super.readOnly = false,
     super.validator,
     super.required,
+    super.customBuilder,
     required this.items,
   });
 
   @override
-  Widget buildField(
+  Widget buildDefaultField(
     BuildContext context, 
     ColumnBuilder? columnDefinition,
     dynamic currentValue,
@@ -526,10 +659,11 @@ class AutoFormSwitchField extends AutoFormField {
     super.label,
     super.readOnly = false,
     super.validator,
+    super.customBuilder,
   });
 
   @override
-  Widget buildField(
+  Widget buildDefaultField(
     BuildContext context, 
     ColumnBuilder? columnDefinition,
     dynamic currentValue,
@@ -551,6 +685,351 @@ class AutoFormSwitchField extends AutoFormField {
         );
       },
     );
+  }
+}
+
+/// Abstract base class for value sources that can provide options for select fields
+abstract class ValueSource {
+  /// Get the list of available options
+  Future<List<SelectOption>> getOptions();
+}
+
+/// Represents an option in a select field
+class SelectOption {
+  /// The value to store in the database
+  final dynamic value;
+  
+  /// The text to display to the user
+  final String label;
+  
+  /// Whether this option is enabled/selectable
+  final bool enabled;
+
+  const SelectOption({
+    required this.value,
+    required this.label,
+    this.enabled = true,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is SelectOption &&
+        other.value == value &&
+        other.label == label &&
+        other.enabled == enabled;
+  }
+
+  @override
+  int get hashCode => Object.hash(value, label, enabled);
+
+  @override
+  String toString() => 'SelectOption(value: $value, label: $label, enabled: $enabled)';
+}
+
+/// A static value source that provides a fixed list of options
+class StaticValueSource extends ValueSource {
+  final List<SelectOption> options;
+
+  StaticValueSource(this.options);
+
+  /// Create from a list of simple values (value = label)
+  factory StaticValueSource.fromValues(List<dynamic> values) {
+    return StaticValueSource(
+      values.map((value) => SelectOption(value: value, label: value.toString())).toList(),
+    );
+  }
+
+  /// Create from a map of value -> label pairs
+  factory StaticValueSource.fromMap(Map<dynamic, String> valueLabels) {
+    return StaticValueSource(
+      valueLabels.entries.map((entry) => SelectOption(value: entry.key, label: entry.value)).toList(),
+    );
+  }
+
+  @override
+  Future<List<SelectOption>> getOptions() async => options;
+}
+
+/// A dynamic value source that queries the database for options
+class QueryValueSource extends ValueSource {
+  /// The data access instance to use for querying
+  final DataAccess? dataAccess;
+  
+  /// The database query to execute
+  final DatabaseQuery query;
+  
+  /// Column name containing the value to store
+  final String valueColumn;
+  
+  /// Column name containing the label to display (defaults to valueColumn)
+  final String? labelColumn;
+
+  QueryValueSource({
+    this.dataAccess,
+    required this.query,
+    required this.valueColumn,
+    this.labelColumn,
+  });
+
+  /// Create a value source that queries distinct values from a column
+  factory QueryValueSource.fromColumn(
+    String tableName,
+    String columnName, {
+    DataAccess? dataAccess,
+    String? where,
+    List<dynamic>? whereArgs,
+    String? orderBy,
+  }) {
+    final query = DatabaseQuery.where(
+      tableName,
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: orderBy ?? columnName,
+      columns: [columnName],
+    );
+    
+    return QueryValueSource(
+      dataAccess: dataAccess,
+      query: query,
+      valueColumn: columnName,
+    );
+  }
+
+  @override
+  Future<List<SelectOption>> getOptions() async {
+    DataAccess? actualDataAccess = dataAccess;
+    
+    // If no dataAccess provided, we'll try to get it from context during build
+    if (actualDataAccess == null) {
+      throw StateError('DataAccess is required for QueryValueSource. Either provide it directly or ensure DataAccessProvider is available in the widget tree.');
+    }
+    
+    final results = await query.executeMany(actualDataAccess);
+    
+    return results.map((row) {
+      final value = row[valueColumn];
+      final label = labelColumn != null ? row[labelColumn!]?.toString() : value?.toString();
+      
+      return SelectOption(
+        value: value,
+        label: label ?? '',
+      );
+    }).toList();
+  }
+}
+
+/// Select field that displays options as horizontal buttons (single selection)
+class AutoFormSelectField extends AutoFormField {
+  final ValueSource valueSource;
+  final double spacing;
+  final EdgeInsets buttonPadding;
+
+  const AutoFormSelectField({
+    required super.columnName,
+    super.label,
+    super.readOnly = false,
+    super.validator,
+    super.required,
+    super.customBuilder,
+    required this.valueSource,
+    this.spacing = 8.0,
+    this.buttonPadding = const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+  });
+
+  @override
+  Widget buildDefaultField(
+    BuildContext context, 
+    ColumnBuilder? columnDefinition,
+    dynamic currentValue,
+    void Function(String columnName, dynamic value) onChanged,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          getLabel(columnDefinition),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
+          ),
+        ),
+        const SizedBox(height: 8),
+        FutureBuilder<List<SelectOption>>(
+          future: _getOptionsWithContext(context),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            
+            if (snapshot.hasError) {
+              return Text('Error loading options: ${snapshot.error}');
+            }
+            
+            final options = snapshot.data ?? [];
+            
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: options.map((option) {
+                final isSelected = currentValue == option.value;
+                
+                return FilterChip(
+                  label: Text(option.label),
+                  selected: isSelected,
+                  onSelected: readOnly || !option.enabled ? null : (selected) {
+                    onChanged(columnName, selected ? option.value : null);
+                  },
+                  padding: buttonPadding,
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Future<List<SelectOption>> _getOptionsWithContext(BuildContext context) async {
+    if (valueSource is QueryValueSource) {
+      final querySource = valueSource as QueryValueSource;
+      if (querySource.dataAccess == null) {
+        // Try to get DataAccess from context
+        try {
+          final dataAccess = DataAccessProvider.of(context);
+          final newQuerySource = QueryValueSource(
+            dataAccess: dataAccess,
+            query: querySource.query,
+            valueColumn: querySource.valueColumn,
+            labelColumn: querySource.labelColumn,
+          );
+          return await newQuerySource.getOptions();
+        } catch (e) {
+          throw StateError('DataAccess not found in context. Either provide it directly to QueryValueSource or ensure DataAccessProvider is in the widget tree.');
+        }
+      }
+    }
+    return await valueSource.getOptions();
+  }
+}
+
+/// Multi-select field that displays options as horizontal buttons (multiple selection)
+class AutoFormMultiSelectField extends AutoFormField {
+  final ValueSource valueSource;
+  final double spacing;
+  final EdgeInsets buttonPadding;
+
+  const AutoFormMultiSelectField({
+    required super.columnName,
+    super.label,
+    super.readOnly = false,
+    super.validator,
+    super.required,
+    super.customBuilder,
+    required this.valueSource,
+    this.spacing = 8.0,
+    this.buttonPadding = const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+  });
+
+  @override
+  Widget buildDefaultField(
+    BuildContext context, 
+    ColumnBuilder? columnDefinition,
+    dynamic currentValue,
+    void Function(String columnName, dynamic value) onChanged,
+  ) {
+    // Parse current value as a list (stored as JSON or comma-separated)
+    List<dynamic> selectedValues = [];
+    if (currentValue != null) {
+      if (currentValue is List) {
+        selectedValues = currentValue;
+      } else if (currentValue is String && currentValue.isNotEmpty) {
+        try {
+          // Try to parse as JSON first
+          selectedValues = (currentValue.startsWith('[') && currentValue.endsWith(']'))
+              ? List.from(currentValue.split(',').map((s) => s.trim()))
+              : currentValue.split(',').map((s) => s.trim()).toList();
+        } catch (e) {
+          // Fall back to comma-separated parsing
+          selectedValues = currentValue.split(',').map((s) => s.trim()).toList();
+        }
+      }
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          getLabel(columnDefinition),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
+          ),
+        ),
+        const SizedBox(height: 8),
+        FutureBuilder<List<SelectOption>>(
+          future: _getOptionsWithContext(context),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            
+            if (snapshot.hasError) {
+              return Text('Error loading options: ${snapshot.error}');
+            }
+            
+            final options = snapshot.data ?? [];
+            
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: options.map((option) {
+                final isSelected = selectedValues.contains(option.value);
+                
+                return FilterChip(
+                  label: Text(option.label),
+                  selected: isSelected,
+                  onSelected: readOnly || !option.enabled ? null : (selected) {
+                    final newValues = List<dynamic>.from(selectedValues);
+                    if (selected) {
+                      if (!newValues.contains(option.value)) {
+                        newValues.add(option.value);
+                      }
+                    } else {
+                      newValues.remove(option.value);
+                    }
+                    // Store as comma-separated string
+                    final stringValue = newValues.isEmpty ? null : newValues.join(',');
+                    onChanged(columnName, stringValue);
+                  },
+                  padding: buttonPadding,
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Future<List<SelectOption>> _getOptionsWithContext(BuildContext context) async {
+    if (valueSource is QueryValueSource) {
+      final querySource = valueSource as QueryValueSource;
+      if (querySource.dataAccess == null) {
+        // Try to get DataAccess from context
+        try {
+          final dataAccess = DataAccessProvider.of(context);
+          final newQuerySource = QueryValueSource(
+            dataAccess: dataAccess,
+            query: querySource.query,
+            valueColumn: querySource.valueColumn,
+            labelColumn: querySource.labelColumn,
+          );
+          return await newQuerySource.getOptions();
+        } catch (e) {
+          throw StateError('DataAccess not found in context. Either provide it directly to QueryValueSource or ensure DataAccessProvider is in the widget tree.');
+        }
+      }
+    }
+    return await valueSource.getOptions();
   }
 }
 

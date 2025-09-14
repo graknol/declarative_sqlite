@@ -134,6 +134,11 @@
 ///     AutoFormField.date('delivery_date'),
 ///     AutoFormField.counter('qty'),
 ///     AutoFormField.dropdown('status', items: statusItems),
+///     // New select and multiselect fields with horizontal buttons
+///     AutoFormField.select('priority', 
+///       valueSource: StaticValueSource.fromValues(['low', 'medium', 'high'])),
+///     AutoFormField.multiselect('tags',
+///       valueSource: QueryValueSource.fromColumn('tags', 'name')),
 ///   ],
 ///   onSave: (data) => print('User saved: $data'),
 /// )
