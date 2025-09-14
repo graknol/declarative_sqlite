@@ -4,6 +4,7 @@ import 'expression_builder.dart';
 import 'join_builder.dart';
 import 'condition_builder.dart';
 import 'data_access.dart';
+import 'dynamic_record.dart';
 
 /// Builder for constructing SQL SELECT queries with fluent syntax.
 /// 
@@ -168,23 +169,45 @@ class QueryBuilder extends Equatable {
     return join(joinClause);
   }
 
-  /// Sets the WHERE condition (legacy string support)
-  QueryBuilder where(String condition) {
-    return QueryBuilder._(
-      selectExpressions: selectExpressions,
-      fromTable: fromTable,
-      fromAlias: fromAlias,
-      joins: joins,
-      whereCondition: condition,
-      whereConditionBuilder: null, // Clear condition builder when using string
-      whereArgs: null,
-      groupByColumns: groupByColumns,
-      havingCondition: havingCondition,
-      havingConditionBuilder: havingConditionBuilder,
-      orderByColumns: orderByColumns,
-      limitCount: limitCount,
-      offsetCount: offsetCount,
-    );
+  /// Sets the WHERE condition - supports both string conditions and ConditionBuilder
+  QueryBuilder where(dynamic condition, [List<dynamic>? args]) {
+    if (condition is String) {
+      // Legacy string support
+      return QueryBuilder._(
+        selectExpressions: selectExpressions,
+        fromTable: fromTable,
+        fromAlias: fromAlias,
+        joins: joins,
+        whereCondition: condition,
+        whereConditionBuilder: null, // Clear condition builder when using string
+        whereArgs: args,
+        groupByColumns: groupByColumns,
+        havingCondition: havingCondition,
+        havingConditionBuilder: havingConditionBuilder,
+        orderByColumns: orderByColumns,
+        limitCount: limitCount,
+        offsetCount: offsetCount,
+      );
+    } else if (condition is ConditionBuilder) {
+      // New composable support
+      return QueryBuilder._(
+        selectExpressions: selectExpressions,
+        fromTable: fromTable,
+        fromAlias: fromAlias,
+        joins: joins,
+        whereCondition: null, // Clear string condition when using builder
+        whereConditionBuilder: condition,
+        whereArgs: null,
+        groupByColumns: groupByColumns,
+        havingCondition: havingCondition,
+        havingConditionBuilder: havingConditionBuilder,
+        orderByColumns: orderByColumns,
+        limitCount: limitCount,
+        offsetCount: offsetCount,
+      );
+    } else {
+      throw ArgumentError('WHERE condition must be either a String or ConditionBuilder');
+    }
   }
 
   /// Sets the WHERE condition with arguments (legacy string support)
@@ -206,24 +229,7 @@ class QueryBuilder extends Equatable {
     );
   }
 
-  /// Sets the WHERE condition using ConditionBuilder (new composable support)
-  QueryBuilder whereBuilder(ConditionBuilder condition) {
-    return QueryBuilder._(
-      selectExpressions: selectExpressions,
-      fromTable: fromTable,
-      fromAlias: fromAlias,
-      joins: joins,
-      whereCondition: null, // Clear string condition when using builder
-      whereConditionBuilder: condition,
-      whereArgs: null,
-      groupByColumns: groupByColumns,
-      havingCondition: havingCondition,
-      havingConditionBuilder: havingConditionBuilder,
-      orderByColumns: orderByColumns,
-      limitCount: limitCount,
-      offsetCount: offsetCount,
-    );
-  }
+
 
   /// Adds AND condition to existing WHERE clause (legacy string support)
   QueryBuilder andWhere(String condition) {
@@ -245,9 +251,9 @@ class QueryBuilder extends Equatable {
   QueryBuilder andWhereCondition(ConditionBuilder condition) {
     final currentCondition = whereConditionBuilder;
     if (currentCondition != null) {
-      return whereBuilder(currentCondition.and(condition));
+      return where(currentCondition.and(condition));
     } else {
-      return whereBuilder(condition);
+      return where(condition);
     }
   }
 
@@ -255,9 +261,9 @@ class QueryBuilder extends Equatable {
   QueryBuilder orWhereCondition(ConditionBuilder condition) {
     final currentCondition = whereConditionBuilder;
     if (currentCondition != null) {
-      return whereBuilder(currentCondition.or(condition));
+      return where(currentCondition.or(condition));
     } else {
-      return whereBuilder(condition);
+      return where(condition);
     }
   }
 
@@ -280,42 +286,45 @@ class QueryBuilder extends Equatable {
     );
   }
 
-  /// Sets HAVING condition (legacy string support)
-  QueryBuilder having(String condition) {
-    return QueryBuilder._(
-      selectExpressions: selectExpressions,
-      fromTable: fromTable,
-      fromAlias: fromAlias,
-      joins: joins,
-      whereCondition: whereCondition,
-      whereConditionBuilder: whereConditionBuilder,
-      whereArgs: whereArgs,
-      groupByColumns: groupByColumns,
-      havingCondition: condition,
-      havingConditionBuilder: null, // Clear condition builder when using string
-      orderByColumns: orderByColumns,
-      limitCount: limitCount,
-      offsetCount: offsetCount,
-    );
-  }
-
-  /// Sets HAVING condition using ConditionBuilder (new composable support)
-  QueryBuilder havingBuilder(ConditionBuilder condition) {
-    return QueryBuilder._(
-      selectExpressions: selectExpressions,
-      fromTable: fromTable,
-      fromAlias: fromAlias,
-      joins: joins,
-      whereCondition: whereCondition,
-      whereConditionBuilder: whereConditionBuilder,
-      whereArgs: whereArgs,
-      groupByColumns: groupByColumns,
-      havingCondition: null, // Clear string condition when using builder
-      havingConditionBuilder: condition,
-      orderByColumns: orderByColumns,
-      limitCount: limitCount,
-      offsetCount: offsetCount,
-    );
+  /// Sets HAVING condition - supports both string conditions and ConditionBuilder
+  QueryBuilder having(dynamic condition) {
+    if (condition is String) {
+      // Legacy string support
+      return QueryBuilder._(
+        selectExpressions: selectExpressions,
+        fromTable: fromTable,
+        fromAlias: fromAlias,
+        joins: joins,
+        whereCondition: whereCondition,
+        whereConditionBuilder: whereConditionBuilder,
+        whereArgs: whereArgs,
+        groupByColumns: groupByColumns,
+        havingCondition: condition,
+        havingConditionBuilder: null, // Clear condition builder when using string
+        orderByColumns: orderByColumns,
+        limitCount: limitCount,
+        offsetCount: offsetCount,
+      );
+    } else if (condition is ConditionBuilder) {
+      // New composable support
+      return QueryBuilder._(
+        selectExpressions: selectExpressions,
+        fromTable: fromTable,
+        fromAlias: fromAlias,
+        joins: joins,
+        whereCondition: whereCondition,
+        whereConditionBuilder: whereConditionBuilder,
+        whereArgs: whereArgs,
+        groupByColumns: groupByColumns,
+        havingCondition: null, // Clear string condition when using builder
+        havingConditionBuilder: condition,
+        orderByColumns: orderByColumns,
+        limitCount: limitCount,
+        offsetCount: offsetCount,
+      );
+    } else {
+      throw ArgumentError('HAVING condition must be either a String or ConditionBuilder');
+    }
   }
 
   /// Sets ORDER BY columns
@@ -520,7 +529,19 @@ class QueryBuilder extends Equatable {
     );
   }
 
-  /// Create a simple table query builder
+  /// Execute this query and return a single DynamicRecord (or null)
+  /// This provides ergonomic property-based access to column values
+  Future<DynamicRecord?> executeDynamicSingle(DataAccess dataAccess) async {
+    final result = await executeSingle(dataAccess);
+    return result != null ? DynamicRecord(result) : null;
+  }
+
+  /// Execute this query and return a list of DynamicRecord instances
+  /// This provides ergonomic property-based access to column values for each row
+  Future<List<DynamicRecord>> executeDynamicMany(DataAccess dataAccess) async {
+    final results = await executeMany(dataAccess);
+    return results.map((row) => DynamicRecord(row)).toList();
+  }
   static QueryBuilder table(String tableName) {
     return QueryBuilder().selectAll().from(tableName);
   }
@@ -530,7 +551,7 @@ class QueryBuilder extends Equatable {
     return QueryBuilder()
         .selectAll()
         .from(tableName)
-        .whereBuilder(ConditionBuilder.eq(primaryKeyColumn, primaryKey));
+        .where(ConditionBuilder.eq(primaryKeyColumn, primaryKey));
   }
 
   /// Create a query builder for all records in a table

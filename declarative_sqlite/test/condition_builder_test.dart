@@ -179,7 +179,7 @@ void main() {
       final query = QueryBuilder()
           .selectAll()
           .from('users')
-          .whereBuilder(condition)
+          .where(condition)
           .orderByColumn('age');
 
       final results = await query.executeMany(dataAccess);
@@ -198,7 +198,7 @@ void main() {
       final query = QueryBuilder()
           .selectAll()
           .from('users')
-          .whereBuilder(complexCondition)
+          .where(complexCondition)
           .orderByColumn('name');
 
       final results = await query.executeMany(dataAccess);
@@ -210,7 +210,7 @@ void main() {
       final query = QueryBuilder()
           .selectAll()
           .from('users')
-          .whereBuilder(ConditionBuilder.eq('status', 'active'))
+          .where(ConditionBuilder.eq('status', 'active'))
           .andWhereCondition(ConditionBuilder.gt('salary', 70000))
           .orderByColumn('salary');
 
@@ -224,7 +224,7 @@ void main() {
       final query = QueryBuilder()
           .selectAll()
           .from('users')
-          .whereBuilder(ConditionBuilder.eq('city', 'New York'))
+          .where(ConditionBuilder.eq('city', 'New York'))
           .orWhereCondition(ConditionBuilder.eq('city', 'Chicago'))
           .orderByColumn('name');
 
@@ -239,19 +239,19 @@ void main() {
       final query1 = QueryBuilder()
           .selectAll()
           .from('users')
-          .whereBuilder(ConditionBuilder.eq('status', 'active'))
+          .where(ConditionBuilder.eq('status', 'active'))
           .orderByColumn('name');
 
       final query2 = QueryBuilder()
           .selectAll()
           .from('users')
-          .whereBuilder(ConditionBuilder.eq('status', 'active'))
+          .where(ConditionBuilder.eq('status', 'active'))
           .orderByColumn('name');
 
       final query3 = QueryBuilder()
           .selectAll()
           .from('users')
-          .whereBuilder(ConditionBuilder.eq('status', 'inactive'))
+          .where(ConditionBuilder.eq('status', 'inactive'))
           .orderByColumn('name');
 
       expect(query1, equals(query2)); // Same structure and conditions
@@ -270,14 +270,14 @@ void main() {
     test('should demonstrate hot-swapping capability', () {
       final baseQuery = QueryBuilder().selectAll().from('users').orderByColumn('name');
       
-      final activeQuery = baseQuery.whereBuilder(ConditionBuilder.eq('status', 'active'));
-      final inactiveQuery = baseQuery.whereBuilder(ConditionBuilder.eq('status', 'inactive'));
+      final activeQuery = baseQuery.where(ConditionBuilder.eq('status', 'active'));
+      final inactiveQuery = baseQuery.where(ConditionBuilder.eq('status', 'inactive'));
       
       // These are different queries that would trigger unsubscribe/subscribe in reactive widgets
       expect(activeQuery, isNot(equals(inactiveQuery)));
       
       // But identical queries are equal
-      final activeQuery2 = baseQuery.whereBuilder(ConditionBuilder.eq('status', 'active'));
+      final activeQuery2 = baseQuery.where(ConditionBuilder.eq('status', 'active'));
       expect(activeQuery, equals(activeQuery2));
     });
   });
