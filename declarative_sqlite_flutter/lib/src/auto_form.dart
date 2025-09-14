@@ -15,8 +15,8 @@ import 'widget_helpers.dart';
 
 /// Enhanced auto-form that leverages reactive building blocks
 class AutoForm extends StatefulWidget {
-  /// The table name to build the form for
-  final String tableName;
+  /// The query builder to extract table and column information from
+  final QueryBuilder queryBuilder;
   
   /// Primary key for editing existing records (null for new records)
   final dynamic primaryKey;
@@ -24,8 +24,8 @@ class AutoForm extends StatefulWidget {
   /// Primary key column name
   final String primaryKeyColumn;
   
-  /// Field descriptors
-  final List<AutoFormField> fields;
+  /// Optional field descriptors (if null, fields will be auto-generated from query)
+  final List<AutoFormField>? fields;
   
   /// Callback when form is saved
   final Function(Map<String, dynamic> data)? onSave;
@@ -50,10 +50,10 @@ class AutoForm extends StatefulWidget {
 
   const AutoForm({
     super.key,
-    required this.tableName,
-    required this.fields,
+    required this.queryBuilder,
     this.primaryKey,
     this.primaryKeyColumn = 'id',
+    this.fields,
     this.onSave,
     this.onCancel,
     this.initialData,
@@ -63,6 +63,36 @@ class AutoForm extends StatefulWidget {
     this.autovalidateMode = AutovalidateMode.onUserInteraction,
   });
 
+  /// Convenience constructor that creates AutoForm from a table name
+  /// This automatically creates a QueryBuilder with SELECT * FROM tableName
+  AutoForm.fromTable(
+    String tableName, {
+    Key? key,
+    dynamic primaryKey,
+    String primaryKeyColumn = 'id',
+    List<AutoFormField>? fields,
+    Function(Map<String, dynamic> data)? onSave,
+    VoidCallback? onCancel,
+    Map<String, dynamic>? initialData,
+    String? title,
+    bool showActions = true,
+    bool livePreview = false,
+    AutovalidateMode autovalidateMode = AutovalidateMode.onUserInteraction,
+  }) : this(
+    key: key,
+    queryBuilder: QueryBuilder().selectAll().from(tableName),
+    primaryKey: primaryKey,
+    primaryKeyColumn: primaryKeyColumn,
+    fields: fields,
+    onSave: onSave,
+    onCancel: onCancel,
+    initialData: initialData,
+    title: title,
+    showActions: showActions,
+    livePreview: livePreview,
+    autovalidateMode: autovalidateMode,
+  );
+
   @override
   State<AutoForm> createState() => _AutoFormState();
 }
@@ -71,6 +101,7 @@ class _AutoFormState extends State<AutoForm> {
   final _formKey = GlobalKey<FormState>();
   final Map<String, dynamic> _formData = {};
   bool _isLoading = false;
+  List<AutoFormField>? _generatedFields;
 
   @override
   void initState() {
@@ -80,12 +111,97 @@ class _AutoFormState extends State<AutoForm> {
     }
   }
 
+  /// Gets the table name from the QueryBuilder
+  String get tableName {
+    final table = widget.queryBuilder.fromTable;
+    if (table == null) {
+      throw StateError('QueryBuilder must have a FROM table specified');
+    }
+    return table;
+  }
+
+  /// Gets or generates the form fields
+  List<AutoFormField> get formFields {
+    if (widget.fields != null) {
+      return widget.fields!;
+    }
+    
+    return _generatedFields ??= _generateFieldsFromQuery();
+  }
+
+  /// Generates form fields by inspecting the table schema from the QueryBuilder
+  List<AutoFormField> _generateFieldsFromQuery() {
+    final dataAccess = getDataAccess(context, null);
+    final schema = dataAccess.schema;
+    
+    // Find the table in the schema
+    final table = schema.tables.firstWhere(
+      (t) => t.name == tableName,
+      orElse: () => throw StateError('Table "$tableName" not found in schema'),
+    );
+    
+    final fields = <AutoFormField>[];
+    
+    // Generate fields from table columns, excluding system columns and primary key
+    for (final column in table.columns) {
+      // Skip system columns and the primary key column
+      if (column.name == SystemColumns.systemId || 
+          column.name == SystemColumns.systemVersion ||
+          column.name == widget.primaryKeyColumn) {
+        continue;
+      }
+      
+      // Generate appropriate field type based on column type
+      switch (column.dataType) {
+        case SqliteDataType.text:
+          fields.add(AutoFormField.text(
+            column.name,
+            required: column.isNotNull,
+          ));
+          break;
+        case SqliteDataType.integer:
+          fields.add(AutoFormField.text(
+            column.name,
+            required: column.isNotNull,
+            validator: (value) {
+              if (value != null && value.toString().isNotEmpty) {
+                if (int.tryParse(value.toString()) == null) {
+                  return 'Must be a valid integer';
+                }
+              }
+              return null;
+            },
+          ));
+          break;
+        case SqliteDataType.real:
+          fields.add(AutoFormField.text(
+            column.name,
+            required: column.isNotNull,
+            validator: (value) {
+              if (value != null && value.toString().isNotEmpty) {
+                if (double.tryParse(value.toString()) == null) {
+                  return 'Must be a valid number';
+                }
+              }
+              return null;
+            },
+          ));
+          break;
+        case SqliteDataType.blob:
+          // Skip blob fields for now - they need special handling
+          break;
+      }
+    }
+    
+    return fields;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.primaryKey != null) {
       // Editing existing record - use ReactiveRecordBuilder for live updates
       return ReactiveRecordBuilder(
-        tableName: widget.tableName,
+        tableName: tableName,
         primaryKey: widget.primaryKey!,
         primaryKeyColumn: widget.primaryKeyColumn,
         builder: (context, recordData) {
@@ -122,7 +238,7 @@ class _AutoFormState extends State<AutoForm> {
               ],
               
               // Form fields
-              ...widget.fields.map((field) {
+              ...formFields.map((field) {
                 final currentValue = currentData[field.columnName] ?? _formData[field.columnName];
                 
                 return Padding(
@@ -224,7 +340,7 @@ class _AutoFormState extends State<AutoForm> {
     // Perform async validations like uniqueness checks
     final dataAccess = getDataAccess(context, null);
     
-    for (final field in widget.fields) {
+    for (final field in formFields) {
       if (field.validator != null) {
         final error = field.validator!(data[field.columnName]);
         if (error != null) {
@@ -237,14 +353,11 @@ class _AutoFormState extends State<AutoForm> {
 
 /// Batch form for editing multiple records at once
 class AutoFormBatch extends StatefulWidget {
-  /// The table name
-  final String tableName;
-  
-  /// Query to select records for batch editing
+  /// Query to select records for batch editing (must specify table via FROM)
   final QueryBuilder query;
   
-  /// Fields to show for batch editing
-  final List<AutoFormField> fields;
+  /// Optional fields to show for batch editing (if null, auto-generated from table)
+  final List<AutoFormField>? fields;
   
   /// Callback when batch save is completed
   final Function(List<Map<String, dynamic>> updatedRecords)? onBatchSave;
@@ -254,9 +367,8 @@ class AutoFormBatch extends StatefulWidget {
 
   const AutoFormBatch({
     super.key,
-    required this.tableName,
     required this.query,
-    required this.fields,
+    this.fields,
     this.onBatchSave,
     this.maxRecords = 50,
   });
@@ -268,6 +380,92 @@ class AutoFormBatch extends StatefulWidget {
 class _AutoFormBatchState extends State<AutoFormBatch> {
   final Map<dynamic, Map<String, dynamic>> _batchChanges = {};
   bool _isLoading = false;
+  List<AutoFormField>? _generatedFields;
+
+  /// Gets the table name from the QueryBuilder
+  String get tableName {
+    final table = widget.query.fromTable;
+    if (table == null) {
+      throw StateError('QueryBuilder must have a FROM table specified');
+    }
+    return table;
+  }
+
+  /// Gets or generates the form fields
+  List<AutoFormField> get formFields {
+    if (widget.fields != null) {
+      return widget.fields!;
+    }
+    
+    return _generatedFields ??= _generateFieldsFromQuery();
+  }
+
+  /// Generates form fields by inspecting the table schema from the QueryBuilder
+  List<AutoFormField> _generateFieldsFromQuery() {
+    final dataAccess = getDataAccess(context, null);
+    final schema = dataAccess.schema;
+    
+    // Find the table in the schema
+    final table = schema.tables.firstWhere(
+      (t) => t.name == tableName,
+      orElse: () => throw StateError('Table "$tableName" not found in schema'),
+    );
+    
+    final fields = <AutoFormField>[];
+    
+    // Generate fields from table columns, excluding system columns and primary key
+    for (final column in table.columns) {
+      // Skip system columns and the primary key column (typically 'id')
+      if (column.name == SystemColumns.systemId || 
+          column.name == SystemColumns.systemVersion ||
+          column.name == 'id') {
+        continue;
+      }
+      
+      // Generate appropriate field type based on column type
+      switch (column.dataType) {
+        case SqliteDataType.text:
+          fields.add(AutoFormField.text(
+            column.name,
+            required: column.isNotNull,
+          ));
+          break;
+        case SqliteDataType.integer:
+          fields.add(AutoFormField.text(
+            column.name,
+            required: column.isNotNull,
+            validator: (value) {
+              if (value != null && value.toString().isNotEmpty) {
+                if (int.tryParse(value.toString()) == null) {
+                  return 'Must be a valid integer';
+                }
+              }
+              return null;
+            },
+          ));
+          break;
+        case SqliteDataType.real:
+          fields.add(AutoFormField.text(
+            column.name,
+            required: column.isNotNull,
+            validator: (value) {
+              if (value != null && value.toString().isNotEmpty) {
+                if (double.tryParse(value.toString()) == null) {
+                  return 'Must be a valid number';
+                }
+              }
+              return null;
+            },
+          ));
+          break;
+        case SqliteDataType.blob:
+          // Skip blob fields for now - they need special handling
+          break;
+      }
+    }
+    
+    return fields;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -339,7 +537,7 @@ class _AutoFormBatchState extends State<AutoFormBatch> {
     
     return ExpansionTile(
       title: Text('Record ${primaryKey}'),
-      children: widget.fields.map((field) {
+      children: formFields.map((field) {
         final currentValue = currentData[field.columnName];
         
         return Padding(
@@ -373,7 +571,7 @@ class _AutoFormBatchState extends State<AutoFormBatch> {
         final changes = entry.value;
         
         await dataAccess.update(
-          widget.tableName,
+          tableName,
           changes,
           where: 'id = ?',
           whereArgs: [primaryKey],
@@ -417,8 +615,8 @@ class AutoFormDialog {
   /// Show a dialog for creating a new record
   static Future<T?> showCreate<T>({
     required BuildContext context,
-    required String tableName,
-    required List<AutoFormField> fields,
+    required QueryBuilder queryBuilder,
+    List<AutoFormField>? fields,
     String? title,
     Map<String, dynamic>? initialData,
     bool livePreview = false,
@@ -432,12 +630,13 @@ class AutoFormDialog {
         content: SizedBox(
           width: MediaQuery.of(context).size.width * 0.8,
           child: AutoForm(
-            tableName: tableName,
+            queryBuilder: queryBuilder,
             fields: fields,
             initialData: initialData,
             livePreview: livePreview,
             onSave: (data) async {
               final dataAccess = getDataAccess(context, null);
+              final tableName = queryBuilder.fromTable!;
               await dataAccess.insert(tableName, data);
               Navigator.of(context).pop(data);
             },
@@ -451,9 +650,9 @@ class AutoFormDialog {
   /// Show a dialog for editing an existing record
   static Future<T?> showEdit<T>({
     required BuildContext context,
-    required String tableName,
+    required QueryBuilder queryBuilder,
     required dynamic primaryKey,
-    required List<AutoFormField> fields,
+    List<AutoFormField>? fields,
     String primaryKeyColumn = 'id',
     String? title,
     bool livePreview = false,
@@ -467,13 +666,14 @@ class AutoFormDialog {
         content: SizedBox(
           width: MediaQuery.of(context).size.width * 0.8,
           child: AutoForm(
-            tableName: tableName,
+            queryBuilder: queryBuilder,
             primaryKey: primaryKey,
             primaryKeyColumn: primaryKeyColumn,
             fields: fields,
             livePreview: livePreview,
             onSave: (data) async {
               final dataAccess = getDataAccess(context, null);
+              final tableName = queryBuilder.fromTable!;
               await dataAccess.update(
                 tableName,
                 data,
@@ -492,9 +692,8 @@ class AutoFormDialog {
   /// Show a batch editing dialog
   static Future<T?> showBatch<T>({
     required BuildContext context,
-    required String tableName,
     required QueryBuilder query,
-    required List<AutoFormField> fields,
+    List<AutoFormField>? fields,
     String? title,
     int maxRecords = 50,
     bool barrierDismissible = true,
@@ -508,7 +707,6 @@ class AutoFormDialog {
           width: MediaQuery.of(context).size.width * 0.9,
           height: MediaQuery.of(context).size.height * 0.8,
           child: AutoFormBatch(
-            tableName: tableName,
             query: query,
             fields: fields,
             maxRecords: maxRecords,
@@ -518,6 +716,52 @@ class AutoFormDialog {
           ),
         ),
       ),
+    );
+  }
+
+  // Convenience methods for backward compatibility that accept tableName
+  
+  /// Show a dialog for creating a new record (convenience method)
+  static Future<T?> showCreateForTable<T>({
+    required BuildContext context,
+    required String tableName,
+    List<AutoFormField>? fields,
+    String? title,
+    Map<String, dynamic>? initialData,
+    bool livePreview = false,
+    bool barrierDismissible = true,
+  }) {
+    return showCreate<T>(
+      context: context,
+      queryBuilder: QueryBuilder().selectAll().from(tableName),
+      fields: fields,
+      title: title,
+      initialData: initialData,
+      livePreview: livePreview,
+      barrierDismissible: barrierDismissible,
+    );
+  }
+
+  /// Show a dialog for editing an existing record (convenience method)
+  static Future<T?> showEditForTable<T>({
+    required BuildContext context,
+    required String tableName,
+    required dynamic primaryKey,
+    List<AutoFormField>? fields,
+    String primaryKeyColumn = 'id',
+    String? title,
+    bool livePreview = false,
+    bool barrierDismissible = true,
+  }) {
+    return showEdit<T>(
+      context: context,
+      queryBuilder: QueryBuilder().selectAll().from(tableName),
+      primaryKey: primaryKey,
+      fields: fields,
+      primaryKeyColumn: primaryKeyColumn,
+      title: title,
+      livePreview: livePreview,
+      barrierDismissible: barrierDismissible,
     );
   }
 }
