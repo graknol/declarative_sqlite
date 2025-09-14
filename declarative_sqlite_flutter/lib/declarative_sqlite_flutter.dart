@@ -4,6 +4,9 @@
 /// This library builds upon the declarative_sqlite package to provide:
 /// - Reactive ListView widgets that automatically update when database changes
 /// - Reactive list and grid builders with per-item CRUD operations
+/// - Auto-generated forms based on table schemas with validation
+/// - Pre-built dashboard widgets for analytics and monitoring
+/// - Visual schema browser and data editor
 /// - Form widgets with automatic LWW (Last-Write-Wins) column binding  
 /// - Input field widgets that sync with database columns
 /// - Stream-based UI updates using reactive database functionality
@@ -87,6 +90,61 @@
 /// )
 /// ```
 /// 
+/// ### Dashboard Components
+/// ```dart
+/// // Pre-built dashboard widgets for analytics
+/// DashboardGrid([
+///   DashboardWidgets.countCard(
+///     tableName: 'orders',
+///     title: 'Total Orders',
+///     icon: Icons.shopping_cart,
+///   ),
+///   DashboardWidgets.statusDistribution(
+///     tableName: 'tasks',
+///     statusColumn: 'status',
+///     title: 'Task Status',
+///   ),
+///   DashboardWidgets.trendIndicator(
+///     tableName: 'sales',
+///     title: 'Sales Trend',
+///     dateColumn: 'created_at',
+///   ),
+/// ])
+/// ```
+/// 
+/// ### Schema Inspector
+/// ```dart
+/// // Visual browser for database schema and data
+/// SchemaInspector(
+///   title: 'Database Browser',
+///   expandDataByDefault: true,
+/// )
+/// ```
+/// 
+/// ### Auto-Generated Forms
+/// ```dart
+/// // Automatically generate a form from table schema with validation
+/// AutoForm.fromTable(
+///   tableName: 'users',
+///   onSave: (data) => print('User saved: $data'),
+///   onCancel: () => Navigator.pop(context),
+/// )
+/// 
+/// // Edit existing records
+/// AutoForm.fromRecord(
+///   tableName: 'users',
+///   primaryKey: userId,
+///   onSave: (data) => print('User updated: $data'),
+/// )
+/// 
+/// // Show form in a dialog
+/// AutoFormDialog.showCreate(
+///   context: context,
+///   tableName: 'users',
+///   onSave: (data) => print('User created: $data'),
+/// )
+/// ```
+/// 
 /// ### Form Integration with LWW
 /// ```dart
 /// // Create a form that automatically syncs with LWW columns (no dataAccess needed with provider)
@@ -117,6 +175,9 @@ library declarative_sqlite_flutter;
 // Core functionality
 export 'src/reactive_list_view.dart';
 export 'src/reactive_record_builder.dart';
+export 'src/auto_form.dart';
+export 'src/schema_inspector.dart';
+export 'src/dashboard_widgets.dart';
 export 'src/lww_form.dart';
 export 'src/lww_text_field.dart';
 export 'src/lww_slider.dart';
