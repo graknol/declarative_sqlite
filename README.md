@@ -1,6 +1,212 @@
 # Declarative SQLite
 
-A Dart package for declaratively creating SQLite tables, views, and automatically migrating them.
+A comprehensive Dart and Flutter library ecosystem for declarative SQLite schema management and database operations.
+
+## Repository Structure
+
+This repository contains two packages:
+
+### 📦 [declarative_sqlite/](declarative_sqlite/)
+The core Dart package for declarative SQLite schema management and data access.
+
+- **Declarative Schema Definition**: Fluent builder pattern for database schemas
+- **Automatic Migration**: Create missing tables, views, and indices automatically  
+- **LWW Conflict Resolution**: Last-Write-Wins for offline-first applications
+- **Reactive Streams**: Real-time data updates
+- **Relationship Management**: One-to-many and many-to-many relationships
+- **SQL Views**: Complex queries with joins and aggregations
+- **Bulk Operations**: Efficient data loading with validation
+
+### 📱 [declarative_sqlite_flutter/](declarative_sqlite_flutter/)
+Flutter-specific widgets and utilities that integrate seamlessly with the core library.
+
+- **Reactive ListView Widgets**: Auto-updating lists when database changes
+- **LWW Form Integration**: Form widgets with automatic column binding
+- **Master-Detail Patterns**: Built-in navigation patterns
+- **Input Field Widgets**: Text fields, sliders, dropdowns with database sync
+- **Stream-based UI Updates**: Reactive widgets for real-time UI
+- **Helper Utilities**: Validators, formatters, responsive layouts
+
+## Quick Start
+
+### Core Library (Dart)
+
+```yaml
+dependencies:
+  declarative_sqlite:
+    path: declarative_sqlite
+  # Platform-specific SQLite implementation:
+  sqflite: ^2.3.4                    # For Flutter/mobile platforms
+  # OR
+  sqflite_common_ffi: ^2.3.4+4       # For desktop platforms (Windows, macOS, Linux)
+```
+
+```dart
+import 'package:declarative_sqlite/declarative_sqlite.dart';
+
+// Platform initialization (choose one):
+
+// For Flutter/mobile platforms:
+import 'package:sqflite/sqflite.dart';
+// Database factory is automatically set
+
+// For desktop platforms (Windows, macOS, Linux):
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+// Initialize FFI
+sqfliteFfiInit();
+databaseFactory = databaseFactoryFfi;
+
+// Define schema
+final schema = SchemaBuilder()
+  .table('users', (table) => table
+      .autoIncrementPrimaryKey('id')
+      .text('name', (col) => col.notNull())
+      .text('email', (col) => col.unique())
+      .integer('age'));
+
+// Apply to database
+final migrator = SchemaMigrator();
+await migrator.migrate(database, schema);
+
+// Use data access
+final dataAccess = await DataAccess.create(
+  database: database, 
+  schema: schema,
+);
+```
+
+### Flutter Integration
+
+```yaml
+dependencies:
+  flutter:
+    sdk: flutter
+  declarative_sqlite_flutter:
+    path: declarative_sqlite_flutter
+```
+
+```dart
+import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
+
+// Initialize database service
+DatabaseServiceProvider(
+  schema: schema,
+  databaseName: 'app.db',
+  child: MyApp(),
+)
+
+// Use reactive widgets
+ReactiveListView.builder(
+  dataAccess: dataAccess,
+  tableName: 'users',
+  itemBuilder: (context, user) => UserCard(user: user),
+)
+```
+
+## Features Overview
+
+### 🗄️ Schema Management
+- Fluent builder API for tables, columns, indices
+- Automatic migration between schema versions
+- Support for all SQLite data types and constraints
+- Composite primary keys and indices
+
+### 🔄 Reactive Data Access
+- Stream-based queries that update automatically
+- Change detection for tables, columns, and relationships
+- Bulk loading with batching and error handling
+- LWW conflict resolution for offline scenarios
+
+### 📱 Flutter Widgets
+- Database-backed ListView with automatic updates
+- Form widgets that sync with LWW columns
+- Master-detail navigation patterns
+- Status cards, progress indicators, data tables
+- Responsive layouts and validation helpers
+
+### 🔗 Relationship Management
+- One-to-many and many-to-many relationships
+- Cascading deletes following relationship trees
+- Proxy queries for navigating relationships
+- Junction table management
+
+### 📊 Views and Queries
+- SQL views with complex joins and aggregations
+- Query builder for dynamic SQL generation
+- Expression builder with functions and operators
+- Raw SQL support for complex cases
+
+## Examples
+
+Both packages include comprehensive examples:
+
+- **Core Library**: [Basic usage, relationships, LWW conflict resolution](declarative_sqlite/example/)
+- **Flutter Library**: [Complete demo app with forms, lists, master-detail](declarative_sqlite_flutter/example/)
+
+## Architecture
+
+```
+┌─────────────────────────────────────┐
+│        Flutter Application         │
+├─────────────────────────────────────┤
+│    declarative_sqlite_flutter      │
+│  • Reactive Widgets                │
+│  • Form Integration                 │
+│  • UI Patterns                     │
+├─────────────────────────────────────┤
+│       declarative_sqlite           │
+│  • Schema Definition               │
+│  • Data Access Layer              │
+│  • Migration & LWW                │
+├─────────────────────────────────────┤
+│          SQLite Database           │
+└─────────────────────────────────────┘
+```
+
+## Development
+
+### Prerequisites
+- Dart SDK 3.5.3 or later
+- Flutter SDK (for Flutter package)
+
+### Building Core Library
+```bash
+cd declarative_sqlite
+dart pub get
+dart test
+dart analyze
+```
+
+### Building Flutter Library
+```bash
+cd declarative_sqlite_flutter
+flutter pub get
+flutter analyze
+```
+
+## Documentation
+
+- [Core Library Documentation](declarative_sqlite/README.md)
+- [Flutter Library Documentation](declarative_sqlite_flutter/README.md)
+- [API Reference](declarative_sqlite/lib/declarative_sqlite.dart)
+- [Examples](declarative_sqlite/example/)
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Ensure all tests pass
+6. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Changelog
+
+See [CHANGELOG.md](declarative_sqlite/CHANGELOG.md) for release history and changes.
 
 ## Features
 
