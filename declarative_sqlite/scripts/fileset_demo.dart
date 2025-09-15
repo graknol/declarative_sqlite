@@ -1,9 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() async {
-  print('=== Fileset Column Type Demonstration ===');
+  print('=== Fileset Column Type Demonstration (New Architecture) ===');
   
   // Initialize sqflite_ffi for testing
   sqfliteFfiInit();
@@ -41,150 +42,172 @@ Future<void> _demonstrateFilesetUsage() async {
 
   print('✓ Schema created with fileset columns');
 
-  print('2. Setting up database...');
+  print('2. Setting up database and file storage...');
   final database = await openDatabase(':memory:');
   final migrator = SchemaMigrator();
   await migrator.migrate(database, schema);
-  print('✓ Database migrated with fileset support');
-
-  print('3. Creating file attachments...');
   
-  // Create some file attachments for demonstration
-  final projectDocuments = Fileset(files: [
-    FileAttachment(
-      id: 'doc1',
-      filename: 'requirements.pdf',
-      mimeType: 'application/pdf',
-      size: 1024000,
-      localPath: '/documents/requirements.pdf',
-      syncStatus: FileSyncStatus.pending,
-    ),
-    FileAttachment(
-      id: 'doc2',
-      filename: 'design-spec.docx',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      size: 512000,
-      localPath: '/documents/design-spec.docx',
-      syncStatus: FileSyncStatus.synchronized,
-      remotePath: 'https://storage.example.com/docs/design-spec.docx',
-      uploadedAt: DateTime.now().subtract(Duration(days: 1)),
-    ),
-  ]);
+  // Create temporary directory for file storage
+  final tempDir = '/tmp/fileset_demo_${DateTime.now().millisecondsSinceEpoch}';
+  await Directory(tempDir).create(recursive: true);
+  
+  // Initialize fileset manager
+  final filesetManager = FilesetManager(
+    database: database,
+    storageDirectory: tempDir,
+  );
+  await filesetManager.initialize();
+  
+  print('✓ Database migrated with fileset support');
+  print('✓ File storage initialized at: $tempDir');
 
-  final projectGallery = Fileset(files: [
-    FileAttachment(
-      id: 'img1',
-      filename: 'mockup.png',
-      mimeType: 'image/png',
-      size: 2048000,
-      localPath: '/images/mockup.png',
-      syncStatus: FileSyncStatus.uploading,
-    ),
-    FileAttachment(
-      id: 'img2',
-      filename: 'screenshot.jpg',
-      mimeType: 'image/jpeg',
-      size: 1536000,
-      localPath: '/images/screenshot.jpg',
-      syncStatus: FileSyncStatus.synchronized,
-      remotePath: 'https://cdn.example.com/images/screenshot.jpg',
-      uploadedAt: DateTime.now().subtract(Duration(hours: 2)),
-      checksum: 'sha256:abc123def456',
-    ),
-  ]);
+  print('3. Creating test files and adding them to fileset manager...');
+  
+  // Create some test files
+  final reqFile = File('$tempDir/source_requirements.pdf');
+  final specFile = File('$tempDir/source_design-spec.docx');
+  final mockupFile = File('$tempDir/source_mockup.png');
+  final screenshotFile = File('$tempDir/source_screenshot.jpg');
+  
+  await reqFile.writeAsString('Mock PDF content for requirements document');
+  await specFile.writeAsString('Mock DOCX content for design specification');
+  await mockupFile.writeAsString('Mock PNG content for UI mockup');
+  await screenshotFile.writeAsString('Mock JPG content for screenshot');
+  
+  // Add files to fileset manager
+  final docId1 = await filesetManager.addFile(
+    originalFilename: 'requirements.pdf',
+    sourceFilePath: reqFile.path,
+    mimeType: 'application/pdf',
+  );
+  
+  final docId2 = await filesetManager.addFile(
+    originalFilename: 'design-spec.docx',
+    sourceFilePath: specFile.path,
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  );
+  
+  final imgId1 = await filesetManager.addFile(
+    originalFilename: 'mockup.png',
+    sourceFilePath: mockupFile.path,
+    mimeType: 'image/png',
+  );
+  
+  final imgId2 = await filesetManager.addFile(
+    originalFilename: 'screenshot.jpg',
+    sourceFilePath: screenshotFile.path,
+    mimeType: 'image/jpeg',
+  );
+  
+  print('✓ Test files created and added to fileset manager');
+  print('  - Documents: $docId1, $docId2');
+  print('  - Images: $imgId1, $imgId2');
 
-  print('✓ File attachments created');
-
-  print('4. Inserting data with filesets...');
+  print('4. Creating filesets and inserting data...');
   final dataAccess = await DataAccess.create(database: database, schema: schema);
+
+  // Create filesets with the IDs
+  final projectDocuments = Fileset(filesetIds: [docId1, docId2]);
+  final projectGallery = Fileset(filesetIds: [imgId1, imgId2]);
 
   // Insert project with fileset data
   final projectId = await dataAccess.insert('projects', {
     'name': 'Mobile App Development',
-    'description': 'A new mobile application project',
-    'documents': jsonEncode(projectDocuments.toJson()),
-    'gallery': jsonEncode(projectGallery.toJson()),
+    'description': 'A new mobile application project with file management',
+    'documents': projectDocuments.toDatabaseValue(),
+    'gallery': projectGallery.toDatabaseValue(),
   });
 
   print('✓ Project inserted with ID: $projectId');
 
-  // Insert post with media files
-  final postMediaFiles = Fileset(files: [
-    FileAttachment(
-      id: 'media1',
-      filename: 'progress-video.mp4',
-      mimeType: 'video/mp4',
-      size: 10240000,
-      localPath: '/videos/progress-video.mp4',
-      syncStatus: FileSyncStatus.failed, // Failed upload, needs retry
-    ),
-  ]);
+  // Create media file for post
+  final videoFile = File('$tempDir/source_progress-video.mp4');
+  await videoFile.writeAsString('Mock MP4 content for progress video');
+  
+  final mediaId = await filesetManager.addFile(
+    originalFilename: 'progress-video.mp4',
+    sourceFilePath: videoFile.path,
+    mimeType: 'video/mp4',
+  );
+
+  final postMediaFiles = Fileset(filesetIds: [mediaId]);
 
   final postId = await dataAccess.insert('posts', {
     'title': 'Development Progress Update',
     'content': 'Here is the latest progress on our mobile app development...',
     'project_id': projectId,
-    'media_files': jsonEncode(postMediaFiles.toJson()),
+    'media_files': postMediaFiles.toDatabaseValue(),
   });
 
   print('✓ Post inserted with ID: $postId');
 
-  print('5. Retrieving and manipulating fileset data...');
+  print('5. Retrieving and inspecting fileset data...');
 
   // Retrieve the project
   final retrievedProject = await dataAccess.getByPrimaryKey('projects', projectId);
   print('✓ Retrieved project: ${retrievedProject!['name']}');
 
   // Parse the documents fileset
-  final documentsJson = jsonDecode(retrievedProject['documents'] as String) as Map<String, dynamic>;
-  final documentsFileset = Fileset.fromJson(documentsJson);
+  final documentsFileset = Fileset.fromDatabaseValue(retrievedProject['documents'] as String?);
+  final documentFiles = await documentsFileset.loadFiles(filesetManager);
   
-  print('  Documents in project:');
-  for (final file in documentsFileset.files) {
+  print('  Documents in project (${documentFiles.length} files):');
+  for (final file in documentFiles) {
     print('    - ${file.filename} (${file.mimeType}, ${_formatFileSize(file.size)}, ${file.syncStatus.name})');
   }
 
   // Parse the gallery fileset
-  final galleryJson = jsonDecode(retrievedProject['gallery'] as String) as Map<String, dynamic>;
-  final galleryFileset = Fileset.fromJson(galleryJson);
+  final galleryFileset = Fileset.fromDatabaseValue(retrievedProject['gallery'] as String?);
+  final galleryFiles = await galleryFileset.loadFiles(filesetManager);
   
-  print('  Gallery images in project:');
-  for (final file in galleryFileset.files) {
+  print('  Gallery images in project (${galleryFiles.length} files):');
+  for (final file in galleryFiles) {
     print('    - ${file.filename} (${file.mimeType}, ${_formatFileSize(file.size)}, ${file.syncStatus.name})');
   }
 
   print('6. Demonstrating fileset operations...');
 
   // Add a new file to the documents
-  final newDocument = FileAttachment(
-    id: 'doc3',
-    filename: 'user-manual.pdf',
+  final manualFile = File('$tempDir/source_user-manual.pdf');
+  await manualFile.writeAsString('Mock PDF content for user manual');
+  
+  final docId3 = await filesetManager.addFile(
+    originalFilename: 'user-manual.pdf',
+    sourceFilePath: manualFile.path,
     mimeType: 'application/pdf',
-    size: 768000,
-    localPath: '/documents/user-manual.pdf',
-    syncStatus: FileSyncStatus.pending,
   );
 
-  final updatedDocuments = documentsFileset.addFile(newDocument);
+  final updatedDocuments = documentsFileset.addFilesetId(docId3);
   print('✓ Added new document to fileset (${updatedDocuments.count} total files)');
 
   // Update sync status of a file
-  final syncedDocuments = updatedDocuments.updateFileStatus('doc1', FileSyncStatus.synchronized);
+  await filesetManager.updateSyncStatus(docId1, 'synchronized', 
+    remotePath: 'https://storage.example.com/files/$docId1',
+    uploadedAt: DateTime.now());
   print('✓ Updated sync status of requirements.pdf to synchronized');
 
   // Update the project with modified fileset
   await dataAccess.updateByPrimaryKey('projects', projectId, {
-    'documents': jsonEncode(syncedDocuments.toJson()),
+    'documents': updatedDocuments.toDatabaseValue(),
   });
 
   print('✓ Updated project with new document fileset');
 
   print('7. Demonstrating sync status filtering...');
 
-  // Get files by sync status
-  final pendingFiles = syncedDocuments.pendingFiles;
-  final synchronizedFiles = syncedDocuments.synchronizedFiles;
-  final uploadingFiles = galleryFileset.uploadingFiles;
+  // Reload the updated fileset and get files by sync status
+  final updatedFileset = Fileset.fromDatabaseValue(
+    (await dataAccess.getByPrimaryKey('projects', projectId))!['documents'] as String?
+  );
+  
+  final allFiles = await updatedFileset.loadFiles(filesetManager);
+  final pendingFiles = await updatedFileset.getPendingFiles(filesetManager);
+  final synchronizedFiles = await updatedFileset.getSynchronizedFiles(filesetManager);
+
+  print('  All files: ${allFiles.length}');
+  for (final file in allFiles) {
+    print('    - ${file.filename} (${file.syncStatus.name})');
+  }
 
   print('  Pending files: ${pendingFiles.length}');
   for (final file in pendingFiles) {
@@ -196,12 +219,22 @@ Future<void> _demonstrateFilesetUsage() async {
     print('    - ${file.filename}');
   }
 
-  print('  Currently uploading: ${uploadingFiles.length}');
-  for (final file in uploadingFiles) {
-    print('    - ${file.filename}');
+  print('8. Demonstrating file access...');
+
+  // Get file handle for actual file operations
+  final firstFile = allFiles.first;
+  final metadata = await filesetManager.getFile(firstFile.id);
+  if (metadata != null) {
+    final fileHandle = filesetManager.getFileHandle(metadata.id, metadata.storageFilename);
+    print('  File ${metadata.originalFilename} is stored at: ${fileHandle.path}');
+    print('  File exists: ${await fileHandle.exists()}');
+    if (await fileHandle.exists()) {
+      final content = await fileHandle.readAsString();
+      print('  File content preview: ${content.substring(0, content.length.clamp(0, 50))}...');
+    }
   }
 
-  print('8. Demonstrating sync configuration...');
+  print('9. Demonstrating sync configuration...');
 
   // Create sync configuration
   final syncConfig = FilesetSyncConfig(
@@ -255,7 +288,16 @@ Future<void> _demonstrateFilesetUsage() async {
 
   print('✓ Sync configuration demonstration completed');
 
+  print('10. Cleaning up...');
   await database.close();
+  
+  // Clean up temp directory
+  try {
+    await Directory(tempDir).delete(recursive: true);
+    print('✓ Temporary files cleaned up');
+  } catch (e) {
+    print('⚠ Warning: Could not clean up temporary files: $e');
+  }
 }
 
 String _formatFileSize(int bytes) {

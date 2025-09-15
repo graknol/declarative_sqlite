@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:meta/meta.dart';
+import 'fileset_manager.dart';
 
 /// Represents a file attached to a record in a fileset column.
 /// Contains metadata about the file and its synchronization status.
@@ -16,7 +18,7 @@ class FileAttachment {
     this.checksum,
   });
 
-  /// Unique identifier for this file attachment
+  /// Unique identifier for this file attachment (fileset ID)
   final String id;
   
   /// Original filename
@@ -42,6 +44,33 @@ class FileAttachment {
   
   /// File checksum for integrity verification
   final String? checksum;
+
+  /// Creates a FileAttachment from FilesetMetadata
+  factory FileAttachment.fromMetadata(FilesetMetadata metadata) {
+    return FileAttachment(
+      id: metadata.id,
+      filename: metadata.originalFilename,
+      mimeType: metadata.mimeType,
+      size: metadata.fileSize,
+      localPath: metadata.localPath,
+      remotePath: metadata.remotePath,
+      syncStatus: _parseFileSyncStatus(metadata.syncStatus),
+      uploadedAt: metadata.uploadedAt,
+      checksum: metadata.checksum,
+    );
+  }
+
+  /// Helper to parse sync status from string
+  static FileSyncStatus _parseFileSyncStatus(String status) {
+    switch (status) {
+      case 'pending': return FileSyncStatus.pending;
+      case 'uploading': return FileSyncStatus.uploading;
+      case 'synchronized': return FileSyncStatus.synchronized;
+      case 'failed': return FileSyncStatus.failed;
+      case 'localOnly': return FileSyncStatus.localOnly;
+      default: return FileSyncStatus.pending;
+    }
+  }
 
   /// Creates a copy of this FileAttachment with updated properties
   FileAttachment copyWith({
@@ -153,94 +182,101 @@ enum FileSyncStatus {
 }
 
 /// Represents a collection of file attachments stored in a fileset column.
-/// Provides methods to manage files and their synchronization status.
+/// Now stores a list of fileset IDs and provides access through FilesetManager.
 @immutable
 class Fileset {
   const Fileset({
-    this.files = const [],
+    this.filesetIds = const [],
   });
 
-  /// List of file attachments in this fileset
-  final List<FileAttachment> files;
+  /// List of fileset IDs referencing files in the _filesets table
+  final List<String> filesetIds;
 
   /// Creates an empty fileset
   static const Fileset empty = Fileset();
 
   /// Number of files in this fileset
-  int get count => files.length;
+  int get count => filesetIds.length;
 
   /// Whether this fileset is empty
-  bool get isEmpty => files.isEmpty;
+  bool get isEmpty => filesetIds.isEmpty;
 
   /// Whether this fileset has any files
-  bool get isNotEmpty => files.isNotEmpty;
+  bool get isNotEmpty => filesetIds.isNotEmpty;
 
-  /// Gets all files with a specific sync status
-  List<FileAttachment> getFilesByStatus(FileSyncStatus status) {
-    return files.where((file) => file.syncStatus == status).toList();
+  /// Loads file attachments through the FilesetManager
+  Future<List<FileAttachment>> loadFiles(FilesetManager manager) async {
+    if (filesetIds.isEmpty) return [];
+    
+    final metadataList = await manager.getFiles(filesetIds);
+    return metadataList.map((metadata) => FileAttachment.fromMetadata(metadata)).toList();
   }
 
   /// Gets files that need to be synchronized (pending or failed)
-  List<FileAttachment> get pendingFiles => 
-      files.where((file) => file.syncStatus == FileSyncStatus.pending || 
-                           file.syncStatus == FileSyncStatus.failed).toList();
+  Future<List<FileAttachment>> getPendingFiles(FilesetManager manager) async {
+    final files = await loadFiles(manager);
+    return files.where((file) => 
+        file.syncStatus == FileSyncStatus.pending || 
+        file.syncStatus == FileSyncStatus.failed).toList();
+  }
 
   /// Gets files that are currently being uploaded
-  List<FileAttachment> get uploadingFiles => getFilesByStatus(FileSyncStatus.uploading);
+  Future<List<FileAttachment>> getUploadingFiles(FilesetManager manager) async {
+    final files = await loadFiles(manager);
+    return files.where((file) => file.syncStatus == FileSyncStatus.uploading).toList();
+  }
 
   /// Gets successfully synchronized files
-  List<FileAttachment> get synchronizedFiles => getFilesByStatus(FileSyncStatus.synchronized);
-
-  /// Adds a new file to this fileset
-  Fileset addFile(FileAttachment file) {
-    return Fileset(files: [...files, file]);
+  Future<List<FileAttachment>> getSynchronizedFiles(FilesetManager manager) async {
+    final files = await loadFiles(manager);
+    return files.where((file) => file.syncStatus == FileSyncStatus.synchronized).toList();
   }
 
-  /// Removes a file from this fileset by ID
-  Fileset removeFile(String fileId) {
-    return Fileset(files: files.where((file) => file.id != fileId).toList());
+  /// Adds a new file ID to this fileset
+  Fileset addFilesetId(String filesetId) {
+    return Fileset(filesetIds: [...filesetIds, filesetId]);
   }
 
-  /// Updates a file in this fileset
-  Fileset updateFile(String fileId, FileAttachment updatedFile) {
-    return Fileset(
-      files: files.map((file) => file.id == fileId ? updatedFile : file).toList(),
-    );
+  /// Removes a file ID from this fileset
+  Fileset removeFilesetId(String filesetId) {
+    return Fileset(filesetIds: filesetIds.where((id) => id != filesetId).toList());
   }
 
-  /// Updates the sync status of a file
-  Fileset updateFileStatus(String fileId, FileSyncStatus newStatus) {
-    return Fileset(
-      files: files.map((file) => 
-        file.id == fileId ? file.copyWith(syncStatus: newStatus) : file
-      ).toList(),
-    );
+  /// Finds a file by its ID (returns just the ID, use manager to load full data)
+  bool containsFilesetId(String filesetId) {
+    return filesetIds.contains(filesetId);
   }
 
-  /// Finds a file by its ID
-  FileAttachment? findFile(String fileId) {
+  /// Converts this Fileset to a database-storable string (JSON array of IDs)
+  String toDatabaseValue() {
+    return jsonEncode(filesetIds);
+  }
+
+  /// Creates a Fileset from a database string value
+  factory Fileset.fromDatabaseValue(String? value) {
+    if (value == null || value.isEmpty) {
+      return Fileset.empty;
+    }
+    
     try {
-      return files.firstWhere((file) => file.id == fileId);
+      final decoded = jsonDecode(value) as List<dynamic>;
+      return Fileset(filesetIds: decoded.cast<String>());
     } catch (e) {
-      return null;
+      return Fileset.empty;
     }
   }
 
-  /// Converts this Fileset to a JSON-serializable map
+  /// Converts this Fileset to a JSON-serializable map (for backward compatibility)
   Map<String, dynamic> toJson() {
     return {
-      'files': files.map((file) => file.toJson()).toList(),
+      'filesetIds': filesetIds,
     };
   }
 
-  /// Creates a Fileset from a JSON map
+  /// Creates a Fileset from a JSON map (for backward compatibility)
   factory Fileset.fromJson(Map<String, dynamic> json) {
-    final filesList = json['files'] as List<dynamic>? ?? [];
-    return Fileset(
-      files: filesList
-          .map((fileJson) => FileAttachment.fromJson(fileJson as Map<String, dynamic>))
-          .toList(),
-    );
+    final ids = json['filesetIds'] as List<dynamic>? ?? [];
+    return Fileset(filesetIds: ids.cast<String>());
   }
 
   @override
@@ -248,10 +284,10 @@ class Fileset {
       identical(this, other) ||
       other is Fileset &&
           runtimeType == other.runtimeType &&
-          _listEquals(files, other.files);
+          _listEquals(filesetIds, other.filesetIds);
 
   @override
-  int get hashCode => files.hashCode;
+  int get hashCode => filesetIds.hashCode;
 
   /// Helper method to compare lists for equality
   bool _listEquals<T>(List<T> a, List<T> b) {
@@ -263,7 +299,7 @@ class Fileset {
   }
 
   @override
-  String toString() => 'Fileset(files: ${files.length})';
+  String toString() => 'Fileset(filesetIds: ${filesetIds.length})';
 }
 
 /// Callback function type for file upload operations

@@ -176,6 +176,7 @@
 /// ## Fileset Column Type Example
 /// ```dart
 /// import 'dart:convert';
+/// import 'dart:io';
 /// import 'package:declarative_sqlite/declarative_sqlite.dart';
 /// 
 /// // Define schema with fileset columns for file attachments
@@ -186,56 +187,52 @@
 ///     .fileset('documents') // Documents attached to project
 ///     .fileset('gallery', (col) => col.notNull())); // Required gallery images
 /// 
-/// // Create file attachments
-/// final projectFiles = Fileset(files: [
-///   FileAttachment(
-///     id: 'doc1',
-///     filename: 'requirements.pdf',
-///     mimeType: 'application/pdf',
-///     size: 1024000,
-///     localPath: '/docs/requirements.pdf',
-///     syncStatus: FileSyncStatus.pending,
-///   ),
-///   FileAttachment(
-///     id: 'img1',
-///     filename: 'mockup.png',
-///     mimeType: 'image/png',
-///     size: 2048000,
-///     syncStatus: FileSyncStatus.synchronized,
-///     remotePath: 'https://cdn.example.com/mockup.png',
-///   ),
-/// ]);
+/// // Setup file storage
+/// final filesetManager = FilesetManager(
+///   database: database,
+///   storageDirectory: '/path/to/app/documents',
+/// );
+/// await filesetManager.initialize();
 /// 
-/// // Insert project with fileset data
-/// await dataAccess.insert('projects', {
-///   'name': 'Mobile App',
-///   'documents': jsonEncode(projectFiles.toJson()),
-///   'gallery': jsonEncode(Fileset.empty.toJson()),
-/// });
-/// 
-/// // Configure synchronization callbacks
-/// final syncConfig = FilesetSyncConfig(
-///   maxFileSize: 5 * 1024 * 1024, // 5MB limit
-///   allowedMimeTypes: ['image/jpeg', 'image/png', 'application/pdf'],
-///   autoSync: true,
-///   onUpload: (file) async {
-///     // Upload file to cloud storage
-///     return 'https://storage.example.com/files/${file.id}';
-///   },
-///   onDownload: (file) async {
-///     // Download file from cloud storage
-///     return '/local/downloads/${file.filename}';
-///   },
-///   onDelete: (file) async {
-///     // Delete file from cloud storage
-///   },
+/// // Add files to storage and get IDs
+/// final docId = await filesetManager.addFile(
+///   originalFilename: 'requirements.pdf',
+///   sourceFilePath: '/source/requirements.pdf',
+///   mimeType: 'application/pdf',
 /// );
 /// 
-/// // Manage files in fileset
-/// final updatedFiles = projectFiles
-///   .addFile(newFile)
-///   .updateFileStatus('doc1', FileSyncStatus.synchronized)
-///   .removeFile('old-file-id');
+/// final imgId = await filesetManager.addFile(
+///   originalFilename: 'mockup.png',
+///   sourceFilePath: '/source/mockup.png',
+///   mimeType: 'image/png',
+/// );
+/// 
+/// // Create fileset with file IDs
+/// final projectFiles = Fileset(filesetIds: [docId, imgId]);
+/// 
+/// // Insert with fileset data
+/// await dataAccess.insert('projects', {
+///   'name': 'Mobile App',
+///   'documents': projectFiles.toDatabaseValue(),
+///   'gallery': Fileset.empty.toDatabaseValue(),
+/// });
+/// 
+/// // Retrieve and access files
+/// final project = await dataAccess.getByPrimaryKey('projects', projectId);
+/// final fileset = Fileset.fromDatabaseValue(project['documents']);
+/// final files = await fileset.loadFiles(filesetManager);
+/// 
+/// // Configure sync callbacks
+/// final syncConfig = FilesetSyncConfig(
+///   maxFileSize: 5 * 1024 * 1024,
+///   allowedMimeTypes: ['image/jpeg', 'application/pdf'],
+///   onUpload: (file) async => 'https://storage.example.com/files/${file.id}',
+///   onDownload: (file) async => '/local/downloads/${file.filename}',
+/// );
+/// 
+/// // Update sync status
+/// await filesetManager.updateSyncStatus(docId, 'synchronized',
+///   remotePath: 'https://storage.example.com/files/$docId');
 /// ```
 library declarative_sqlite;
 
@@ -259,3 +256,4 @@ export 'src/stream_dependency_tracker.dart';
 export 'src/dynamic_record.dart';
 export 'src/error_logging.dart';
 export 'src/fileset_types.dart';
+export 'src/fileset_manager.dart';

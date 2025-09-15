@@ -20,8 +20,8 @@ enum SqliteDataType {
   date('TEXT'),
   
   /// Fileset type for managing collections of files (pictures, PDFs, etc.)
-  /// Stored as TEXT containing JSON metadata about attached files
-  /// Supports synchronization callbacks for file operations
+  /// Stored as TEXT containing fileset ID that references the _filesets table
+  /// Files are stored on filesystem with GUID filenames for security
   fileset('TEXT');
 
   const SqliteDataType(this.sqlName);

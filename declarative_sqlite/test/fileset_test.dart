@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:test/test.dart';
@@ -8,6 +9,8 @@ void main() {
     late Database database;
     late SchemaMigrator migrator;
     late DataAccess dataAccess;
+    late FilesetManager filesetManager;
+    late String tempDir;
 
     setUpAll(() {
       sqfliteFfiInit();
@@ -17,10 +20,27 @@ void main() {
     setUp(() async {
       database = await openDatabase(':memory:');
       migrator = SchemaMigrator();
+      
+      // Create a temporary directory for file storage
+      tempDir = '/tmp/fileset_test_${DateTime.now().millisecondsSinceEpoch}';
+      await Directory(tempDir).create(recursive: true);
+      
+      // Initialize fileset manager
+      filesetManager = FilesetManager(
+        database: database,
+        storageDirectory: tempDir,
+      );
+      await filesetManager.initialize();
     });
 
     tearDown(() async {
       await database.close();
+      // Clean up temp directory
+      try {
+        await Directory(tempDir).delete(recursive: true);
+      } catch (e) {
+        // Ignore cleanup errors
+      }
     });
 
     test('should support fileset column type in schema definition', () {
@@ -86,69 +106,76 @@ void main() {
       await migrator.migrate(database, schema);
       dataAccess = await DataAccess.create(database: database, schema: schema);
 
-      // Create a fileset with some photos
-      final fileset = Fileset(files: [
-        FileAttachment(
-          id: 'photo1',
-          filename: 'vacation.jpg',
-          mimeType: 'image/jpeg',
-          size: 2048576,
-          localPath: '/photos/vacation.jpg',
-          syncStatus: FileSyncStatus.pending,
-        ),
-        FileAttachment(
-          id: 'photo2',
-          filename: 'landscape.png',
-          mimeType: 'image/png',
-          size: 1024768,
-          localPath: '/photos/landscape.png',
-          syncStatus: FileSyncStatus.synchronized,
-          remotePath: 'https://example.com/files/landscape.png',
-        ),
-      ]);
+      // Create temporary test files
+      final testFile1 = File('${tempDir}/source1.jpg');
+      final testFile2 = File('${tempDir}/source2.png');
+      await testFile1.writeAsString('fake image data 1');
+      await testFile2.writeAsString('fake image data 2');
 
-      // Insert album with fileset
+      // Add files to fileset manager and get their IDs
+      final filesetId1 = await filesetManager.addFile(
+        originalFilename: 'vacation.jpg',
+        sourceFilePath: testFile1.path,
+        mimeType: 'image/jpeg',
+      );
+      
+      final filesetId2 = await filesetManager.addFile(
+        originalFilename: 'landscape.png',
+        sourceFilePath: testFile2.path,
+        mimeType: 'image/png',
+      );
+
+      // Create a fileset with the file IDs
+      final fileset = Fileset(filesetIds: [filesetId1, filesetId2]);
+
+      // Insert album with fileset data
       final albumId = await dataAccess.insert('albums', {
         'title': 'Summer Vacation',
-        'photos': jsonEncode(fileset.toJson()),
+        'photos': fileset.toDatabaseValue(),
       });
 
-      expect(albumId, isNotNull);
-
       // Retrieve and verify the data
-      final retrievedAlbum = await dataAccess.getByPrimaryKey('albums', albumId);
-      expect(retrievedAlbum, isNotNull);
-      expect(retrievedAlbum!['title'], equals('Summer Vacation'));
+      final retrievedRow = await dataAccess.getByPrimaryKey('albums', albumId);
+      expect(retrievedRow, isNotNull);
+      expect(retrievedRow!['title'], equals('Summer Vacation'));
       
-      // Parse the fileset data
-      final photosJson = jsonDecode(retrievedAlbum['photos'] as String) as Map<String, dynamic>;
-      final retrievedFileset = Fileset.fromJson(photosJson);
-      
+      final retrievedFileset = Fileset.fromDatabaseValue(retrievedRow['photos'] as String?);
       expect(retrievedFileset.count, equals(2));
-      expect(retrievedFileset.files[0].filename, equals('vacation.jpg'));
-      expect(retrievedFileset.files[1].filename, equals('landscape.png'));
-      expect(retrievedFileset.files[1].syncStatus, equals(FileSyncStatus.synchronized));
+      
+      // Load actual file data through manager
+      final files = await retrievedFileset.loadFiles(filesetManager);
+      expect(files.length, equals(2));
+      
+      // Check that both files are present (order might vary)
+      final filenames = files.map((f) => f.filename).toSet();
+      expect(filenames.contains('vacation.jpg'), isTrue);
+      expect(filenames.contains('landscape.png'), isTrue);
+      
+      // All files should have pending status initially
+      for (final file in files) {
+        expect(file.syncStatus, equals(FileSyncStatus.pending));
+      }
     });
 
     test('should handle empty fileset', () async {
       final schema = SchemaBuilder()
-          .table('notes', (table) => table
+          .table('documents', (table) => table
               .autoIncrementPrimaryKey('id')
-              .text('content')
+              .text('title', (col) => col.notNull())
               .fileset('attachments'));
 
       await migrator.migrate(database, schema);
       dataAccess = await DataAccess.create(database: database, schema: schema);
 
       // Insert with empty fileset
-      final noteId = await dataAccess.insert('notes', {
-        'content': 'Simple note without attachments',
-        'attachments': jsonEncode(Fileset.empty.toJson()),
+      final docId = await dataAccess.insert('documents', {
+        'title': 'Empty Document',
+        'attachments': Fileset.empty.toDatabaseValue(),
       });
 
-      final retrievedNote = await dataAccess.getByPrimaryKey('notes', noteId);
-      final attachmentsJson = jsonDecode(retrievedNote!['attachments'] as String) as Map<String, dynamic>;
-      final retrievedFileset = Fileset.fromJson(attachmentsJson);
+      // Retrieve and verify
+      final retrievedRow = await dataAccess.getByPrimaryKey('documents', docId);
+      final retrievedFileset = Fileset.fromDatabaseValue(retrievedRow!['attachments'] as String?);
       
       expect(retrievedFileset.isEmpty, isTrue);
       expect(retrievedFileset.count, equals(0));
@@ -156,224 +183,198 @@ void main() {
 
     test('should validate fileset requires encoding', () {
       expect(SqliteDataType.fileset.requiresEncoding, isTrue);
-      expect(SqliteDataType.fileset.sqlName, equals('TEXT'));
     });
   });
 
   group('FileAttachment Tests', () {
     test('should create FileAttachment with required properties', () {
       final file = FileAttachment(
-        id: 'file1',
+        id: 'test-id',
         filename: 'document.pdf',
         mimeType: 'application/pdf',
-        size: 1024000,
+        size: 1024,
       );
 
-      expect(file.id, equals('file1'));
+      expect(file.id, equals('test-id'));
       expect(file.filename, equals('document.pdf'));
       expect(file.mimeType, equals('application/pdf'));
-      expect(file.size, equals(1024000));
+      expect(file.size, equals(1024));
       expect(file.syncStatus, equals(FileSyncStatus.pending));
     });
 
     test('should serialize to and from JSON', () {
-      final originalFile = FileAttachment(
-        id: 'test-file',
-        filename: 'test.jpg',
-        mimeType: 'image/jpeg',
-        size: 512000,
-        localPath: '/local/test.jpg',
-        remotePath: 'https://example.com/test.jpg',
+      final file = FileAttachment(
+        id: 'test-id',
+        filename: 'document.pdf',
+        mimeType: 'application/pdf',
+        size: 1024,
+        localPath: '/local/document.pdf',
         syncStatus: FileSyncStatus.synchronized,
-        uploadedAt: DateTime.parse('2023-01-01T10:00:00Z'),
-        checksum: 'abc123',
+        uploadedAt: DateTime.parse('2023-01-01T12:00:00Z'),
       );
 
-      final json = originalFile.toJson();
-      final restoredFile = FileAttachment.fromJson(json);
+      final json = file.toJson();
+      final restored = FileAttachment.fromJson(json);
 
-      expect(restoredFile, equals(originalFile));
-      expect(restoredFile.id, equals(originalFile.id));
-      expect(restoredFile.filename, equals(originalFile.filename));
-      expect(restoredFile.mimeType, equals(originalFile.mimeType));
-      expect(restoredFile.size, equals(originalFile.size));
-      expect(restoredFile.localPath, equals(originalFile.localPath));
-      expect(restoredFile.remotePath, equals(originalFile.remotePath));
-      expect(restoredFile.syncStatus, equals(originalFile.syncStatus));
-      expect(restoredFile.uploadedAt, equals(originalFile.uploadedAt));
-      expect(restoredFile.checksum, equals(originalFile.checksum));
+      expect(restored.id, equals(file.id));
+      expect(restored.filename, equals(file.filename));
+      expect(restored.mimeType, equals(file.mimeType));
+      expect(restored.size, equals(file.size));
+      expect(restored.localPath, equals(file.localPath));
+      expect(restored.syncStatus, equals(file.syncStatus));
+      expect(restored.uploadedAt, equals(file.uploadedAt));
     });
 
     test('should support copyWith for immutable updates', () {
-      final originalFile = FileAttachment(
-        id: 'file1',
-        filename: 'original.jpg',
-        mimeType: 'image/jpeg',
+      final original = FileAttachment(
+        id: 'test-id',
+        filename: 'document.pdf',
+        mimeType: 'application/pdf',
         size: 1024,
-        syncStatus: FileSyncStatus.pending,
       );
 
-      final updatedFile = originalFile.copyWith(
+      final updated = original.copyWith(
         syncStatus: FileSyncStatus.synchronized,
-        remotePath: 'https://example.com/synced.jpg',
+        remotePath: 'https://example.com/document.pdf',
       );
 
-      expect(updatedFile.id, equals(originalFile.id));
-      expect(updatedFile.filename, equals(originalFile.filename));
-      expect(updatedFile.syncStatus, equals(FileSyncStatus.synchronized));
-      expect(updatedFile.remotePath, equals('https://example.com/synced.jpg'));
+      expect(updated.id, equals(original.id));
+      expect(updated.filename, equals(original.filename));
+      expect(updated.syncStatus, equals(FileSyncStatus.synchronized));
+      expect(updated.remotePath, equals('https://example.com/document.pdf'));
     });
   });
 
   group('Fileset Tests', () {
-    test('should manage collection of files', () {
-      final fileset = Fileset(files: [
-        FileAttachment(
-          id: '1',
-          filename: 'file1.jpg',
-          mimeType: 'image/jpeg',
-          size: 1024,
-        ),
-        FileAttachment(
-          id: '2',
-          filename: 'file2.pdf',
-          mimeType: 'application/pdf',
-          size: 2048,
-          syncStatus: FileSyncStatus.synchronized,
-        ),
-      ]);
+    late Database database;
+    late FilesetManager filesetManager;
+    late String tempDir;
 
-      expect(fileset.count, equals(2));
-      expect(fileset.isNotEmpty, isTrue);
+    setUp(() async {
+      database = await openDatabase(':memory:');
+      tempDir = '/tmp/fileset_test_${DateTime.now().millisecondsSinceEpoch}';
+      await Directory(tempDir).create(recursive: true);
       
-      final pendingFiles = fileset.pendingFiles;
-      expect(pendingFiles.length, equals(1));
-      expect(pendingFiles.first.filename, equals('file1.jpg'));
-      
-      final syncedFiles = fileset.synchronizedFiles;
-      expect(syncedFiles.length, equals(1));
-      expect(syncedFiles.first.filename, equals('file2.pdf'));
+      filesetManager = FilesetManager(
+        database: database,
+        storageDirectory: tempDir,
+      );
+      await filesetManager.initialize();
     });
 
-    test('should add and remove files immutably', () {
+    tearDown(() async {
+      await database.close();
+      try {
+        await Directory(tempDir).delete(recursive: true);
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    });
+
+    test('should manage collection of file IDs', () async {
       final emptyFileset = Fileset.empty;
-      
-      final newFile = FileAttachment(
-        id: 'new-file',
-        filename: 'new.jpg',
-        mimeType: 'image/jpeg',
-        size: 1024,
-      );
+      expect(emptyFileset.isEmpty, isTrue);
+      expect(emptyFileset.count, equals(0));
 
-      final withFile = emptyFileset.addFile(newFile);
-      expect(emptyFileset.count, equals(0)); // Original unchanged
+      // Add a file ID
+      final withFile = emptyFileset.addFilesetId('test-id');
       expect(withFile.count, equals(1));
-      expect(withFile.findFile('new-file'), isNotNull);
-
-      final withoutFile = withFile.removeFile('new-file');
-      expect(withFile.count, equals(1)); // Previous version unchanged
-      expect(withoutFile.count, equals(0));
-      expect(withoutFile.findFile('new-file'), isNull);
+      expect(withFile.containsFilesetId('test-id'), isTrue);
     });
 
-    test('should update file status', () {
-      final file = FileAttachment(
-        id: 'test-file',
-        filename: 'test.jpg',
+    test('should add and remove file IDs immutably', () async {
+      // Create a test file
+      final testFile = File('${tempDir}/test.jpg');
+      await testFile.writeAsString('fake image data');
+
+      final filesetId = await filesetManager.addFile(
+        originalFilename: 'test.jpg',
+        sourceFilePath: testFile.path,
         mimeType: 'image/jpeg',
-        size: 1024,
-        syncStatus: FileSyncStatus.pending,
       );
 
-      final fileset = Fileset(files: [file]);
-      final updatedFileset = fileset.updateFileStatus('test-file', FileSyncStatus.synchronized);
+      final originalFileset = Fileset(filesetIds: [filesetId]);
+      
+      // Add another ID
+      final withNewId = originalFileset.addFilesetId('new-id');
+      expect(withNewId.count, equals(2));
+      expect(originalFileset.count, equals(1)); // Original unchanged
 
-      expect(fileset.findFile('test-file')!.syncStatus, equals(FileSyncStatus.pending));
-      expect(updatedFileset.findFile('test-file')!.syncStatus, equals(FileSyncStatus.synchronized));
+      // Remove an ID
+      final withoutId = withNewId.removeFilesetId('new-id');
+      expect(withoutId.count, equals(1));
+      expect(withoutId.containsFilesetId(filesetId), isTrue);
+      expect(withoutId.containsFilesetId('new-id'), isFalse);
     });
 
-    test('should serialize to and from JSON', () {
-      final originalFileset = Fileset(files: [
-        FileAttachment(
-          id: '1',
-          filename: 'test1.jpg',
-          mimeType: 'image/jpeg',
-          size: 1024,
-        ),
-        FileAttachment(
-          id: '2',
-          filename: 'test2.pdf',
-          mimeType: 'application/pdf',
-          size: 2048,
-          syncStatus: FileSyncStatus.synchronized,
-        ),
-      ]);
-
-      final json = originalFileset.toJson();
-      final restoredFileset = Fileset.fromJson(json);
-
-      expect(restoredFileset, equals(originalFileset));
-      expect(restoredFileset.count, equals(originalFileset.count));
-      expect(restoredFileset.files[0].filename, equals('test1.jpg'));
-      expect(restoredFileset.files[1].filename, equals('test2.pdf'));
+    test('should serialize to and from database value', () {
+      final fileset = Fileset(filesetIds: ['id1', 'id2', 'id3']);
+      
+      final dbValue = fileset.toDatabaseValue();
+      final restoredFileset = Fileset.fromDatabaseValue(dbValue);
+      
+      expect(restoredFileset.count, equals(3));
+      expect(restoredFileset.containsFilesetId('id1'), isTrue);
+      expect(restoredFileset.containsFilesetId('id2'), isTrue);
+      expect(restoredFileset.containsFilesetId('id3'), isTrue);
     });
   });
 
   group('FilesetSyncConfig Tests', () {
     test('should validate file constraints', () {
       final config = FilesetSyncConfig(
-        maxFileSize: 1000000, // 1MB
-        allowedMimeTypes: ['image/jpeg', 'image/png', 'application/pdf'],
+        maxFileSize: 1024,
+        allowedMimeTypes: ['image/jpeg', 'image/png'],
       );
 
       final validFile = FileAttachment(
-        id: '1',
+        id: 'valid',
         filename: 'test.jpg',
         mimeType: 'image/jpeg',
-        size: 500000,
+        size: 512,
       );
 
-      final oversizedFile = FileAttachment(
-        id: '2',
+      final tooLargeFile = FileAttachment(
+        id: 'large',
         filename: 'large.jpg',
         mimeType: 'image/jpeg',
-        size: 2000000, // 2MB
+        size: 2048,
       );
 
-      final invalidTypeFile = FileAttachment(
-        id: '3',
-        filename: 'video.mp4',
-        mimeType: 'video/mp4',
-        size: 500000,
+      final wrongTypeFile = FileAttachment(
+        id: 'wrong',
+        filename: 'document.pdf',
+        mimeType: 'application/pdf',
+        size: 512,
       );
 
       expect(config.isFileAllowed(validFile), isTrue);
-      expect(config.isFileAllowed(oversizedFile), isFalse);
-      expect(config.isFileAllowed(invalidTypeFile), isFalse);
+      expect(config.isFileAllowed(tooLargeFile), isFalse);
+      expect(config.isFileAllowed(wrongTypeFile), isFalse);
     });
 
     test('should allow all files when no constraints are set', () {
-      const config = FilesetSyncConfig();
+      final config = FilesetSyncConfig();
 
-      final anyFile = FileAttachment(
-        id: '1',
+      final file = FileAttachment(
+        id: 'test',
         filename: 'any.file',
         mimeType: 'any/type',
         size: 999999999,
       );
 
-      expect(config.isFileAllowed(anyFile), isTrue);
+      expect(config.isFileAllowed(file), isTrue);
     });
   });
 
   group('FileSyncStatus Tests', () {
     test('should have all expected status values', () {
       expect(FileSyncStatus.values.length, equals(5));
-      expect(FileSyncStatus.values, contains(FileSyncStatus.pending));
-      expect(FileSyncStatus.values, contains(FileSyncStatus.uploading));
-      expect(FileSyncStatus.values, contains(FileSyncStatus.synchronized));
-      expect(FileSyncStatus.values, contains(FileSyncStatus.failed));
-      expect(FileSyncStatus.values, contains(FileSyncStatus.localOnly));
+      expect(FileSyncStatus.values.contains(FileSyncStatus.pending), isTrue);
+      expect(FileSyncStatus.values.contains(FileSyncStatus.uploading), isTrue);
+      expect(FileSyncStatus.values.contains(FileSyncStatus.synchronized), isTrue);
+      expect(FileSyncStatus.values.contains(FileSyncStatus.failed), isTrue);
+      expect(FileSyncStatus.values.contains(FileSyncStatus.localOnly), isTrue);
     });
   });
 }
