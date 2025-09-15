@@ -1,6 +1,7 @@
 name: declarative_sqlite_flutter
 description: A Flutter package that provides seamless integration of declarative_sqlite with Flutter widgets, forms, and UI patterns.
 version: 1.0.0
+publish_to: none
 repository: https://github.com/graknol/declarative_sqlite
 
 environment:
@@ -21,4 +22,5 @@ dev_dependencies:
   flutter_lints: ^4.0.0
 
 flutter:
+  {}
   # This package is a Flutter library
