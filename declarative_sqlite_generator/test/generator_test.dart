@@ -84,6 +84,33 @@ void main() {
       
       // Verify the class was generated without throwing
       expect(dataClass.name, equals('DataTypesData'));
+      
+      // Check that fileset column is mapped to FilesetField
+      final filesetField = dataClass.fields.firstWhere((f) => f.name == 'fileset_col');
+      expect(filesetField.type?.symbol, equals('FilesetField'));
+    });
+
+    test('generates proper serialization methods for fileset columns', () {
+      final table = TableBuilder('documents')
+          .autoIncrementPrimaryKey('id')
+          .text('title', (col) => col.notNull())
+          .fileset('attachments', (col) => col.notNull())
+          .fileset('gallery'); // nullable
+
+      final dataClass = generator.generateDataClass(table);
+      
+      // Find the toMap method
+      final toMapMethod = dataClass.methods.firstWhere((m) => m.name == 'toMap');
+      expect(toMapMethod, isNotNull);
+      
+      // Find the fromMap method
+      final fromMapMethod = dataClass.methods.firstWhere((m) => m.name == 'fromMap');
+      expect(fromMapMethod, isNotNull);
+      
+      // fromMap should have manager parameter since table has fileset columns
+      expect(fromMapMethod.requiredParameters.length, equals(2)); // map + manager
+      expect(fromMapMethod.requiredParameters.last.name, equals('manager'));
+      expect(fromMapMethod.requiredParameters.last.type?.symbol, equals('FilesetManager'));
     });
 
     test('converts table names to proper class names', () {

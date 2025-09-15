@@ -6,6 +6,7 @@ A build generator that creates type-safe Dart data classes for interacting with 
 
 - **Automatic Data Class Generation**: Generate immutable data classes from `TableBuilder` and `ViewBuilder` metadata
 - **Type Safety**: Proper Dart type mapping for all SQLite data types (INTEGER, REAL, TEXT, BLOB, DATE, FILESET)
+- **Enhanced Fileset Support**: Special `FilesetField` type for fileset columns with Future-based file management
 - **System Column Support**: Automatically includes system columns (`systemId`, `systemVersion`) in all generated classes
 - **Database Serialization**: Generated `toMap()` and `fromMap()` methods for easy database interaction
 - **Null Safety**: Proper nullable/non-nullable types based on column constraints
@@ -196,6 +197,67 @@ final userSet = {user, newUser};
 print('Unique users: ${userSet.length}');
 ```
 
+### 5. Enhanced Fileset Support
+
+For tables with fileset columns, the generator creates special `FilesetField` types that provide Future-based file management:
+
+```dart
+// Schema with fileset columns
+final schema = SchemaBuilder()
+  .table('documents', (table) => table
+      .autoIncrementPrimaryKey('id')
+      .text('title', (col) => col.notNull())
+      .fileset('attachments', (col) => col.notNull()) // Required fileset
+      .fileset('gallery')); // Optional fileset
+
+// Generated class includes FilesetField types
+class DocumentsData {
+  const DocumentsData({
+    required this.systemId,
+    required this.systemVersion,
+    required this.id,
+    required this.title,
+    required this.attachments, // FilesetField type
+    this.gallery, // FilesetField? type
+  });
+
+  final FilesetField attachments;
+  final FilesetField? gallery;
+
+  // fromMap() method includes FilesetManager parameter
+  static DocumentsData fromMap(Map<String, dynamic> map, FilesetManager manager) {
+    return DocumentsData(
+      // ...
+      attachments: FilesetField.fromDatabaseValue(map['attachments'], manager),
+      gallery: map['gallery'] != null 
+        ? FilesetField.fromDatabaseValue(map['gallery'], manager) 
+        : null,
+    );
+  }
+}
+
+// Usage with FilesetField's Future-based methods
+final document = DocumentsData.fromMap(dbRow, filesetManager);
+
+// Load all files asynchronously
+final allFiles = await document.attachments.loadFiles();
+print('Total attachments: ${allFiles.length}');
+
+// Get files by sync status
+final pendingFiles = await document.attachments.getPendingFiles();
+final syncedFiles = await document.attachments.getSynchronizedFiles();
+
+// Add new files
+final updatedAttachments = await document.attachments.addFile(
+  originalFilename: 'proposal.pdf',
+  sourceFilePath: '/path/to/file.pdf',
+  mimeType: 'application/pdf',
+);
+
+// Remove files
+final withoutFile = await document.attachments.removeFile('file-id');
+```
+
 ## Data Type Mapping
 
 The generator maps SQLite data types to appropriate Dart types:
@@ -207,7 +269,7 @@ The generator maps SQLite data types to appropriate Dart types:
 | TEXT | `String` | |
 | BLOB | `List<int>` | |
 | DATE | `DateTime` | Stored as TEXT in ISO8601 format |
-| FILESET | `String` | Special type for file collections |
+| FILESET | `FilesetField` | Special type for file collections with Future-based operations |
 
 All types become nullable (`Type?`) if the column doesn't have a `notNull()` or `primaryKey()` constraint.
 

@@ -1,5 +1,6 @@
 import 'package:code_builder/code_builder.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'fileset_field.dart';
 
 /// Generates data classes for table rows based on TableBuilder metadata.
 class TableDataClassGenerator {
@@ -58,8 +59,13 @@ class TableDataClassGenerator {
 
   /// Generates toMap() method for database serialization.
   Method _generateToMapMethod(TableBuilder table) {
-    final mapEntries = table.columns.map((column) => 
-      "'${column.name}': ${column.name}").join(', ');
+    final mapEntries = table.columns.map((column) {
+      if (column.dataType == SqliteDataType.fileset) {
+        return "'${column.name}': ${column.name}?.toDatabaseValue()";
+      } else {
+        return "'${column.name}': ${column.name}";
+      }
+    }).join(', ');
     
     return Method((b) => b
       ..name = 'toMap'
@@ -71,23 +77,46 @@ class TableDataClassGenerator {
 
   /// Generates fromMap() static method for database deserialization.
   Method _generateFromMapMethod(TableBuilder table, String className) {
+    final hasFilesetColumns = table.columns.any((col) => col.dataType == SqliteDataType.fileset);
+    
     final constructorArgs = table.columns.map((column) {
-      final typeName = _dartTypeForColumn(column).symbol;
-      if (_isColumnRequired(column)) {
-        return "${column.name}: map['${column.name}'] as $typeName";
+      if (column.dataType == SqliteDataType.fileset) {
+        if (_isColumnRequired(column)) {
+          return "${column.name}: FilesetField.fromDatabaseValue(map['${column.name}'] as String?, manager)";
+        } else {
+          return "${column.name}: map['${column.name}'] != null ? FilesetField.fromDatabaseValue(map['${column.name}'] as String?, manager) : null";
+        }
       } else {
-        return "${column.name}: map['${column.name}'] as $typeName";
+        final typeName = _dartTypeForColumn(column).symbol;
+        if (_isColumnRequired(column)) {
+          return "${column.name}: map['${column.name}'] as $typeName";
+        } else {
+          return "${column.name}: map['${column.name}'] as $typeName";
+        }
       }
     }).join(', ');
+    
+    // Build parameters list
+    final parameters = <Parameter>[
+      Parameter((p) => p
+        ..name = 'map'
+        ..type = refer('Map<String, dynamic>')
+      ),
+    ];
+    
+    // Add FilesetManager parameter if there are fileset columns
+    if (hasFilesetColumns) {
+      parameters.add(Parameter((p) => p
+        ..name = 'manager'
+        ..type = refer('FilesetManager')
+      ));
+    }
     
     return Method((b) => b
       ..name = 'fromMap'
       ..static = true
       ..returns = refer(className)
-      ..requiredParameters.add(Parameter((p) => p
-        ..name = 'map'
-        ..type = refer('Map<String, dynamic>')
-      ))
+      ..requiredParameters.addAll(parameters)
       ..docs.add('/// Creates a data object from a database map.')
       ..body = Code('return $className($constructorArgs);')
     );
@@ -157,7 +186,7 @@ class TableDataClassGenerator {
       SqliteDataType.text => 'String',
       SqliteDataType.blob => 'List<int>',
       SqliteDataType.date => 'DateTime',
-      SqliteDataType.fileset => 'String', // Fileset stored as text
+      SqliteDataType.fileset => 'FilesetField', // Specialized fileset field
     };
     
     // Make nullable if column is not required

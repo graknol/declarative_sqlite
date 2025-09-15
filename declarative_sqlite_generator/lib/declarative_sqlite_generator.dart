@@ -67,4 +67,5 @@ library declarative_sqlite_generator;
 export 'src/schema_code_generator.dart';
 export 'src/table_data_class_generator.dart';
 export 'src/view_data_class_generator.dart';
+export 'src/fileset_field.dart';
 export 'src/builder.dart';
