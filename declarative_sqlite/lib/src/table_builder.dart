@@ -93,6 +93,16 @@ class TableBuilder {
     return addColumn(column);
   }
 
+  /// Adds a column to this table with FILESET data type (stored as TEXT containing JSON metadata)
+  /// This is a smart column type for managing collections of files with synchronization support
+  TableBuilder fileset(String columnName, [ColumnBuilder Function(ColumnBuilder)? configure]) {
+    var column = ColumnBuilder(columnName, SqliteDataType.fileset);
+    if (configure != null) {
+      column = configure(column);
+    }
+    return addColumn(column);
+  }
+
   /// Adds a pre-built column to this table
   TableBuilder addColumn(ColumnBuilder column) {
     // Prevent manual specification of system columns

@@ -17,7 +17,12 @@ enum SqliteDataType {
   
   /// Date type stored as TEXT in ISO8601 format (like Oracle's DATE)
   /// Automatically handles encoding/decoding between DateTime and ISO8601 string
-  date('TEXT');
+  date('TEXT'),
+  
+  /// Fileset type for managing collections of files (pictures, PDFs, etc.)
+  /// Stored as TEXT containing JSON metadata about attached files
+  /// Supports synchronization callbacks for file operations
+  fileset('TEXT');
 
   const SqliteDataType(this.sqlName);
   
@@ -25,7 +30,7 @@ enum SqliteDataType {
   final String sqlName;
   
   /// Whether this type requires special encoding/decoding
-  bool get requiresEncoding => this == date;
+  bool get requiresEncoding => this == date || this == fileset;
   
   @override
   String toString() => sqlName;
