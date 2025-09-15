@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:meta/meta.dart';
 import 'data_access.dart';
 import 'lww_types.dart';
+import 'error_logging.dart';
 
 /// Server sync configuration options
 @immutable
@@ -300,7 +301,23 @@ class ServerSyncManager {
 
   /// Internal wrapper that adds sync history tracking
   Future<SyncResult> _performSyncWithHistory(SyncEventType eventType) async {
-    final result = await _performSync();
+    SyncResult? result;
+    try {
+      result = await _performSync();
+    } catch (e, stackTrace) {
+      // Log sync operation failure
+      ErrorLogger.logSyncError(
+        e,
+        'sync_operation',
+        severity: ErrorSeverity.error,
+        additionalData: {
+          'event_type': eventType.name,
+          'pending_operations_count': dataAccess.getPendingOperations().length,
+        },
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
     
     // Add event to history
     _syncHistory.addEvent(SyncEvent(
@@ -387,6 +404,18 @@ class ServerSyncManager {
           failedOperations.add(operation.id);
         }
         lastError = e.toString();
+        
+        // Log sync batch failure
+        ErrorLogger.logSyncError(
+          e,
+          'batch_upload',
+          severity: ErrorSeverity.warning,
+          additionalData: {
+            'batch_size': batch.length,
+            'operation_ids': batch.map((op) => op.id).toList(),
+            'retry_will_occur': true,
+          },
+        );
       }
     }
 
@@ -410,6 +439,7 @@ class ServerSyncManager {
   /// Uploads a batch of operations with retry logic and exponential backoff
   Future<bool> _uploadBatchWithRetry(List<PendingOperation> batch) async {
     Duration currentDelay = options.retryDelay;
+    dynamic lastError;
     
     for (int attempt = 0; attempt <= options.retryAttempts; attempt++) {
       try {
@@ -418,11 +448,49 @@ class ServerSyncManager {
           return true;
         } else {
           // Callback returned false - this is a permanent failure, don't retry
+          ErrorLogger.logSyncError(
+            'Upload callback returned false indicating permanent failure',
+            'upload_permanent_failure',
+            severity: ErrorSeverity.warning,
+            additionalData: {
+              'batch_size': batch.length,
+              'operation_ids': batch.map((op) => op.id).toList(),
+              'attempt': attempt + 1,
+            },
+          );
           return false;
         }
       } catch (e) {
+        lastError = e;
+        
+        // Log retry attempts
+        if (attempt < options.retryAttempts && !_isPermanentError(e)) {
+          ErrorLogger.logSyncError(
+            e,
+            'upload_retry_attempt',
+            severity: ErrorSeverity.info,
+            additionalData: {
+              'batch_size': batch.length,
+              'attempt': attempt + 1,
+              'max_attempts': options.retryAttempts + 1,
+              'next_delay_ms': currentDelay.inMilliseconds,
+            },
+          );
+        }
+        
         // If it's the last attempt or a permanent error, rethrow
         if (attempt == options.retryAttempts || _isPermanentError(e)) {
+          ErrorLogger.logSyncError(
+            e,
+            'upload_final_failure',
+            severity: ErrorSeverity.error,
+            additionalData: {
+              'batch_size': batch.length,
+              'operation_ids': batch.map((op) => op.id).toList(),
+              'total_attempts': attempt + 1,
+              'is_permanent_error': _isPermanentError(e),
+            },
+          );
           rethrow;
         }
         

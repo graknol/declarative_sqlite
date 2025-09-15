@@ -10,6 +10,7 @@ import 'lww_types.dart';
 import 'relationship_builder.dart';
 import 'stream_dependency_tracker.dart';
 import 'query_builder.dart';
+import 'error_logging.dart';
 
 /// A function that generates data for a stream when it needs to be refreshed
 typedef StreamDataGenerator<T> = Future<T> Function();
@@ -660,23 +661,24 @@ class DataAccess {
     var processedValues = DataTypeUtils.encodeRow(values, metadata.columns);
     processedValues = SystemColumnUtils.ensureSystemColumns(processedValues);
     
-    _validateInsertValues(table, processedValues);
-    
-    final result = await database.insert(tableName, processedValues);
-    
-    // Handle LWW columns if present
-    if (_hasLWWColumns(tableName)) {
-      final lwwColumns = table.columns.where((col) => col.isLWW).toList();
-      final primaryKeyColumns = table.getPrimaryKeyColumns();
-      final currentTimestamp = SystemColumnUtils.generateHLCTimestamp();
+    try {
+      _validateInsertValues(table, processedValues);
       
-      // Determine the primary key value based on table type
-      dynamic primaryKeyValue;
-      if (primaryKeyColumns.length == 1 && table.columns.any((col) => 
-          col.name == primaryKeyColumns.first && 
-          col.constraints.contains(ConstraintType.primaryKey))) {
-        // Single auto-increment primary key - use the returned ID
-        primaryKeyValue = result;
+      final result = await database.insert(tableName, processedValues);
+      
+      // Handle LWW columns if present
+      if (_hasLWWColumns(tableName)) {
+        final lwwColumns = table.columns.where((col) => col.isLWW).toList();
+        final primaryKeyColumns = table.getPrimaryKeyColumns();
+        final currentTimestamp = SystemColumnUtils.generateHLCTimestamp();
+        
+        // Determine the primary key value based on table type
+        dynamic primaryKeyValue;
+        if (primaryKeyColumns.length == 1 && table.columns.any((col) => 
+            col.name == primaryKeyColumns.first && 
+            col.constraints.contains(ConstraintType.primaryKey))) {
+          // Single auto-increment primary key - use the returned ID
+          primaryKeyValue = result;
       } else {
         // Composite primary key or custom primary key - extract from values
         if (primaryKeyColumns.length == 1) {
@@ -728,6 +730,21 @@ class DataAccess {
     ));
     
     return result;
+    } catch (e, stackTrace) {
+      // Log database insert error
+      ErrorLogger.logDatabaseError(
+        e,
+        'insert',
+        severity: ErrorSeverity.error,
+        tableName: tableName,
+        additionalData: {
+          'values': values,
+          'processed_values': processedValues,
+        },
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
   }
 
   /// Updates specific columns of a row identified by primary key.
@@ -763,35 +780,52 @@ class DataAccess {
       throw ArgumentError('At least one column value must be provided for update');
     }
     
-    // Get old values for reactive change notification
-    final oldRow = await getByPrimaryKey(tableName, primaryKeyValue);
-    
     // Encode date columns and update system version
     var processedValues = DataTypeUtils.encodeRow(values, metadata.columns);
     processedValues[SystemColumns.systemVersion] = SystemColumnUtils.generateHLCTimestamp();
     
-    _validateUpdateValues(table, processedValues);
-    
-    final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue, table);
-    
-    final result = await database.update(
-      tableName,
-      processedValues,
-      where: whereClause,
-      whereArgs: whereArgs,
-    );
-    
-    // Notify reactive streams about the change
-    await _streamManager.notifyChange(DatabaseChange(
-      tableName: tableName,
-      operation: DatabaseOperation.update,
-      affectedColumns: processedValues.keys.toSet(),
-      primaryKeyValue: primaryKeyValue,
-      oldValues: oldRow,
-      newValues: processedValues,
-    ));
-    
-    return result;
+    try {
+      // Get old values for reactive change notification
+      final oldRow = await getByPrimaryKey(tableName, primaryKeyValue);
+      
+      _validateUpdateValues(table, processedValues);
+      
+      final (whereClause, whereArgs) = _buildPrimaryKeyWhereClause(primaryKeyColumns, primaryKeyValue, table);
+      
+      final result = await database.update(
+        tableName,
+        processedValues,
+        where: whereClause,
+        whereArgs: whereArgs,
+      );
+      
+      // Notify reactive streams about the change
+      await _streamManager.notifyChange(DatabaseChange(
+        tableName: tableName,
+        operation: DatabaseOperation.update,
+        affectedColumns: processedValues.keys.toSet(),
+        primaryKeyValue: primaryKeyValue,
+        oldValues: oldRow,
+        newValues: processedValues,
+      ));
+      
+      return result;
+    } catch (e, stackTrace) {
+      // Log database update error
+      ErrorLogger.logDatabaseError(
+        e,
+        'update_by_primary_key',
+        severity: ErrorSeverity.error,
+        tableName: tableName,
+        additionalData: {
+          'primary_key_value': primaryKeyValue,
+          'values': values,
+          'processed_values': processedValues,
+        },
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
   }
 
   /// Updates rows matching the specified where condition.
@@ -964,16 +998,17 @@ class DataAccess {
       );
     }
     
-    final table = _getTableOrThrow(tableName);
-    final metadata = getTableMetadata(tableName);
-    final primaryKeyColumns = table.getPrimaryKeyColumns();
-    
-    // Analyze dataset columns vs table columns
-    final datasetColumns = dataset.first.keys.toSet();
-    final tableColumns = metadata.columns.keys.toSet();
-    final validColumns = datasetColumns.intersection(tableColumns);
-    
-    final errors = <String>[];
+    try {
+      final table = _getTableOrThrow(tableName);
+      final metadata = getTableMetadata(tableName);
+      final primaryKeyColumns = table.getPrimaryKeyColumns();
+      
+      // Analyze dataset columns vs table columns
+      final datasetColumns = dataset.first.keys.toSet();
+      final tableColumns = metadata.columns.keys.toSet();
+      final validColumns = datasetColumns.intersection(tableColumns);
+      
+      final errors = <String>[];
     var rowsProcessed = 0;
     var rowsInserted = 0;
     var rowsUpdated = 0;
@@ -1167,6 +1202,26 @@ class DataAccess {
       rowsSkipped: rowsSkipped,
       errors: errors,
     );
+    } catch (e, stackTrace) {
+      // Log database bulk load error
+      ErrorLogger.logDatabaseError(
+        e,
+        'bulk_load',
+        severity: ErrorSeverity.error,
+        tableName: tableName,
+        additionalData: {
+          'dataset_size': dataset.length,
+          'options': {
+            'upsert_mode': options.upsertMode,
+            'batch_size': options.batchSize,
+            'clear_table_first': options.clearTableFirst,
+            'allow_partial_data': options.allowPartialData,
+          },
+        },
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
   }
 
   /// Gets metadata about a table from the schema.
