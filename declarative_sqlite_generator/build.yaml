@@ -1,0 +1,17 @@
+targets:
+  $default:
+    builders:
+      declarative_sqlite_generator:declarative_sqlite_generator:
+        generate_for:
+          - "lib/**"
+        options:
+          # Options for the generator can be configured here
+
+builders:
+  declarative_sqlite_generator:
+    import: "package:declarative_sqlite_generator/src/builder.dart"
+    builder_factories: ["declarativeSqliteGenerator"]
+    build_extensions: {".dart": [".g.dart"]}
+    auto_apply: dependents
+    build_to: cache
+    applies_builders: ["source_gen|combining_builder"]
