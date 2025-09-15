@@ -14,7 +14,8 @@
 /// - **Automatic Migration**: Create missing tables, views, and indices automatically
 /// - **Data Access Abstraction**: Type-safe CRUD operations with schema metadata integration
 /// - **Bulk Data Loading**: Efficiently load large datasets with flexible validation and error handling
-/// - **SQLite Data Types**: Full support for SQLite affinities (INTEGER, REAL, TEXT, BLOB)
+/// - **SQLite Data Types**: Full support for SQLite affinities (INTEGER, REAL, TEXT, BLOB, DATE, FILESET)
+/// - **Smart Column Types**: Fileset columns for managing file attachments with synchronization callbacks
 /// - **Constraints**: Support for Primary Key, Unique, and Not Null constraints
 /// - **Indices**: Single-column and composite indices with unique option
 /// - **Type Safe**: Built with null safety and immutable builders
@@ -78,6 +79,7 @@
 ///     .text('title', (col) => col.notNull())
 ///     .text('content')
 ///     .integer('user_id', (col) => col.notNull())
+///     .fileset('attachments') // Smart file management column
 ///     .index('idx_user_id', ['user_id']))
 ///   .addView(Views.filtered('active_users', 'users', 'active = 1'))
 ///   .addView(Views.joined('user_posts', 'users', 'posts', 
@@ -170,6 +172,68 @@
 /// // Update with conflict resolution
 /// await lwwDataAccess.updateLWWColumn('users', userId, 'age', 32);
 /// ```
+/// 
+/// ## Fileset Column Type Example
+/// ```dart
+/// import 'dart:convert';
+/// import 'dart:io';
+/// import 'package:declarative_sqlite/declarative_sqlite.dart';
+/// 
+/// // Define schema with fileset columns for file attachments
+/// final schema = SchemaBuilder()
+///   .table('projects', (table) => table
+///     .autoIncrementPrimaryKey('id')
+///     .text('name', (col) => col.notNull())
+///     .fileset('documents') // Documents attached to project
+///     .fileset('gallery', (col) => col.notNull())); // Required gallery images
+/// 
+/// // Setup file storage
+/// final filesetManager = FilesetManager(
+///   database: database,
+///   storageDirectory: '/path/to/app/documents',
+/// );
+/// await filesetManager.initialize();
+/// 
+/// // Add files to storage and get IDs
+/// final docId = await filesetManager.addFile(
+///   originalFilename: 'requirements.pdf',
+///   sourceFilePath: '/source/requirements.pdf',
+///   mimeType: 'application/pdf',
+/// );
+/// 
+/// final imgId = await filesetManager.addFile(
+///   originalFilename: 'mockup.png',
+///   sourceFilePath: '/source/mockup.png',
+///   mimeType: 'image/png',
+/// );
+/// 
+/// // Create fileset with file IDs
+/// final projectFiles = Fileset(filesetIds: [docId, imgId]);
+/// 
+/// // Insert with fileset data
+/// await dataAccess.insert('projects', {
+///   'name': 'Mobile App',
+///   'documents': projectFiles.toDatabaseValue(),
+///   'gallery': Fileset.empty.toDatabaseValue(),
+/// });
+/// 
+/// // Retrieve and access files
+/// final project = await dataAccess.getByPrimaryKey('projects', projectId);
+/// final fileset = Fileset.fromDatabaseValue(project['documents']);
+/// final files = await fileset.loadFiles(filesetManager);
+/// 
+/// // Configure sync callbacks
+/// final syncConfig = FilesetSyncConfig(
+///   maxFileSize: 5 * 1024 * 1024,
+///   allowedMimeTypes: ['image/jpeg', 'application/pdf'],
+///   onUpload: (file) async => 'https://storage.example.com/files/${file.id}',
+///   onDownload: (file) async => '/local/downloads/${file.filename}',
+/// );
+/// 
+/// // Update sync status
+/// await filesetManager.updateSyncStatus(docId, 'synchronized',
+///   remotePath: 'https://storage.example.com/files/$docId');
+/// ```
 library declarative_sqlite;
 
 // Export all public APIs
@@ -191,3 +255,5 @@ export 'src/server_sync_manager.dart';
 export 'src/stream_dependency_tracker.dart';
 export 'src/dynamic_record.dart';
 export 'src/error_logging.dart';
+export 'src/fileset_types.dart';
+export 'src/fileset_manager.dart';

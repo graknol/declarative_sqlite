@@ -115,13 +115,17 @@ void main() {
           .integer('int_col')
           .real('real_col')
           .text('text_col')
-          .blob('blob_col');
+          .blob('blob_col')
+          .date('date_col')
+          .fileset('fileset_col');
 
       final sql = table.toSql();
       expect(sql, contains('int_col INTEGER'));
       expect(sql, contains('real_col REAL'));
       expect(sql, contains('text_col TEXT'));
       expect(sql, contains('blob_col BLOB'));
+      expect(sql, contains('date_col TEXT'));
+      expect(sql, contains('fileset_col TEXT'));
     });
 
     test('can create composite indices', () {
