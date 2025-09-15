@@ -5,6 +5,8 @@ import 'data_access_provider.dart';
 import 'reactive_record_builder.dart';
 import 'database_stream_builder.dart';
 import 'widget_helpers.dart';
+import 'field_sync_status.dart';
+import 'field_sync_tracker.dart';
 
 /// Enhanced AutoForm family built with modern reactive patterns
 /// This redesigned AutoForm leverages all the building blocks we now have:
@@ -47,6 +49,12 @@ class AutoForm extends StatefulWidget {
   
   /// Validation mode
   final AutovalidateMode autovalidateMode;
+  
+  /// Whether to show sync indicators on form fields
+  final bool enableSyncTracking;
+  
+  /// Optional sync manager for server synchronization tracking
+  final ServerSyncManager? syncManager;
 
   const AutoForm({
     super.key,
@@ -61,6 +69,8 @@ class AutoForm extends StatefulWidget {
     this.showActions = true,
     this.livePreview = false,
     this.autovalidateMode = AutovalidateMode.onUserInteraction,
+    this.enableSyncTracking = true,
+    this.syncManager,
   });
 
   @override
@@ -72,12 +82,44 @@ class _AutoFormState extends State<AutoForm> {
   final Map<String, dynamic> _formData = {};
   bool _isLoading = false;
   List<AutoFormField>? _generatedFields;
+  FieldSyncTracker? _syncTracker;
 
   @override
   void initState() {
     super.initState();
     if (widget.initialData != null) {
       _formData.addAll(widget.initialData!);
+    }
+    
+    // Initialize sync tracker if enabled
+    if (widget.enableSyncTracking) {
+      _initializeSyncTracker();
+    }
+  }
+  
+  @override
+  void dispose() {
+    _syncTracker?.dispose();
+    super.dispose();
+  }
+  
+  void _initializeSyncTracker() {
+    try {
+      final dataAccess = getDataAccess(context, null);
+      _syncTracker = FieldSyncTracker(
+        dataAccess: dataAccess,
+        syncManager: widget.syncManager,
+      );
+      
+      // Initialize field statuses if we have a primary key (editing existing record)
+      if (widget.primaryKey != null) {
+        for (final field in formFields) {
+          _syncTracker!.syncFieldStatus(tableName, widget.primaryKey, field.columnName);
+        }
+      }
+    } catch (e) {
+      // If sync tracker initialization fails, continue without it
+      _syncTracker = null;
     }
   }
 
@@ -234,6 +276,9 @@ class _AutoFormState extends State<AutoForm> {
                     },
                     {...currentData, ..._formData},
                     recordData: recordData,
+                    syncTracker: _syncTracker,
+                    tableName: tableName,
+                    primaryKey: widget.primaryKey,
                   ),
                 );
               }).toList(),
@@ -292,6 +337,13 @@ class _AutoFormState extends State<AutoForm> {
       await _performAsyncValidation(finalData);
       
       widget.onSave?.call(finalData);
+      
+      // Mark fields as saved if sync tracking is enabled
+      if (_syncTracker != null && widget.primaryKey != null) {
+        for (final columnName in finalData.keys) {
+          _syncTracker!.markFieldAsSaved(tableName, widget.primaryKey, columnName);
+        }
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -700,6 +752,7 @@ abstract class AutoFormField extends Equatable {
   final bool livePreview;
   final bool triggersValidation;
   final bool Function(Map<String, dynamic> formData)? visibilityCondition;
+  final bool showSyncIndicator;
 
   const AutoFormField({
     required this.columnName,
@@ -710,12 +763,13 @@ abstract class AutoFormField extends Equatable {
     this.livePreview = false,
     this.triggersValidation = false,
     this.visibilityCondition,
+    this.showSyncIndicator = true,
   });
 
   @override
   List<Object?> get props => [
     columnName, label, readOnly, validator, required,
-    livePreview, triggersValidation, visibilityCondition,
+    livePreview, triggersValidation, visibilityCondition, showSyncIndicator,
   ];
 
   Widget buildField(
@@ -725,6 +779,9 @@ abstract class AutoFormField extends Equatable {
     void Function(String columnName, dynamic value) onChanged,
     Map<String, dynamic> formData, {
     RecordData? recordData,
+    FieldSyncTracker? syncTracker,
+    String? tableName,
+    dynamic primaryKey,
   }) {
     // Check visibility condition
     if (visibilityCondition != null && !visibilityCondition!(formData)) {
@@ -738,6 +795,9 @@ abstract class AutoFormField extends Equatable {
       onChanged, 
       formData,
       recordData: recordData,
+      syncTracker: syncTracker,
+      tableName: tableName,
+      primaryKey: primaryKey,
     );
   }
 
@@ -746,6 +806,12 @@ abstract class AutoFormField extends Equatable {
     ColumnBuilder? columnDefinition,
     dynamic currentValue,
     void Function(String columnName, dynamic value) onChanged,
+    Map<String, dynamic> formData, {
+    RecordData? recordData,
+    FieldSyncTracker? syncTracker,
+    String? tableName,
+    dynamic primaryKey,
+  });
     Map<String, dynamic> formData, {
     RecordData? recordData,
   });
@@ -776,6 +842,7 @@ abstract class AutoFormField extends Equatable {
     bool livePreview = false,
     bool triggersValidation = false,
     bool Function(Map<String, dynamic> formData)? visibilityCondition,
+    bool showSyncIndicator = true,
   }) {
     return AutoFormTextField(
       columnName: columnName,
@@ -788,6 +855,7 @@ abstract class AutoFormField extends Equatable {
       livePreview: livePreview,
       triggersValidation: triggersValidation,
       visibilityCondition: visibilityCondition,
+      showSyncIndicator: showSyncIndicator,
     );
   }
 
@@ -798,6 +866,7 @@ abstract class AutoFormField extends Equatable {
     required String relatedValueColumn,
     String? relatedDisplayColumn,
     bool Function(Map<String, dynamic> formData)? visibilityCondition,
+    bool showSyncIndicator = true,
   }) {
     return AutoFormRelatedField(
       columnName: columnName,
@@ -806,6 +875,7 @@ abstract class AutoFormField extends Equatable {
       relatedValueColumn: relatedValueColumn,
       relatedDisplayColumn: relatedDisplayColumn,
       visibilityCondition: visibilityCondition,
+      showSyncIndicator: showSyncIndicator,
     );
   }
 
@@ -815,6 +885,7 @@ abstract class AutoFormField extends Equatable {
     required dynamic Function(Map<String, dynamic> formData) computation,
     Set<String>? dependsOn,
     bool Function(Map<String, dynamic> formData)? visibilityCondition,
+    bool showSyncIndicator = false,  // Computed fields typically don't need sync indicators
   }) {
     return AutoFormComputedField(
       columnName: columnName,
@@ -822,6 +893,7 @@ abstract class AutoFormField extends Equatable {
       computation: computation,
       dependsOn: dependsOn,
       visibilityCondition: visibilityCondition,
+      showSyncIndicator: showSyncIndicator,
     );
   }
 }
@@ -840,6 +912,7 @@ class AutoFormTextField extends AutoFormField {
     super.livePreview = false,
     super.triggersValidation = false,
     super.visibilityCondition,
+    super.showSyncIndicator = true,
     this.hint,
     this.maxLines,
   });
@@ -855,16 +928,44 @@ class AutoFormTextField extends AutoFormField {
     void Function(String columnName, dynamic value) onChanged,
     Map<String, dynamic> formData, {
     RecordData? recordData,
+    FieldSyncTracker? syncTracker,
+    String? tableName,
+    dynamic primaryKey,
   }) {
+    // Build the suffix icon with sync indicator if enabled
+    Widget? suffixIcon;
+    
+    if (showSyncIndicator && syncTracker != null && tableName != null && primaryKey != null) {
+      // Use StreamBuilder to show real-time sync status
+      suffixIcon = StreamBuilder<FieldSyncInfo>(
+        stream: syncTracker.getFieldStatusStream(tableName, primaryKey, columnName),
+        initialData: syncTracker.getFieldStatus(tableName, primaryKey, columnName),
+        builder: (context, snapshot) {
+          final syncInfo = snapshot.data ?? const FieldSyncInfo(status: FieldSyncStatus.local);
+          
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CompactFieldSyncIndicator(syncInfo: syncInfo),
+              if (isRequired(columnDefinition)) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.star, color: Colors.red, size: 12),
+              ],
+            ],
+          );
+        },
+      );
+    } else if (isRequired(columnDefinition)) {
+      suffixIcon = const Icon(Icons.star, color: Colors.red, size: 12);
+    }
+
     return TextFormField(
       initialValue: currentValue?.toString() ?? '',
       decoration: InputDecoration(
         labelText: getLabel(columnDefinition),
         hintText: hint,
         border: const OutlineInputBorder(),
-        suffixIcon: isRequired(columnDefinition) 
-          ? const Icon(Icons.star, color: Colors.red, size: 12) 
-          : null,
+        suffixIcon: suffixIcon,
       ),
       maxLines: maxLines ?? 1,
       readOnly: readOnly,
@@ -882,6 +983,11 @@ class AutoFormTextField extends AutoFormField {
       onChanged: (value) {
         final newValue = value.isEmpty ? null : value;
         onChanged(columnName, newValue);
+        
+        // Mark field as having local changes
+        if (syncTracker != null && tableName != null && primaryKey != null) {
+          syncTracker.markFieldAsLocal(tableName, primaryKey, columnName);
+        }
         
         if (livePreview && recordData != null && newValue != currentValue) {
           recordData.updateColumn(columnName, newValue);
@@ -901,6 +1007,7 @@ class AutoFormRelatedField extends AutoFormField {
     required super.columnName,
     super.label,
     super.visibilityCondition,
+    super.showSyncIndicator = false,  // Related fields typically don't need sync indicators
     required this.relatedTable,
     required this.relatedValueColumn,
     this.relatedDisplayColumn,
@@ -917,6 +1024,9 @@ class AutoFormRelatedField extends AutoFormField {
     void Function(String columnName, dynamic value) onChanged,
     Map<String, dynamic> formData, {
     RecordData? recordData,
+    FieldSyncTracker? syncTracker,
+    String? tableName,
+    dynamic primaryKey,
   }) {
     if (currentValue == null) {
       return TextFormField(
@@ -971,6 +1081,7 @@ class AutoFormComputedField extends AutoFormField {
     required super.columnName,
     super.label,
     super.visibilityCondition,
+    super.showSyncIndicator = false,  // Computed fields don't need sync indicators
     required this.computation,
     this.dependsOn,
   }) : super(readOnly: true);
@@ -986,6 +1097,9 @@ class AutoFormComputedField extends AutoFormField {
     void Function(String columnName, dynamic value) onChanged,
     Map<String, dynamic> formData, {
     RecordData? recordData,
+    FieldSyncTracker? syncTracker,
+    String? tableName,
+    dynamic primaryKey,
   }) {
     final computedValue = computation(formData);
     
