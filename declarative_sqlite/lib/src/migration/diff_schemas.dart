@@ -19,8 +19,13 @@ List<SchemaChange> diffSchemas(
       changes.add(CreateTable(declarativeTable));
     } else {
       final columnChanges = _diffColumns(declarativeTable, liveTable);
-      if (columnChanges.isNotEmpty) {
-        changes.add(AlterTable(liveTable, declarativeTable, columnChanges));
+      final keyChanges = _diffKeys(declarativeTable, liveTable);
+      final referenceChanges = _diffReferences(declarativeTable, liveTable);
+      if (columnChanges.isNotEmpty ||
+          keyChanges.isNotEmpty ||
+          referenceChanges.isNotEmpty) {
+        changes.add(AlterTable(liveTable, declarativeTable, columnChanges,
+            keyChanges, referenceChanges));
       }
     }
   }
@@ -80,5 +85,39 @@ List<ColumnChange> _diffColumns(Table declarativeTable, LiveTable liveTable) {
     }
   }
 
+  return changes;
+}
+
+List<KeyChange> _diffKeys(Table declarativeTable, LiveTable liveTable) {
+  final changes = <KeyChange>[];
+  final declarativeKeys = declarativeTable.keys;
+  final liveKeys = liveTable.keys;
+
+  for (final declarativeKey in declarativeKeys) {
+    final liveKey = liveKeys.firstWhereOrNull(
+        (k) => const ListEquality().equals(k.columns, declarativeKey.columns));
+    if (liveKey == null) {
+      changes.add(AddKey(declarativeKey));
+    }
+  }
+
+  for (final liveKey in liveKeys) {
+    if (!declarativeKeys
+        .any((k) => const ListEquality().equals(k.columns, liveKey.columns))) {
+      changes.add(DropKey(liveKey));
+    }
+  }
+
+  return changes;
+}
+
+List<ReferenceChange> _diffReferences(
+    Table declarativeTable, LiveTable liveTable) {
+  final changes = <ReferenceChange>[];
+  // Live schema introspection for references is not implemented yet.
+  // For now, we just add all declarative references.
+  for (final declarativeReference in declarativeTable.references) {
+    changes.add(AddReference(declarativeReference));
+  }
   return changes;
 }

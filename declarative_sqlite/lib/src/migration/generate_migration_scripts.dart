@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:declarative_sqlite/src/migration/schema_diff.dart';
 import 'package:declarative_sqlite/src/schema/column.dart';
 import 'package:declarative_sqlite/src/schema/key.dart';
@@ -50,9 +51,16 @@ List<String> _generateAlterTableScripts(AlterTable change) {
   final addColumnChanges = change.columnChanges.whereType<AddColumn>().toList();
   final dropColumnChanges =
       change.columnChanges.whereType<DropColumn>().toList();
+  final alterColumnChanges =
+      change.columnChanges.whereType<AlterColumn>().toList();
+  final keyChanges = change.keyChanges;
+  final referenceChanges = change.referenceChanges;
 
-  if (dropColumnChanges.isNotEmpty) {
-    // Recreate table if columns are dropped
+  if (dropColumnChanges.isNotEmpty ||
+      alterColumnChanges.isNotEmpty ||
+      keyChanges.isNotEmpty ||
+      referenceChanges.isNotEmpty) {
+    // Recreate table if columns are dropped or altered, or if keys/references change
     final newTable = change.targetTable;
     final oldTable = change.liveTable;
     final tempTableName = 'old_${oldTable.name}';
@@ -64,14 +72,28 @@ List<String> _generateAlterTableScripts(AlterTable change) {
     // 2. Create new table with original name
     scripts.add(_generateCreateTableScript(CreateTable(newTable)));
 
+    final selectColumns = newTable.columns.map((newCol) {
+      final oldCol =
+          oldTable.columns.firstWhereOrNull((c) => c.name == newCol.name);
+      if (oldCol != null && !oldCol.isNotNull && newCol.isNotNull) {
+        final defaultValue = newCol.defaultValue;
+        if (defaultValue != null) {
+          final value =
+              defaultValue is String ? "'$defaultValue'" : defaultValue;
+          return 'IFNULL(${newCol.name}, $value) AS ${newCol.name}';
+        }
+      }
+      return newCol.name;
+    }).join(', ');
+
     // 3. Copy data from old table to new table
     scripts.add(
-        'INSERT INTO ${newTable.name} (${keptColumns.join(', ')}) SELECT ${keptColumns.join(', ')} FROM $tempTableName;');
+        'INSERT INTO ${newTable.name} (${keptColumns.join(', ')}) SELECT $selectColumns FROM $tempTableName;');
 
     // 4. Drop old table
     scripts.add('DROP TABLE $tempTableName;');
   } else {
-    // Only handle adding columns if no columns are dropped
+    // Only handle adding columns if no columns are dropped, altered, or keys/references change
     for (final columnChange in addColumnChanges) {
       final columnDef = _generateColumnDefinition(columnChange.column);
       scripts
@@ -79,9 +101,8 @@ List<String> _generateAlterTableScripts(AlterTable change) {
     }
   }
 
-  // NOTE: This implementation assumes that if any column is dropped, the table
-  // is recreated. If columns are only added, it uses ALTER TABLE ADD COLUMN.
-  // More complex scenarios like altering column types or constraints are not
-  // yet handled.
+  // NOTE: This implementation assumes that if any column is dropped or altered,
+  // the table is recreated. If columns are only added, it uses ALTER TABLE ADD
+  // COLUMN.
   return scripts;
 }

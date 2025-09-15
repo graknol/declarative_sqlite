@@ -12,11 +12,14 @@ abstract class ColumnBuilder {
   bool isParent = false;
   @protected
   bool isLww = false;
+  @protected
+  Object? defaultValue;
 
   ColumnBuilder(this.name, this.type);
 
-  ColumnBuilder notNull() {
+  ColumnBuilder notNull([Object? defaultValue]) {
     isNotNull = true;
+    this.defaultValue = defaultValue;
     return this;
   }
 
@@ -35,6 +38,7 @@ abstract class ColumnBuilder {
       name: name,
       type: type,
       isNotNull: isNotNull,
+      defaultValue: defaultValue,
       isParent: isParent,
       isLww: isLww,
     );

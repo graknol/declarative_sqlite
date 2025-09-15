@@ -11,6 +11,7 @@ class Column {
   final bool isLww;
   final int? maxFileSizeMb;
   final int? maxCount;
+  final Object? defaultValue;
 
   const Column({
     required this.name,
@@ -25,5 +26,6 @@ class Column {
     this.isLww = false,
     this.maxFileSizeMb,
     this.maxCount,
+    this.defaultValue,
   });
 }

@@ -1,4 +1,6 @@
 import 'package:declarative_sqlite/src/schema/column.dart';
+import 'package:declarative_sqlite/src/schema/key.dart';
+import 'package:declarative_sqlite/src/schema/reference.dart';
 import 'package:declarative_sqlite/src/schema/live_schema.dart';
 import 'package:declarative_sqlite/src/schema/table.dart';
 import 'package:declarative_sqlite/src/schema/view.dart';
@@ -20,8 +22,10 @@ class AlterTable extends SchemaChange {
   final LiveTable liveTable;
   final Table targetTable;
   final List<ColumnChange> columnChanges;
-  // TODO: Add key/index changes
-  AlterTable(this.liveTable, this.targetTable, this.columnChanges);
+  final List<KeyChange> keyChanges;
+  final List<ReferenceChange> referenceChanges;
+  AlterTable(this.liveTable, this.targetTable, this.columnChanges,
+      this.keyChanges, this.referenceChanges);
 }
 
 // Column changes
@@ -41,6 +45,32 @@ class AlterColumn extends ColumnChange {
   final LiveColumn liveColumn;
   final Column targetColumn;
   AlterColumn(this.liveColumn, this.targetColumn);
+}
+
+// Key changes
+abstract class KeyChange {}
+
+class AddKey extends KeyChange {
+  final Key key;
+  AddKey(this.key);
+}
+
+class DropKey extends KeyChange {
+  final LiveKey key;
+  DropKey(this.key);
+}
+
+// Reference changes
+abstract class ReferenceChange {}
+
+class AddReference extends ReferenceChange {
+  final Reference reference;
+  AddReference(this.reference);
+}
+
+class DropReference extends ReferenceChange {
+  final Reference reference;
+  DropReference(this.reference);
 }
 
 // View changes
