@@ -190,3 +190,4 @@ export 'src/lww_types.dart';
 export 'src/server_sync_manager.dart';
 export 'src/stream_dependency_tracker.dart';
 export 'src/dynamic_record.dart';
+export 'src/error_logging.dart';

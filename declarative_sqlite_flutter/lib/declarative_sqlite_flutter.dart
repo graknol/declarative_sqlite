@@ -146,6 +146,7 @@ library declarative_sqlite_flutter;
 export 'src/reactive_list_view.dart';
 export 'src/reactive_record_builder.dart';
 export 'src/auto_form.dart';
+export 'src/sync_status_widget.dart';
 
 // Data access and providers
 export 'src/data_access_provider.dart';
