@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'package:sqflite_common/sqflite.dart' as sqflite;
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart' as path_provider;
 import 'package:declarative_sqlite/src/migration/generate_migration_scripts.dart';
 import 'package:declarative_sqlite/src/migration/diff_schemas.dart';
 import 'package:declarative_sqlite/src/migration/introspect_schema.dart';
 import 'package:declarative_sqlite/src/schema/schema.dart';
+import 'package:declarative_sqlite/src/builders/query_builder.dart';
+import 'package:declarative_sqlite/src/data_mapping.dart';
 
 typedef OnFetch = Future<void> Function(
     DataAccess dataAccess, String tableName, String? clock);
@@ -28,39 +31,26 @@ class ServerSyncException implements Exception {
   ServerSyncException(this.content);
 }
 
-// These are query condition functions from DREAM.md
-dynamic and(List<dynamic> conditions) => {};
-dynamic or(List<dynamic> conditions) => {};
-dynamic isA(String field) => IsClause(field);
-
-class IsClause {
-  final String field;
-  IsClause(this.field);
-
-  dynamic eq(dynamic value) => {};
-  dynamic gt(dynamic value) => {};
-  dynamic like(String value) => {};
-  dynamic get nil => {};
-  dynamic get not => NotClause(this);
-}
-
-class NotClause {
-  final IsClause clause;
-  NotClause(this.clause);
-
-  dynamic get nil => {};
-}
-
-class Database {
+class DeclarativeDatabase {
   final String _databaseName;
   final Schema _schema;
   sqflite.Database? _db;
 
-  Database(this._databaseName, this._schema);
+  DeclarativeDatabase(this._databaseName, this._schema);
 
   Future<void> open() async {
-    final databasesPath = await sqflite.getDatabasesPath();
-    final path = p.join(databasesPath, _databaseName);
+    String path;
+    if (_databaseName == sqflite.inMemoryDatabasePath) {
+      path = _databaseName;
+    } else {
+      // if (Platform.isAndroid) {
+      //   path = sqflite.
+      // } else if (Platform.isIos)
+      // {
+final documentsDirectory = await path_provider.getLibraryDirectory();
+      path = p.join(documentsDirectory.path, _databaseName);
+      }
+    }
 
     _db = await sqflite.openDatabase(
       path,
@@ -94,5 +84,35 @@ class Database {
   Future<void> close() async {
     await _db?.close();
     _db = null;
+  }
+
+  Future<List<Map<String, dynamic>>> query(QueryBuilder builder) async {
+    if (_db == null) {
+      throw StateError('Database is not open. Call open() before querying.');
+    }
+    final (sql, params) = builder.build();
+    return _db!.rawQuery(sql, params);
+  }
+
+  Future<int> insert(String table, Map<String, Object?> values) {
+    if (_db == null) {
+      throw StateError('Database is not open. Call open() before inserting.');
+    }
+    return _db!.insert(table, values);
+  }
+
+  Future<List<Object?>> batch(void Function(sqflite.Batch batch) operations) {
+    if (_db == null) {
+      throw StateError('Database is not open. Call open() before batching.');
+    }
+    final batch = _db!.batch();
+    operations(batch);
+    return batch.commit();
+  }
+
+  Future<List<T>> queryMapped<T>(
+      QueryBuilder builder, DataMapper<T> mapper) async {
+    final results = await query(builder);
+    return results.map((row) => mapper.fromMap(row)).toList();
   }
 }

@@ -7,4 +7,5 @@ export 'src/builders/key_builder.dart';
 export 'src/builders/reference_builder.dart';
 export 'src/builders/view_builder.dart';
 export 'src/builders/query_builder.dart';
+export 'src/builders/where_clause.dart';
 export 'src/database.dart';

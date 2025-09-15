@@ -12,6 +12,7 @@ dependencies:
   equatable: ^2.0.5
   uuid: ^4.0.0
   sqflite_common: ^2.5.4+3
+  path_provider: ">1.0.0 <2.3.0-beta"
 
 dev_dependencies:
   lints: ^4.0.0

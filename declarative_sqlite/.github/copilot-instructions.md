@@ -7,6 +7,7 @@ This document provides guidance for GitHub Copilot to offer the most relevant an
 `declarative_sqlite` is a Dart library designed to provide a fluent, declarative, and type-safe way to define and interact with a SQLite database. The core philosophy is to define the entire database schema in code and let the library handle the complexities of database creation, migration, and data access.
 
 The project is divided into three main libraries:
+
 1.  `declarative_sqlite`: The core library for schema definition, migration, and data access logic.
 2.  `declarative_sqlite_flutter`: Contains Flutter-specific widgets and helpers for integrating the core library with a Flutter UI (e.g., `QueryListView`).
 3.  `ifs_cloud_auth`: A library for handling authentication against an IFS Cloud instance.
@@ -35,6 +36,7 @@ final schema = schemaBuilder.build();
 ```
 
 When assisting with schema definition, Copilot should:
+
 - Encourage the use of the fluent builder methods (`.notNull()`, `.primary()`, etc.).
 - Remember that `.notNull()` **requires** a default value.
 - Guide the user to define parent tables before child tables if there are logical dependencies.
@@ -44,6 +46,7 @@ When assisting with schema definition, Copilot should:
 A key feature is the automatic migration system. The library can compare the declarative schema with the live database schema and generate the necessary SQL scripts to update it.
 
 **Key points for Copilot:**
+
 - The migration process is handled by `introspectSchema`, `diffSchemas`, and `generateMigrationScripts`.
 - For complex changes (dropping a column, adding a `NOT NULL` constraint, changing a key), the library automatically and safely recreates the table.
 - The process involves renaming the old table, creating a new one, copying the data (using `IFNULL` to handle new `NOT NULL` constraints), and then dropping the old table. This is all done in a single transaction.
@@ -62,3 +65,5 @@ The project follows a set of strict coding principles. Copilot should always adh
 - **No Backwards Compatibility (Yet)**: As the library is still in development, there is no need to maintain backwards compatibility. Feel free to suggest breaking changes if they lead to a cleaner API.
 
 By following these instructions, GitHub Copilot can act as an expert on this specific codebase, providing suggestions that are not just syntactically correct but also align with the project's architecture and design philosophy.
+
+ALWAYS think about the problem first. THEN read your own instructions and follow them! PREFER actions (edit files, reading files, calling tools, etc).
