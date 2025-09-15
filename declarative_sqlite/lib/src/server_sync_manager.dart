@@ -306,7 +306,7 @@ class ServerSyncManager {
       result = await _performSync();
     } catch (e, stackTrace) {
       // Log sync operation failure
-      ErrorLogger.logSyncError(
+      DSQLiteErrorLogger.logSyncError(
         e,
         'sync_operation',
         severity: ErrorSeverity.error,
@@ -406,7 +406,7 @@ class ServerSyncManager {
         lastError = e.toString();
         
         // Log sync batch failure
-        ErrorLogger.logSyncError(
+        DSQLiteErrorLogger.logSyncError(
           e,
           'batch_upload',
           severity: ErrorSeverity.warning,
@@ -448,7 +448,7 @@ class ServerSyncManager {
           return true;
         } else {
           // Callback returned false - this is a permanent failure, don't retry
-          ErrorLogger.logSyncError(
+          DSQLiteErrorLogger.logSyncError(
             'Upload callback returned false indicating permanent failure',
             'upload_permanent_failure',
             severity: ErrorSeverity.warning,
@@ -465,7 +465,7 @@ class ServerSyncManager {
         
         // Log retry attempts
         if (attempt < options.retryAttempts && !_isPermanentError(e)) {
-          ErrorLogger.logSyncError(
+          DSQLiteErrorLogger.logSyncError(
             e,
             'upload_retry_attempt',
             severity: ErrorSeverity.info,
@@ -480,7 +480,7 @@ class ServerSyncManager {
         
         // If it's the last attempt or a permanent error, rethrow
         if (attempt == options.retryAttempts || _isPermanentError(e)) {
-          ErrorLogger.logSyncError(
+          DSQLiteErrorLogger.logSyncError(
             e,
             'upload_final_failure',
             severity: ErrorSeverity.error,

@@ -41,77 +41,77 @@ void main() {
 
   tearDown(() async {
     await database.close();
-    ErrorLogger.clearCallbacks();
-    ErrorLogger.setEnabled(true);
+    DSQLiteErrorLogger.clearCallbacks();
+    DSQLiteErrorLogger.setEnabled(true);
   });
 
   group('ErrorLogger Configuration Tests', () {
     test('should set and clear sync manager error callback', () {
       var callbackCalled = false;
       
-      ErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
+      DSQLiteErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
         callbackCalled = true;
       });
       
-      ErrorLogger.logSyncError('test error', 'test_operation');
+      DSQLiteErrorLogger.logSyncError('test error', 'test_operation');
       expect(callbackCalled, isTrue);
       
       // Clear and test again
       callbackCalled = false;
-      ErrorLogger.clearCallbacks();
-      ErrorLogger.logSyncError('test error', 'test_operation');
+      DSQLiteErrorLogger.clearCallbacks();
+      DSQLiteErrorLogger.logSyncError('test error', 'test_operation');
       expect(callbackCalled, isFalse);
     });
 
     test('should set and clear database error callback', () {
       var callbackCalled = false;
       
-      ErrorLogger.setDatabaseErrorCallback((error, context, stackTrace) {
+      DSQLiteErrorLogger.setDatabaseErrorCallback((error, context, stackTrace) {
         callbackCalled = true;
       });
       
-      ErrorLogger.logDatabaseError('test error', 'test_operation');
+      DSQLiteErrorLogger.logDatabaseError('test error', 'test_operation');
       expect(callbackCalled, isTrue);
       
       // Clear and test again
       callbackCalled = false;
-      ErrorLogger.clearCallbacks();
-      ErrorLogger.logDatabaseError('test error', 'test_operation');
+      DSQLiteErrorLogger.clearCallbacks();
+      DSQLiteErrorLogger.logDatabaseError('test error', 'test_operation');
       expect(callbackCalled, isFalse);
     });
 
     test('should respect enabled/disabled state', () {
       var callbackCalled = false;
       
-      ErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
+      DSQLiteErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
         callbackCalled = true;
       });
       
       // Disable logging
-      ErrorLogger.setEnabled(false);
-      ErrorLogger.logSyncError('test error', 'test_operation');
+      DSQLiteErrorLogger.setEnabled(false);
+      DSQLiteErrorLogger.logSyncError('test error', 'test_operation');
       expect(callbackCalled, isFalse);
       
       // Re-enable logging
-      ErrorLogger.setEnabled(true);
-      ErrorLogger.logSyncError('test error', 'test_operation');
+      DSQLiteErrorLogger.setEnabled(true);
+      DSQLiteErrorLogger.logSyncError('test error', 'test_operation');
       expect(callbackCalled, isTrue);
     });
 
     test('should handle callback exceptions gracefully', () {
-      ErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
+      DSQLiteErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
         throw Exception('Callback failed');
       });
       
       // Should not throw even if callback throws
-      expect(() => ErrorLogger.logSyncError('test error', 'test_operation'), 
+      expect(() => DSQLiteErrorLogger.logSyncError('test error', 'test_operation'), 
              returnsNormally);
     });
   });
 
   group('ErrorContext Tests', () {
     test('should create sync error context correctly', () {
-      final context = ErrorLogger.syncContext(
+      final context = DSQLiteErrorLogger.syncContext(
         'upload_batch',
         severity: ErrorSeverity.warning,
         tableName: 'users',
@@ -126,7 +126,7 @@ void main() {
     });
 
     test('should create database error context correctly', () {
-      final context = ErrorLogger.databaseContext(
+      final context = DSQLiteErrorLogger.databaseContext(
         'insert',
         severity: ErrorSeverity.error,
         tableName: 'posts',
@@ -173,7 +173,7 @@ void main() {
       ErrorContext? capturedContext;
       StackTrace? capturedStackTrace;
       
-      ErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
+      DSQLiteErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
         capturedError = error;
         capturedContext = context;
         capturedStackTrace = stackTrace;
@@ -209,7 +209,7 @@ void main() {
       dynamic capturedError;
       ErrorContext? capturedContext;
       
-      ErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
+      DSQLiteErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
         capturedError = error;
         capturedContext = context;
       });
@@ -242,7 +242,7 @@ void main() {
       String? capturedError;
       ErrorContext? capturedContext;
       
-      ErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
+      DSQLiteErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
         capturedError = error.toString();
         capturedContext = context;
       });
@@ -273,7 +273,7 @@ void main() {
       ErrorContext? capturedContext;
       StackTrace? capturedStackTrace;
       
-      ErrorLogger.setDatabaseErrorCallback((error, context, stackTrace) {
+      DSQLiteErrorLogger.setDatabaseErrorCallback((error, context, stackTrace) {
         capturedError = error;
         capturedContext = context;
         capturedStackTrace = stackTrace;
@@ -298,7 +298,7 @@ void main() {
       dynamic capturedError;
       ErrorContext? capturedContext;
       
-      ErrorLogger.setDatabaseErrorCallback((error, context, stackTrace) {
+      DSQLiteErrorLogger.setDatabaseErrorCallback((error, context, stackTrace) {
         capturedError = error;
         capturedContext = context;
       });
@@ -329,7 +329,7 @@ void main() {
       dynamic capturedError;
       ErrorContext? capturedContext;
       
-      ErrorLogger.setDatabaseErrorCallback((error, context, stackTrace) {
+      DSQLiteErrorLogger.setDatabaseErrorCallback((error, context, stackTrace) {
         capturedError = error;
         capturedContext = context;
       });
@@ -353,67 +353,11 @@ void main() {
     });
   });
 
-  group('ErrorLoggerHelpers Tests', () {
-    test('should configure console logging', () {
-      var consoleOutput = <String>[];
-      
-      // Create a custom callback that captures output instead of using print
-      final testCallback = (dynamic error, ErrorContext context, StackTrace? stackTrace) {
-        final timestamp = DateTime.now().toIso8601String();
-        consoleOutput.add('[$timestamp] ${context.severity.name.toUpperCase()}: ${context.type.name} error in ${context.operation}');
-        if (context.tableName != null) {
-          consoleOutput.add('  Table: ${context.tableName}');
-        }
-        consoleOutput.add('  Error: $error');
-        if (context.additionalData.isNotEmpty) {
-          consoleOutput.add('  Additional Data: ${context.additionalData}');
-        }
-      };
-
-      ErrorLogger.setSyncManagerErrorCallback(testCallback);
-      ErrorLogger.setDatabaseErrorCallback(testCallback);
-      
-      ErrorLogger.logSyncError(
-        Exception('Test sync error'),
-        'test_operation',
-        severity: ErrorSeverity.warning,
-        tableName: 'users',
-        additionalData: {'test': 'data'},
-      );
-
-      expect(consoleOutput.any((line) => line.contains('WARNING')), isTrue);
-      expect(consoleOutput.any((line) => line.contains('syncManager')), isTrue);
-      expect(consoleOutput.any((line) => line.contains('test_operation')), isTrue);
-      expect(consoleOutput.any((line) => line.contains('Table: users')), isTrue);
-    });
-
-    test('should configure unified error logging', () {
-      var syncErrors = <dynamic>[];
-      var databaseErrors = <dynamic>[];
-      
-      final unifiedCallback = (dynamic error, ErrorContext context, StackTrace? stackTrace) {
-        if (context.type == ErrorType.syncManager) {
-          syncErrors.add(error);
-        } else {
-          databaseErrors.add(error);
-        }
-      };
-
-      ErrorLoggerHelpers.configureSentry(unifiedCallback);
-      
-      ErrorLogger.logSyncError('sync error', 'sync_op');
-      ErrorLogger.logDatabaseError('db error', 'db_op');
-      
-      expect(syncErrors.length, equals(1));
-      expect(databaseErrors.length, equals(1));
-    });
-  });
-
   group('Real-world Usage Examples Tests', () {
     test('should work with Azure App Insights pattern', () {
       final loggedEvents = <Map<String, dynamic>>[];
       
-      ErrorLoggerHelpers.configureAzureAppInsights((error, context, stackTrace) {
+      final appInsightsCallback = (dynamic error, ErrorContext context, StackTrace? stackTrace) {
         loggedEvents.add({
           'error': error.toString(),
           'error_type': context.type.name,
@@ -423,9 +367,12 @@ void main() {
           'stack_trace': stackTrace?.toString(),
           ...context.additionalData,
         });
-      });
+      };
 
-      ErrorLogger.logDatabaseError(
+      DSQLiteErrorLogger.setSyncManagerErrorCallback(appInsightsCallback);
+      DSQLiteErrorLogger.setDatabaseErrorCallback(appInsightsCallback);
+
+      DSQLiteErrorLogger.logDatabaseError(
         Exception('Connection timeout'),
         'query_execution',
         severity: ErrorSeverity.critical,
@@ -445,7 +392,7 @@ void main() {
     test('should work with Sentry pattern', () {
       final sentryEvents = <Map<String, dynamic>>[];
       
-      ErrorLoggerHelpers.configureSentry((error, context, stackTrace) {
+      final sentryCallback = (dynamic error, ErrorContext context, StackTrace? stackTrace) {
         sentryEvents.add({
           'exception': error,
           'tags': {
@@ -459,9 +406,12 @@ void main() {
           },
           'stackTrace': stackTrace,
         });
-      });
+      };
 
-      ErrorLogger.logSyncError(
+      DSQLiteErrorLogger.setSyncManagerErrorCallback(sentryCallback);
+      DSQLiteErrorLogger.setDatabaseErrorCallback(sentryCallback);
+
+      DSQLiteErrorLogger.logSyncError(
         StateError('Invalid sync state'),
         'conflict_resolution',
         severity: ErrorSeverity.error,

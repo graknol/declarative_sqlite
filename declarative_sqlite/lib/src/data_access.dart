@@ -732,7 +732,7 @@ class DataAccess {
     return result;
     } catch (e, stackTrace) {
       // Log database insert error
-      ErrorLogger.logDatabaseError(
+      DSQLiteErrorLogger.logDatabaseError(
         e,
         'insert',
         severity: ErrorSeverity.error,
@@ -812,7 +812,7 @@ class DataAccess {
       return result;
     } catch (e, stackTrace) {
       // Log database update error
-      ErrorLogger.logDatabaseError(
+      DSQLiteErrorLogger.logDatabaseError(
         e,
         'update_by_primary_key',
         severity: ErrorSeverity.error,
@@ -1204,7 +1204,7 @@ class DataAccess {
     );
     } catch (e, stackTrace) {
       // Log database bulk load error
-      ErrorLogger.logDatabaseError(
+      DSQLiteErrorLogger.logDatabaseError(
         e,
         'bulk_load',
         severity: ErrorSeverity.error,

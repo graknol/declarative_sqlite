@@ -85,7 +85,7 @@ typedef ErrorLogCallback = void Function(
 /// Usage:
 /// ```dart
 /// // Set up error logging with Sentry
-/// ErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
+/// DSQLiteErrorLogger.setSyncManagerErrorCallback((error, context, stackTrace) {
 ///   Sentry.captureException(error, stackTrace: stackTrace, withScope: (scope) {
 ///     scope.setTag('error_type', context.type.name);
 ///     scope.setTag('severity', context.severity.name);
@@ -98,7 +98,7 @@ typedef ErrorLogCallback = void Function(
 /// });
 /// 
 /// // Set up database error logging
-/// ErrorLogger.setDatabaseErrorCallback((error, context, stackTrace) {
+/// DSQLiteErrorLogger.setDatabaseErrorCallback((error, context, stackTrace) {
 ///   // Log to Azure App Insights
 ///   appInsights.trackException(error, properties: {
 ///     'error_type': context.type.name,
@@ -109,7 +109,7 @@ typedef ErrorLogCallback = void Function(
 ///   });
 /// });
 /// ```
-class ErrorLogger {
+class DSQLiteErrorLogger {
   static ErrorLogCallback? _syncManagerErrorCallback;
   static ErrorLogCallback? _databaseErrorCallback;
   static bool _isEnabled = true;
@@ -238,101 +238,5 @@ class ErrorLogger {
       tableName: tableName,
       additionalData: additionalData,
     );
-  }
-}
-
-/// Helper class with pre-configured error logging setups for popular services
-class ErrorLoggerHelpers {
-  /// Configure error logging for Sentry
-  /// 
-  /// Example usage:
-  /// ```dart
-  /// import 'package:sentry/sentry.dart';
-  /// 
-  /// ErrorLoggerHelpers.configureSentry((error, context, stackTrace) {
-  ///   Sentry.captureException(error, stackTrace: stackTrace, withScope: (scope) {
-  ///     scope.setTag('error_type', context.type.name);
-  ///     scope.setTag('severity', context.severity.name);
-  ///     scope.setTag('operation', context.operation);
-  ///     if (context.tableName != null) {
-  ///       scope.setTag('table_name', context.tableName!);
-  ///     }
-  ///     scope.setContext('additional_data', context.additionalData);
-  ///   });
-  /// });
-  /// ```
-  static void configureSentry(ErrorLogCallback sentryCallback) {
-    ErrorLogger.setSyncManagerErrorCallback(sentryCallback);
-    ErrorLogger.setDatabaseErrorCallback(sentryCallback);
-  }
-
-  /// Configure error logging for Azure Application Insights
-  /// 
-  /// Example usage:
-  /// ```dart
-  /// ErrorLoggerHelpers.configureAzureAppInsights((error, context, stackTrace) {
-  ///   appInsights.trackException(error, properties: {
-  ///     'error_type': context.type.name,
-  ///     'severity': context.severity.name,
-  ///     'operation': context.operation,
-  ///     'table_name': context.tableName ?? 'unknown',
-  ///     'stack_trace': stackTrace?.toString(),
-  ///     ...context.additionalData,
-  ///   });
-  /// });
-  /// ```
-  static void configureAzureAppInsights(ErrorLogCallback appInsightsCallback) {
-    ErrorLogger.setSyncManagerErrorCallback(appInsightsCallback);
-    ErrorLogger.setDatabaseErrorCallback(appInsightsCallback);
-  }
-
-  /// Configure error logging for Firebase Crashlytics
-  /// 
-  /// Example usage:
-  /// ```dart
-  /// import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-  /// 
-  /// ErrorLoggerHelpers.configureFirebaseCrashlytics((error, context, stackTrace) {
-  ///   FirebaseCrashlytics.instance.recordError(
-  ///     error,
-  ///     stackTrace,
-  ///     reason: '${context.type.name}: ${context.operation}',
-  ///     information: [
-  ///       'Severity: ${context.severity.name}',
-  ///       'Operation: ${context.operation}',
-  ///       if (context.tableName != null) 'Table: ${context.tableName}',
-  ///       ...context.additionalData.entries.map((e) => '${e.key}: ${e.value}'),
-  ///     ],
-  ///   );
-  /// });
-  /// ```
-  static void configureFirebaseCrashlytics(ErrorLogCallback crashlyticsCallback) {
-    ErrorLogger.setSyncManagerErrorCallback(crashlyticsCallback);
-    ErrorLogger.setDatabaseErrorCallback(crashlyticsCallback);
-  }
-
-  /// Configure basic console logging for debugging
-  /// 
-  /// This is useful for development and debugging
-  static void configureConsoleLogging({bool includeStackTrace = true}) {
-    final callback = (dynamic error, ErrorContext context, StackTrace? stackTrace) {
-      final timestamp = DateTime.now().toIso8601String();
-      print('[$timestamp] ${context.severity.name.toUpperCase()}: ${context.type.name} error in ${context.operation}');
-      if (context.tableName != null) {
-        print('  Table: ${context.tableName}');
-      }
-      print('  Error: $error');
-      if (context.additionalData.isNotEmpty) {
-        print('  Additional Data: ${context.additionalData}');
-      }
-      if (includeStackTrace && stackTrace != null) {
-        print('  Stack Trace:');
-        print(stackTrace.toString().split('\n').take(10).map((line) => '    $line').join('\n'));
-      }
-      print('');
-    };
-
-    ErrorLogger.setSyncManagerErrorCallback(callback);
-    ErrorLogger.setDatabaseErrorCallback(callback);
   }
 }
