@@ -147,6 +147,12 @@ export 'src/reactive_list_view.dart';
 export 'src/reactive_record_builder.dart';
 export 'src/auto_form.dart';
 export 'src/sync_status_widget.dart';
+export 'src/field_sync_status.dart';
+export 'src/field_sync_tracker.dart';
+
+// Awareness functionality
+export 'src/awareness_manager.dart';
+export 'src/awareness_indicator.dart';
 
 // Data access and providers
 export 'src/data_access_provider.dart';
