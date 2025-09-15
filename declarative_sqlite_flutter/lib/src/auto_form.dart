@@ -7,6 +7,8 @@ import 'database_stream_builder.dart';
 import 'widget_helpers.dart';
 import 'field_sync_status.dart';
 import 'field_sync_tracker.dart';
+import 'awareness_manager.dart';
+import 'awareness_indicator.dart';
 
 /// Enhanced AutoForm family built with modern reactive patterns
 /// This redesigned AutoForm leverages all the building blocks we now have:
@@ -55,6 +57,12 @@ class AutoForm extends StatefulWidget {
   
   /// Optional sync manager for server synchronization tracking
   final ServerSyncManager? syncManager;
+  
+  /// Whether to show awareness indicators
+  final bool enableAwarenessTracking;
+  
+  /// Optional awareness manager for tracking who's viewing the record
+  final AwarenessManager? awarenessManager;
 
   const AutoForm({
     super.key,
@@ -71,6 +79,8 @@ class AutoForm extends StatefulWidget {
     this.autovalidateMode = AutovalidateMode.onUserInteraction,
     this.enableSyncTracking = true,
     this.syncManager,
+    this.enableAwarenessTracking = false,
+    this.awarenessManager,
   });
 
   @override
@@ -95,11 +105,20 @@ class _AutoFormState extends State<AutoForm> {
     if (widget.enableSyncTracking) {
       _initializeSyncTracker();
     }
+    
+    // Initialize awareness tracking if enabled
+    if (widget.enableAwarenessTracking && widget.awarenessManager != null) {
+      _initializeAwarenessTracking();
+    }
   }
   
   @override
   void dispose() {
     _syncTracker?.dispose();
+    // Stop awareness tracking if enabled
+    if (widget.enableAwarenessTracking && widget.awarenessManager != null) {
+      widget.awarenessManager!.stopTracking(_getAwarenessContext());
+    }
     super.dispose();
   }
   
@@ -121,6 +140,23 @@ class _AutoFormState extends State<AutoForm> {
       // If sync tracker initialization fails, continue without it
       _syncTracker = null;
     }
+  }
+
+  void _initializeAwarenessTracking() {
+    try {
+      widget.awarenessManager!.startTracking(_getAwarenessContext());
+    } catch (e) {
+      // If awareness tracking fails, continue without it
+      // The form should still work normally
+    }
+  }
+
+  AwarenessContext _getAwarenessContext() {
+    return AwarenessContext(
+      tableName: tableName,
+      recordId: widget.primaryKey,
+      route: ModalRoute.of(context)?.settings.name,
+    );
   }
 
   /// Gets the table name from the QueryBuilder
@@ -239,12 +275,25 @@ class _AutoFormState extends State<AutoForm> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Title
+              // Title with awareness indicator
               if (widget.title != null) ...[
-                Text(
-                  widget.title!,
-                  style: Theme.of(context).textTheme.headlineSmall,
-                  textAlign: TextAlign.center,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.title!,
+                        style: Theme.of(context).textTheme.headlineSmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    if (widget.enableAwarenessTracking && widget.awarenessManager != null)
+                      ReactiveAwarenessIndicator(
+                        awarenessManager: widget.awarenessManager!,
+                        context: _getAwarenessContext(),
+                        size: 28.0,
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 24),
               ],

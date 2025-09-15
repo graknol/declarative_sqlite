@@ -150,6 +150,10 @@ export 'src/sync_status_widget.dart';
 export 'src/field_sync_status.dart';
 export 'src/field_sync_tracker.dart';
 
+// Awareness functionality
+export 'src/awareness_manager.dart';
+export 'src/awareness_indicator.dart';
+
 // Data access and providers
 export 'src/data_access_provider.dart';
 export 'src/database_stream_builder.dart';
