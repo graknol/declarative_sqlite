@@ -8,4 +8,6 @@ class Key {
     required this.columns,
     required this.type,
   });
+
+  bool get isPrimary => type == KeyType.primary;
 }

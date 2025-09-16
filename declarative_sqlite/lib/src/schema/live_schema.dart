@@ -43,3 +43,17 @@ class LiveKey {
 
   LiveKey({required this.name, required this.columns, required this.isUnique});
 }
+
+class LiveReference {
+  final String fromTable;
+  final String fromColumn;
+  final String toTable;
+  final String toColumn;
+
+  LiveReference({
+    required this.fromTable,
+    required this.fromColumn,
+    required this.toTable,
+    required this.toColumn,
+  });
+}

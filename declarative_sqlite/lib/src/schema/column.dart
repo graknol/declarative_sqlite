@@ -28,4 +28,19 @@ class Column {
     this.maxCount,
     this.defaultValue,
   });
+
+  String toSql() {
+    final parts = [name, type];
+    if (isNotNull) {
+      parts.add('NOT NULL');
+    }
+    if (defaultValue != null) {
+      if (defaultValue is String) {
+        parts.add("DEFAULT '$defaultValue'");
+      } else {
+        parts.add('DEFAULT $defaultValue');
+      }
+    }
+    return parts.join(' ');
+  }
 }

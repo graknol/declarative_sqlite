@@ -2,13 +2,15 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:test/test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'mock_operation_store.dart';
+
 void main() {
   sqfliteFfiInit();
-  databaseFactory = databaseFactoryFfi;
+  final databaseFactory = databaseFactoryFfi;
 
   test('Database query method executes and returns correct data', () async {
     // 1. Define a schema
-    final schemaBuilder = SchemaBuilder();
+    final schemaBuilder = SchemaBuilder()..version(1);
     schemaBuilder.table('users', (table) {
       table.integer('id').notNull(0);
       table.text('name').notNull('');
@@ -18,8 +20,12 @@ void main() {
     final schema = schemaBuilder.build();
 
     // 2. Open the database (which also runs migrations)
-    final db = DeclarativeDatabase(inMemoryDatabasePath, schema);
-    await db.open();
+    final db = await DeclarativeDatabase.open(
+      inMemoryDatabasePath,
+      schema: schema,
+      databaseFactory: databaseFactory,
+      operationStore: MockOperationStore(),
+    );
 
     // 3. Insert data using the new insert method
     await db.insert('users', {'id': 1, 'name': 'Alice', 'age': 30});

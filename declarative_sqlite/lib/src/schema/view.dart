@@ -6,4 +6,8 @@ class View {
     required this.name,
     required this.definition,
   });
+
+  String toSql() {
+    return 'CREATE VIEW $name AS $definition';
+  }
 }
