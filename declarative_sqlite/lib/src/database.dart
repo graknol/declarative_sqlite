@@ -1,18 +1,18 @@
 import 'dart:async';
 
 import 'package:declarative_sqlite/src/builders/query_builder.dart';
-import 'package:meta/meta.dart';
+import 'package:declarative_sqlite/src/schema/table.dart';
 import 'package:sqflite_common/sqlite_api.dart' as sqflite;
 import 'package:uuid/uuid.dart';
 
-import 'files/fileset.dart';
 import 'files/file_repository.dart';
+import 'files/fileset.dart';
 import 'migration/diff_schemas.dart';
 import 'migration/generate_migration_scripts.dart';
 import 'migration/introspect_schema.dart';
 import 'schema/schema.dart';
 import 'sync/hlc.dart';
-import 'sync/operation_store.dart';
+import 'sync/dirty_row_store.dart';
 
 /// A declarative SQLite database.
 class DeclarativeDatabase {
@@ -26,7 +26,7 @@ class DeclarativeDatabase {
   /// The schema for the database.
   final Schema schema;
 
-  final OperationStore operationStore;
+  final DirtyRowStore dirtyRowStore;
 
   /// The repository for storing and retrieving file content.
   final IFileRepository fileRepository;
@@ -42,7 +42,7 @@ class DeclarativeDatabase {
   DeclarativeDatabase._internal(
     this._db,
     this.schema,
-    this.operationStore,
+    this.dirtyRowStore,
     this.hlcClock,
     this.fileRepository,
   ) : transactionId = null {
@@ -52,7 +52,7 @@ class DeclarativeDatabase {
   DeclarativeDatabase._inTransaction(
     this._db,
     this.schema,
-    this.operationStore,
+    this.dirtyRowStore,
     this.hlcClock,
     this.fileRepository,
     this.transactionId,
@@ -63,13 +63,13 @@ class DeclarativeDatabase {
   /// Opens the database at the given [path].
   ///
   /// The [schema] is used to create and migrate the database.
-  /// The [operationStore] is used to store and retrieve operations for CRDTs.
+  /// The [dirtyRowStore] is used to store and retrieve operations for CRDTs.
   /// The [databaseFactory] is used to open the database.
   static Future<DeclarativeDatabase> open(
     String path, {
     required sqflite.DatabaseFactory databaseFactory,
     required Schema schema,
-    required OperationStore operationStore,
+    required DirtyRowStore dirtyRowStore,
     required IFileRepository fileRepository,
     bool isReadOnly = false,
     bool isSingleInstance = true,
@@ -96,7 +96,7 @@ class DeclarativeDatabase {
       ),
     );
 
-    await operationStore.init(db);
+    await dirtyRowStore.init(db);
 
     // Get or create the persistent HLC node ID
     String? nodeId;
@@ -121,7 +121,7 @@ class DeclarativeDatabase {
     return DeclarativeDatabase._internal(
       db,
       schema,
-      operationStore,
+      dirtyRowStore,
       hlcClock,
       fileRepository,
     );
@@ -238,7 +238,7 @@ class DeclarativeDatabase {
         final db = DeclarativeDatabase._inTransaction(
           txn,
           schema,
-          operationStore,
+          dirtyRowStore,
           hlcClock,
           fileRepository,
           txnId,
@@ -249,12 +249,11 @@ class DeclarativeDatabase {
     );
   }
 
-  /// Inserts a row into the given [table].
+  /// Inserts a row into the given [tableName].
   ///
   /// Returns the ID of the last inserted row.
-  Future<int> insert(String table, Map<String, Object?> values) async {
-    final tableDef = schema.tables.firstWhere((t) => t.name == table,
-        orElse: () => throw ArgumentError('Table not found in schema: $table'));
+  Future<int> insert(String tableName, Map<String, Object?> values) async {
+    final tableDef = _getTableDefinition(tableName);
 
     final now = hlcClock.now();
     final valuesToInsert = {...values};
@@ -272,25 +271,24 @@ class DeclarativeDatabase {
       }
     }
 
-    final result = await _db.insert(table, valuesToInsert);
-    await _markDirty(table, valuesToInsert['system_id']! as String, now);
+    final result = await _db.insert(tableName, valuesToInsert);
+    await dirtyRowStore.add(tableName, valuesToInsert['system_id']! as String, now);
     return result;
   }
 
-  /// Updates rows in the given [table].
+  /// Updates rows in the given [tableName].
   ///
   /// The [values] are the new values for the rows.
   /// The [where] and [whereArgs] are used to filter the rows to update.
   ///
   /// Returns the number of rows updated.
   Future<int> update(
-    String table,
+    String tableName,
     Map<String, Object?> values, {
     String? where,
     List<Object?>? whereArgs,
   }) async {
-    final tableDef = schema.tables.firstWhere((t) => t.name == table,
-        orElse: () => throw ArgumentError('Table not found in schema: $table'));
+    final tableDef = _getTableDefinition(tableName);
 
     final lwwColumns =
         tableDef.columns.where((c) => c.isLww).map((c) => c.name);
@@ -303,7 +301,7 @@ class DeclarativeDatabase {
       // We need to check the HLCs of the existing rows to see if we can
       // update them.
       final existingRows = await queryTable(
-        table,
+        tableName,
         columns: [
           ...values.keys.where(lwwColumns.contains).map((c) => '${c}__hlc'),
         ],
@@ -317,7 +315,7 @@ class DeclarativeDatabase {
           if (lwwColumns.contains(colName)) {
             final hlcColName = '${colName}__hlc';
             final existingHlc = existingHlcs[hlcColName] != null
-                ? Hlc.fromString(existingHlcs[hlcColName] as String)
+                ? Hlc.parse(existingHlcs[hlcColName] as String)
                 : null;
             if (existingHlc == null || now.compareTo(existingHlc) > 0) {
               valuesToUpdate[hlcColName] = now.toString();
@@ -340,54 +338,61 @@ class DeclarativeDatabase {
     // We need to get the system_ids of the rows being updated so we can
     // mark them as dirty.
     final rowsToUpdate = await queryTable(
-      table,
+      tableName,
       columns: ['system_id'],
       where: where,
       whereArgs: whereArgs,
     );
 
     final result = await _db.update(
-      table,
+      tableName,
       valuesToUpdate,
       where: where,
       whereArgs: whereArgs,
     );
 
     for (final row in rowsToUpdate) {
-      await _markDirty(table, row['system_id']! as String, now);
+      await dirtyRowStore.add(tableName, row['system_id']! as String, now);
     }
 
     return result;
   }
 
-  /// Deletes rows from the given [table].
+  Table _getTableDefinition(String table) {
+    return schema.tables.firstWhere((t) => t.name == table,
+      orElse: () => throw ArgumentError('Table not found in schema: $table'));
+  }
+
+  /// Deletes rows from the given [tableName].
   ///
   /// The [where] and [whereArgs] are used to filter the rows to delete.
   ///
   /// Returns the number of rows deleted.
   Future<int> delete(
-    String table, {
+    String tableName, {
     String? where,
     List<Object?>? whereArgs,
   }) async {
-    // To support CRDTs, we need to get the system_id of the rows being
-    // deleted so we can log the delete operation.
+    // Make sure the table exists or throw an exception
+    final _ = _getTableDefinition(tableName);
+    
+    final now = hlcClock.now();
+
     final rowsToDelete = await queryTable(
-      table,
+      tableName,
       columns: ['system_id'],
       where: where,
       whereArgs: whereArgs,
     );
 
     final result = await _db.delete(
-      table,
+      tableName,
       where: where,
       whereArgs: whereArgs,
     );
 
-    final now = hlcClock.now();
     for (final row in rowsToDelete) {
-      await _markDirty(table, row['system_id']! as String, now);
+      await dirtyRowStore.add(tableName, row['system_id']! as String, now);
     }
 
     return result;
@@ -418,12 +423,5 @@ class DeclarativeDatabase {
       limit: limit,
       offset: offset,
     );
-  }
-
-  Future<void> _markDirty(String tableName, String rowId, Hlc hlc) async {
-    await _db.rawInsert('''
-      INSERT OR REPLACE INTO __dirty_rows (table_name, row_id, hlc)
-      VALUES (?, ?, ?)
-    ''', [tableName, rowId, hlc.toString()]);
   }
 }

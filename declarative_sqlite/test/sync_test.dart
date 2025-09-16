@@ -11,7 +11,7 @@ void main() {
 
   late DeclarativeDatabase db;
   late ServerSyncManager syncManager;
-  late OperationStore operationStore;
+  late DirtyRowStore operationStore;
   late sqflite.DatabaseFactory databaseFactory;
 
   setUpAll(() async {
@@ -25,14 +25,14 @@ void main() {
       table.key(['id']).primary();
     });
     final schema = schemaBuilder.build();
-    operationStore = SqliteOperationStore();
+    operationStore = SqliteDirtyRowStore();
 
     // 2. Open the database (which also runs migrations)
     db = await DeclarativeDatabase.open(
       inMemoryDatabasePath,
       databaseFactory: databaseFactory,
       schema: schema,
-      operationStore: operationStore,
+      dirtyRowStore: operationStore,
       fileRepository: InMemoryFileRepository(),
     );
   });
@@ -79,7 +79,7 @@ void main() {
   test('Sync manager sends operations and clears them on success', () async {
     await db.insert('users', {'id': '1', 'name': 'Alice'});
 
-    List<Operation> sentOps = [];
+    List<DirtyRow> sentOps = [];
     syncManager = ServerSyncManager(
       db: db,
       onSend: (operations) async {

@@ -36,7 +36,7 @@ void main() {
       inMemoryDatabasePath,
       schema: getSchema(),
       databaseFactory: databaseFactory,
-      operationStore: MockOperationStore(),
+      dirtyRowStore: MockOperationStore(),
       fileRepository: InMemoryFileRepository(),
     );
   });
@@ -64,7 +64,7 @@ void main() {
     expect(alice['system_version'], isNotNull);
     expect(alice['system_created_at'], alice['system_version']);
 
-    final initialVersion = Hlc.fromString(alice['system_version'] as String);
+    final initialVersion = Hlc.parse(alice['system_version'] as String);
 
     // Update a row and verify system_version is updated
     await db.update(
@@ -77,7 +77,7 @@ void main() {
     expect(updatedAlice['age'], 31);
     expect(updatedAlice['system_version'], isNotNull);
     final updatedVersion =
-        Hlc.fromString(updatedAlice['system_version'] as String);
+        Hlc.parse(updatedAlice['system_version'] as String);
     expect(updatedVersion.compareTo(initialVersion), greaterThan(0));
     expect(updatedAlice['system_created_at'], alice['system_created_at']);
 
@@ -100,7 +100,7 @@ void main() {
     expect(product['name'], 'Original');
     expect(product['stock'], 10);
     expect(product['name__hlc'], isNotNull);
-    final initialHlc = Hlc.fromString(product['name__hlc'] as String);
+    final initialHlc = Hlc.parse(product['name__hlc'] as String);
 
     // 5. Update the LWW column and a regular column
     await db.update(
@@ -114,7 +114,7 @@ void main() {
     product = (await db.queryTable('products', where: 'id = 1')).first;
     expect(product['name'], 'First Update');
     expect(product['stock'], 20);
-    final firstUpdateHlc = Hlc.fromString(product['name__hlc'] as String);
+    final firstUpdateHlc = Hlc.parse(product['name__hlc'] as String);
     expect(firstUpdateHlc.compareTo(initialHlc), greaterThan(0));
 
     // 7. Manually craft an update with an older HLC for the LWW column
@@ -143,13 +143,13 @@ void main() {
     product = (await db.queryTable('products', where: 'id = 1')).first;
     expect(product['name'], 'First Update'); // Should not have changed
     expect(product['stock'], 30); // Regular columns are always updated
-    final finalHlc = Hlc.fromString(product['name__hlc'] as String);
+    final finalHlc = Hlc.parse(product['name__hlc'] as String);
     expect(finalHlc, firstUpdateHlc); // HLC should not have changed
 
     // Also verify that system_version was updated by bulkLoad
-    final finalVersion = Hlc.fromString(product['system_version'] as String);
+    final finalVersion = Hlc.parse(product['system_version'] as String);
     final firstUpdateVersion =
-        Hlc.fromString(firstUpdateHlc.toString()); // Re-parse to be safe
+        Hlc.parse(firstUpdateHlc.toString()); // Re-parse to be safe
     expect(finalVersion.compareTo(firstUpdateVersion), greaterThan(0));
   });
 }

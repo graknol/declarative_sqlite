@@ -1,5 +1,4 @@
 import 'package:declarative_sqlite/declarative_sqlite.dart';
-import 'package:declarative_sqlite/src/builders/text_column_builder.dart';
 import 'package:declarative_sqlite/src/schema/key.dart';
 import 'package:declarative_sqlite/src/schema/reference.dart';
 import 'package:test/test.dart';

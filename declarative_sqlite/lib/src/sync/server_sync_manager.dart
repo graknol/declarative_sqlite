@@ -41,19 +41,18 @@ class ServerSyncManager {
 
     try {
       // 1. Send pending operations
-      final pendingOperations = await _db.getPendingOperations();
+      final pendingOperations = await _db.dirtyRowStore.getAll();
       if (pendingOperations.isNotEmpty) {
         final success = await onSend(pendingOperations);
         if (success) {
-          await _db.clearPendingOperations(pendingOperations);
+          await _db.dirtyRowStore.remove(pendingOperations);
         }
       }
 
       // 2. Fetch new data from the server
-      final dataAccess = DataAccess(_db);
       for (final table in _db.schema.tables) {
         // In a real implementation, we would manage the clock per table
-        await onFetch(dataAccess, table.name, null);
+        await onFetch(_db, table.name, null);
       }
     } catch (e) {
       // Handle errors, potentially using the retryStrategy

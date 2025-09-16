@@ -25,7 +25,7 @@ void main() {
         inMemoryDatabasePath,
         databaseFactory: databaseFactory,
         schema: initialSchema,
-        operationStore: MockOperationStore(),
+        dirtyRowStore: MockOperationStore(),
         fileRepository: InMemoryFileRepository(),
       );
 
@@ -53,7 +53,7 @@ void main() {
         inMemoryDatabasePath,
         databaseFactory: databaseFactory,
         schema: migratedSchema,
-        operationStore: MockOperationStore(),
+        dirtyRowStore: MockOperationStore(),
         fileRepository: InMemoryFileRepository(),
       );
       stopwatch.stop();
@@ -74,7 +74,7 @@ void main() {
         inMemoryDatabasePath,
         databaseFactory: databaseFactory,
         schema: schema,
-        operationStore: MockOperationStore(),
+        dirtyRowStore: MockOperationStore(),
         fileRepository: InMemoryFileRepository(),
       );
 
@@ -101,7 +101,7 @@ void main() {
         inMemoryDatabasePath,
         databaseFactory: databaseFactory,
         schema: schema,
-        operationStore: MockOperationStore(),
+        dirtyRowStore: MockOperationStore(),
         fileRepository: InMemoryFileRepository(),
       );
 
@@ -129,7 +129,7 @@ void main() {
         inMemoryDatabasePath,
         databaseFactory: databaseFactory,
         schema: schema,
-        operationStore: MockOperationStore(),
+        dirtyRowStore: MockOperationStore(),
         fileRepository: InMemoryFileRepository(),
       );
 
@@ -153,16 +153,16 @@ void main() {
   });
 }
 
-class MockOperationStore implements OperationStore {
+class MockOperationStore implements DirtyRowStore {
   @override
-  Future<void> add(Operation operation) async {}
+  Future<void> add(DirtyRow operation) async {}
 
   @override
-  Future<List<Operation>> getAll() async => [];
+  Future<List<DirtyRow>> getAll() async => [];
 
   @override
   Future<void> init(dynamic db) async {}
 
   @override
-  Future<void> remove(List<Operation> operations) async {}
+  Future<void> remove(List<DirtyRow> operations) async {}
 }

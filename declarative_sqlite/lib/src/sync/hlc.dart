@@ -21,10 +21,10 @@ class Hlc implements Comparable<Hlc> {
   Hlc(this.milliseconds, this.counter, this.nodeId);
 
   /// Creates an HLC timestamp from a string representation.
-  factory Hlc.fromString(String hlcString) {
-    final parts = hlcString.split(':');
+  factory Hlc.parse(String encoded) {
+    final parts = encoded.split(':');
     if (parts.length != 3) {
-      throw FormatException('Invalid HLC string format', hlcString);
+      throw FormatException('Invalid HLC string format', encoded);
     }
     return Hlc(
       int.parse(parts[0]),
