@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:declarative_sqlite/src/builders/query_builder.dart';
 import 'package:declarative_sqlite/src/schema/table.dart';
+import 'package:declarative_sqlite/src/sync/sqlite_dirty_row_store.dart';
 import 'package:sqflite_common/sqlite_api.dart' as sqflite;
 import 'package:uuid/uuid.dart';
 
@@ -60,6 +61,16 @@ class DeclarativeDatabase {
     files = FileSet(this);
   }
 
+  static Future<String?> _getSetting(
+      sqflite.DatabaseExecutor db, String key) async {
+    final result = await db.query('__settings',
+        where: 'key = ?', whereArgs: [key], limit: 1, columns: ['value']);
+    if (result.isNotEmpty) {
+      return result.first['value'] as String?;
+    }
+    return null;
+  }
+
   /// Opens the database at the given [path].
   ///
   /// The [schema] is used to create and migrate the database.
@@ -69,7 +80,7 @@ class DeclarativeDatabase {
     String path, {
     required sqflite.DatabaseFactory databaseFactory,
     required Schema schema,
-    required DirtyRowStore dirtyRowStore,
+    DirtyRowStore? dirtyRowStore,
     required IFileRepository fileRepository,
     bool isReadOnly = false,
     bool isSingleInstance = true,
@@ -79,23 +90,25 @@ class DeclarativeDatabase {
       options: sqflite.OpenDatabaseOptions(
         readOnly: isReadOnly,
         singleInstance: isSingleInstance,
-        version: schema.version,
-        onCreate: (db, version) async {
-          await _createSystemTables(db);
-          await _createSchema(db, schema);
-        },
-        onUpgrade: (db, oldVersion, newVersion) async {
-          await _createSystemTables(db);
-          final liveSchema = await introspectSchema(db);
-          final changes = diffSchemas(schema, liveSchema);
-          final scripts = generateMigrationScripts(changes);
-          for (final script in scripts) {
-            await db.execute(script);
-          }
-        },
       ),
     );
 
+    await _createSystemTables(db);
+
+    // Migrate schema
+    final liveSchemaHash = await _getSetting(db, 'schema_hash');
+    final newSchemaHash = schema.toHash();
+    if (newSchemaHash != liveSchemaHash) {
+      final liveSchema = await introspectSchema(db);
+      final changes = diffSchemas(schema, liveSchema);
+      final scripts = generateMigrationScripts(changes);
+      for (final script in scripts) {
+        await db.execute(script);
+      }
+    }
+
+    // Initialize the dirty row store
+    dirtyRowStore ??= SqliteDirtyRowStore();
     await dirtyRowStore.init(db);
 
     // Get or create the persistent HLC node ID
@@ -125,31 +138,6 @@ class DeclarativeDatabase {
       hlcClock,
       fileRepository,
     );
-  }
-
-  static Future<void> _createSchema(
-      sqflite.DatabaseExecutor db, Schema schema) async {
-    for (final table in schema.tables) {
-      final columnDefs = table.columns.map((c) => c.toSql()).join(', ');
-
-      final keyDefs = <String>[];
-      for (final key in table.keys) {
-        if (key.isPrimary) {
-          keyDefs.add('PRIMARY KEY (${key.columns.join(', ')})');
-        }
-      }
-
-      final allDefs = [columnDefs, ...keyDefs].join(', ');
-      await db.execute('CREATE TABLE ${table.name} ($allDefs)');
-
-      for (final key in table.keys) {
-        if (!key.isPrimary) {
-          final indexName = 'IX_${table.name}_${key.columns.join('_')}';
-          await db.execute(
-              'CREATE INDEX IF NOT EXISTS $indexName ON ${table.name} (${key.columns.join(', ')})');
-        }
-      }
-    }
   }
 
   static Future<void> _createSystemTables(sqflite.DatabaseExecutor db) async {
@@ -209,7 +197,8 @@ class DeclarativeDatabase {
   /// This is a cleaner way of composing the query,
   /// rather than having to create the [QueryBuilder]
   /// object yourself.
-  Future<List<Map<String, Object?>>> query(void Function(QueryBuilder) onBuild) {
+  Future<List<Map<String, Object?>>> query(
+      void Function(QueryBuilder) onBuild) {
     final builder = QueryBuilder();
     onBuild(builder);
     return queryWith(builder);
@@ -251,8 +240,8 @@ class DeclarativeDatabase {
 
   /// Inserts a row into the given [tableName].
   ///
-  /// Returns the ID of the last inserted row.
-  Future<int> insert(String tableName, Map<String, Object?> values) async {
+  /// Returns the System ID of the last inserted row.
+  Future<String> insert(String tableName, Map<String, Object?> values) async {
     final tableDef = _getTableDefinition(tableName);
 
     final now = hlcClock.now();
@@ -271,9 +260,11 @@ class DeclarativeDatabase {
       }
     }
 
-    final result = await _db.insert(tableName, valuesToInsert);
-    await dirtyRowStore.add(tableName, valuesToInsert['system_id']! as String, now);
-    return result;
+    await _db.insert(tableName, valuesToInsert);
+
+    final systemId = valuesToInsert['system_id']! as String;
+    await dirtyRowStore.add(tableName, systemId, now);
+    return systemId;
   }
 
   /// Updates rows in the given [tableName].
@@ -360,7 +351,7 @@ class DeclarativeDatabase {
 
   Table _getTableDefinition(String table) {
     return schema.tables.firstWhere((t) => t.name == table,
-      orElse: () => throw ArgumentError('Table not found in schema: $table'));
+        orElse: () => throw ArgumentError('Table not found in schema: $table'));
   }
 
   /// Deletes rows from the given [tableName].
@@ -375,7 +366,7 @@ class DeclarativeDatabase {
   }) async {
     // Make sure the table exists or throw an exception
     final _ = _getTableDefinition(tableName);
-    
+
     final now = hlcClock.now();
 
     final rowsToDelete = await queryTable(
@@ -423,5 +414,97 @@ class DeclarativeDatabase {
       limit: limit,
       offset: offset,
     );
+  }
+
+  /// Bulk loads data into a table, performing an "upsert" operation.
+  ///
+  /// This method is designed for loading data from a sync source. It respects
+  /// LWW (Last-Write-Wins) semantics for columns marked as such.
+  ///
+  /// For each row in [rows]:
+  /// - If a local row with the same `system_id` exists, it's an UPDATE.
+  ///   - LWW columns are only updated if the incoming HLC is newer.
+  ///   - Regular columns are always updated.
+  /// - If no local row exists, it's an INSERT.
+  ///
+  /// Rows processed by this method are NOT marked as dirty.
+  Future<void> bulkLoad(String tableName, List<Map<String, Object?>> rows) async {
+    final tableDef = _getTableDefinition(tableName);
+    final pkColumns = tableDef.keys
+        .where((k) => k.isPrimary)
+        .expand((k) => k.columns)
+        .toSet();
+    final lwwColumns =
+        tableDef.columns.where((c) => c.isLww).map((c) => c.name).toSet();
+
+print(1);
+    await transaction((db) async {
+      for (final row in rows) {
+        final systemId = row['system_id'] as String?;
+        if (systemId == null) continue;
+print(2);
+
+        final existing = await db.queryTable(
+          tableName,
+          where: 'system_id = ?',
+          whereArgs: [systemId],
+          limit: 1,
+        );
+
+print(3);
+        if (existing.isNotEmpty) {
+          // UPDATE logic
+          final existingRow = existing.first;
+          final valuesToUpdate = <String, Object?>{};
+          final now = hlcClock.now();
+
+          for (final entry in row.entries) {
+            final colName = entry.key;
+            if (pkColumns.contains(colName) || colName.endsWith('__hlc')) {
+              continue;
+            }
+
+            if (lwwColumns.contains(colName)) {
+              final hlcColName = '${colName}__hlc';
+              final localHlcString = existingRow[hlcColName] as String?;
+              final remoteHlcString = row[hlcColName] as String?;
+
+              final localHlc =
+                  localHlcString != null ? Hlc.parse(localHlcString) : null;
+              final remoteHlc =
+                  remoteHlcString != null ? Hlc.parse(remoteHlcString) : null;
+
+              // Take the remote value only if local doesn't exist or remote is strictly newer
+              if (remoteHlc != null &&
+                  (localHlc == null || remoteHlc.compareTo(localHlc) > 0)) {
+                valuesToUpdate[colName] = entry.value;
+                valuesToUpdate[hlcColName] = remoteHlc.toString();
+              }
+            } else {
+              // Regular column, always update
+              valuesToUpdate[colName] = entry.value;
+            }
+          }
+
+          if (valuesToUpdate.isNotEmpty) {
+            valuesToUpdate['system_version'] = now.toString();
+print(4);
+            await db.update(
+              tableName,
+              valuesToUpdate,
+              where: 'system_id = ?',
+              whereArgs: [systemId],
+            );
+print(5);
+          }
+        } else {
+          // INSERT logic
+print(6);
+          await db.insert(tableName, row);
+print(7);
+        }
+      }
+print(8);
+    });
   }
 }

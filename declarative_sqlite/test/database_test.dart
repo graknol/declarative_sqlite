@@ -4,7 +4,6 @@ import 'package:test/test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'in_memory_file_repository.dart';
-import 'mock_operation_store.dart';
 import 'test_helper.dart';
 
 void main() {
@@ -14,7 +13,7 @@ void main() {
   late DeclarativeDatabase db;
 
   Schema getSchema() {
-    final schemaBuilder = SchemaBuilder()..version(1);
+    final schemaBuilder = SchemaBuilder();
     schemaBuilder.table('users', (table) {
       table.integer('id').notNull(0);
       table.text('name').notNull('');
@@ -36,19 +35,18 @@ void main() {
       inMemoryDatabasePath,
       schema: getSchema(),
       databaseFactory: databaseFactory,
-      dirtyRowStore: MockOperationStore(),
       fileRepository: InMemoryFileRepository(),
     );
   });
 
   setUp(() async {
-    await db.transaction((txn) async {
-      await clearDatabase(txn.db);
-    });
+    await clearDatabase(db.db);
   });
 
   tearDownAll(() async {
+    print('AAAAA');
     await db.close();
+    print('BBBBB');
   });
 
   test('Database query method executes and returns correct data', () async {
@@ -76,14 +74,13 @@ void main() {
     final updatedAlice = (await db.queryTable('users', where: 'id = 1')).first;
     expect(updatedAlice['age'], 31);
     expect(updatedAlice['system_version'], isNotNull);
-    final updatedVersion =
-        Hlc.parse(updatedAlice['system_version'] as String);
+    final updatedVersion = Hlc.parse(updatedAlice['system_version'] as String);
     expect(updatedVersion.compareTo(initialVersion), greaterThan(0));
     expect(updatedAlice['system_created_at'], alice['system_created_at']);
 
     // 4. Execute the query
-    final results = await db.query((q) =>
-        q.from('users').where(col('age').gt(28)).orderBy(['name']));
+    final results = await db.query(
+        (q) => q.from('users').where(col('age').gt(28)).orderBy(['name']));
 
     // 5. Verify the results
     expect(results.length, 2);
@@ -92,17 +89,21 @@ void main() {
   });
 
   test('LWW columns update correctly', () async {
+    print('AAAAA');
     // 3. Insert a product
     await db.insert('products', {'id': 1, 'name': 'Original', 'stock': 10});
+    print('BBBBB');
 
     // 4. Verify initial state
     var product = (await db.queryTable('products', where: 'id = 1')).first;
+    print('CCCCC');
     expect(product['name'], 'Original');
     expect(product['stock'], 10);
     expect(product['name__hlc'], isNotNull);
     final initialHlc = Hlc.parse(product['name__hlc'] as String);
 
     // 5. Update the LWW column and a regular column
+    print('DDDDD');
     await db.update(
       'products',
       {'name': 'First Update', 'stock': 20},
@@ -111,7 +112,9 @@ void main() {
     );
 
     // 6. Verify the update was successful
+    print('EEEEE');
     product = (await db.queryTable('products', where: 'id = 1')).first;
+    print('FFFFF');
     expect(product['name'], 'First Update');
     expect(product['stock'], 20);
     final firstUpdateHlc = Hlc.parse(product['name__hlc'] as String);
@@ -137,10 +140,12 @@ void main() {
       'system_version': product['system_version'],
     };
 
-    await db.dataAccess.bulkLoad('products', [staleData]);
+    await db.bulkLoad('products', [staleData]);
+    print('GGGGG');
 
     // 8. Verify that the LWW column was NOT updated, but the other was.
     product = (await db.queryTable('products', where: 'id = 1')).first;
+    print('HHHHH');
     expect(product['name'], 'First Update'); // Should not have changed
     expect(product['stock'], 30); // Regular columns are always updated
     final finalHlc = Hlc.parse(product['name__hlc'] as String);

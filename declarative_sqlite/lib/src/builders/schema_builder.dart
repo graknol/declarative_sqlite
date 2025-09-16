@@ -7,12 +7,11 @@ import 'package:declarative_sqlite/src/builders/view_builder.dart';
 /// A fluent builder for defining a database schema.
 ///
 /// The `SchemaBuilder` is the entry point for defining the structure of your
-/// database, including its tables, views, and version.
+/// database, including its tables and views.
 ///
 /// Example:
 /// ```dart
 /// final schemaBuilder = SchemaBuilder();
-/// schemaBuilder.version(2);
 ///
 /// schemaBuilder.table('users', (table) {
 ///   table.guid('id').notNull(Uuid().v4());
@@ -30,7 +29,6 @@ import 'package:declarative_sqlite/src/builders/view_builder.dart';
 class SchemaBuilder {
   final _tables = <Table>[];
   final _views = <View>[];
-  int _version = 1;
 
   /// Defines a table in the schema.
   ///
@@ -54,14 +52,6 @@ class SchemaBuilder {
     _views.add(builder.build());
   }
 
-  /// Sets the version of the schema.
-  ///
-  /// The version is used for database migrations. When you change the schema,
-  /// you should increment the version number.
-  void version(int version) {
-    _version = version;
-  }
-
   /// Builds the [Schema] object.
   ///
   /// This should be called after all tables and views have been defined.
@@ -82,6 +72,6 @@ class SchemaBuilder {
       _tables.add(filesTableBuilder.build());
     }
 
-    return Schema(version: _version, tables: _tables, views: _views);
+    return Schema(tables: _tables, views: _views);
   }
 }

@@ -4,6 +4,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:test/test.dart';
 import 'package:uuid/uuid.dart';
 
+import 'in_memory_file_repository.dart';
 import 'test_helper.dart';
 
 void main() {
@@ -18,7 +19,6 @@ void main() {
     databaseFactory = databaseFactoryFfi;
 
     final schemaBuilder = SchemaBuilder();
-    schemaBuilder.version(1);
     schemaBuilder.table('users', (table) {
       table.guid('id').notNull(Uuid().v4());
       table.text('name').notNull('');
@@ -46,28 +46,27 @@ void main() {
   });
 
   test('Insert operation is logged', () async {
-    await db.insert('users', {'id': '1', 'name': 'Alice'});
-    final ops = await db.getPendingOperations();
+    final systemId = await db.insert('users', {'id': '1', 'name': 'Alice'});
+    final ops = await db.dirtyRowStore.getAll();
     expect(ops.length, 1);
-    expect(ops.first.type, OperationType.insert);
     expect(ops.first.tableName, 'users');
-    expect(ops.first.rowId, '1');
+    expect(ops.first.rowId, systemId);
   });
 
   test('bulkLoad does not log operations', () async {
     // First, insert a record that will be updated
     await db.insert('users', {'id': '1', 'name': 'Alice'});
     // Check that the initial insert was logged
-    var ops = await db.getPendingOperations();
+    var ops = await db.dirtyRowStore.getAll();
     expect(ops.length, 1);
 
     // Now, bulk load data, which includes an update and a new record
-    await db.dataAccess.bulkLoad('users', [
+    await db.bulkLoad('users', [
       {'id': '2', 'name': 'Bob'}
     ]);
 
     // Verify that bulkLoad did not add new operations
-    ops = await db.getPendingOperations();
+    ops = await db.dirtyRowStore.getAll();
     expect(ops.length, 1); // Should still be the original insert operation
 
     // Verify the data was correctly inserted
@@ -95,7 +94,7 @@ void main() {
     await syncManager.triggerSync();
 
     expect(sentOps.length, 1);
-    final ops = await db.getPendingOperations();
+    final ops = await db.dirtyRowStore.getAll();
     expect(ops.isEmpty, isTrue);
   });
 }

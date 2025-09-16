@@ -1,6 +1,6 @@
 import 'package:declarative_sqlite/declarative_sqlite.dart';
-import 'package:test/test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:test/test.dart';
 import 'package:uuid/uuid.dart';
 
 import 'in_memory_file_repository.dart';
@@ -25,12 +25,11 @@ void main() {
         inMemoryDatabasePath,
         databaseFactory: databaseFactory,
         schema: initialSchema,
-        dirtyRowStore: MockOperationStore(),
         fileRepository: InMemoryFileRepository(),
       );
 
       // Insert some data to make the migration more realistic
-      await db.dataAccess.bulkLoad(
+      await db.bulkLoad(
           'users',
           List.generate(
               100, (i) => {'id': Uuid().v4(), 'name': 'User $i', 'age': i}));
@@ -53,7 +52,6 @@ void main() {
         inMemoryDatabasePath,
         databaseFactory: databaseFactory,
         schema: migratedSchema,
-        dirtyRowStore: MockOperationStore(),
         fileRepository: InMemoryFileRepository(),
       );
       stopwatch.stop();
@@ -74,14 +72,13 @@ void main() {
         inMemoryDatabasePath,
         databaseFactory: databaseFactory,
         schema: schema,
-        dirtyRowStore: MockOperationStore(),
         fileRepository: InMemoryFileRepository(),
       );
 
       final items = List.generate(1000, (i) => {'id': i, 'name': 'Item $i'});
 
       final stopwatch = Stopwatch()..start();
-      await db.dataAccess.bulkLoad('items', items);
+      await db.bulkLoad('items', items);
       stopwatch.stop();
       print('bulkLoad (1000 items): ${stopwatch.elapsedMilliseconds}ms');
 
@@ -101,12 +98,11 @@ void main() {
         inMemoryDatabasePath,
         databaseFactory: databaseFactory,
         schema: schema,
-        dirtyRowStore: MockOperationStore(),
         fileRepository: InMemoryFileRepository(),
       );
 
       final items = List.generate(1000, (i) => {'id': i, 'name': 'Item $i'});
-      await db.dataAccess.bulkLoad('items', items);
+      await db.bulkLoad('items', items);
 
       final stopwatch = Stopwatch()..start();
       await db.queryWith(QueryBuilder().from('items'));
@@ -129,12 +125,11 @@ void main() {
         inMemoryDatabasePath,
         databaseFactory: databaseFactory,
         schema: schema,
-        dirtyRowStore: MockOperationStore(),
         fileRepository: InMemoryFileRepository(),
       );
 
       final items = List.generate(1000, (i) => {'id': i, 'name': 'Item $i'});
-      await db.dataAccess.bulkLoad('items', items);
+      await db.bulkLoad('items', items);
 
       final stopwatch = Stopwatch()..start();
       for (var i = 0; i < 1000; i++) {
@@ -151,18 +146,4 @@ void main() {
       await db.close();
     });
   });
-}
-
-class MockOperationStore implements DirtyRowStore {
-  @override
-  Future<void> add(DirtyRow operation) async {}
-
-  @override
-  Future<List<DirtyRow>> getAll() async => [];
-
-  @override
-  Future<void> init(dynamic db) async {}
-
-  @override
-  Future<void> remove(List<DirtyRow> operations) async {}
 }
