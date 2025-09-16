@@ -52,6 +52,7 @@ class TableBuilder {
         hlcColumns.add(
           Column(
             name: '${column.name}__hlc',
+            logicalType: 'hlc',
             type: 'TEXT',
             isNotNull: false, // Nullable to support partial inserts
             isParent: false,
@@ -64,6 +65,7 @@ class TableBuilder {
     final systemColumns = [
       Column(
         name: 'system_id',
+        logicalType: 'guid',
         type: 'TEXT', // GUID
         isNotNull: false, // Nullable for migrations
         isParent: false,
@@ -71,6 +73,7 @@ class TableBuilder {
       ),
       Column(
         name: 'system_created_at',
+        logicalType: 'hlc',
         type: 'TEXT', // HLC
         isNotNull: false, // Nullable for migrations
         isParent: false,
@@ -78,6 +81,7 @@ class TableBuilder {
       ),
       Column(
         name: 'system_version',
+        logicalType: 'hlc',
         type: 'TEXT', // HLC
         isNotNull: false, // Nullable for migrations
         isParent: false,

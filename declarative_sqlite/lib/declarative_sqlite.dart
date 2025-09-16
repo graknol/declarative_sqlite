@@ -16,7 +16,7 @@ export 'src/builders/table_builder.dart';
 export 'src/builders/text_column_builder.dart';
 export 'src/builders/view_builder.dart';
 export 'src/builders/where_clause.dart';
-export 'src/database.dart' show DeclarativeDatabase, DataAccess;
+export 'src/database.dart' show DeclarativeDatabase;
 export 'src/schema/schema.dart';
 export 'src/sync/operation.dart';
 export 'src/sync/operation_store.dart';

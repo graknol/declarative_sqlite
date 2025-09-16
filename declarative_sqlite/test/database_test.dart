@@ -3,6 +3,7 @@ import 'package:declarative_sqlite/src/sync/hlc.dart';
 import 'package:test/test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'in_memory_file_repository.dart';
 import 'mock_operation_store.dart';
 import 'test_helper.dart';
 
@@ -12,7 +13,7 @@ void main() {
 
   late DeclarativeDatabase db;
 
-  Schema _getSchema() {
+  Schema getSchema() {
     final schemaBuilder = SchemaBuilder()..version(1);
     schemaBuilder.table('users', (table) {
       table.integer('id').notNull(0);
@@ -33,14 +34,17 @@ void main() {
     // 2. Open the database (which also runs migrations)
     db = await DeclarativeDatabase.open(
       inMemoryDatabasePath,
-      schema: _getSchema(),
+      schema: getSchema(),
       databaseFactory: databaseFactory,
       operationStore: MockOperationStore(),
+      fileRepository: InMemoryFileRepository(),
     );
   });
 
   setUp(() async {
-    await clearDatabase(db.db);
+    await db.transaction((txn) async {
+      await clearDatabase(txn.db);
+    });
   });
 
   tearDownAll(() async {
@@ -77,14 +81,11 @@ void main() {
     expect(updatedVersion.compareTo(initialVersion), greaterThan(0));
     expect(updatedAlice['system_created_at'], alice['system_created_at']);
 
-    // 4. Build a query
-    final builder =
-        QueryBuilder().from('users').where(col('age').gt(28)).orderBy(['name']);
+    // 4. Execute the query
+    final results = await db.query((q) =>
+        q.from('users').where(col('age').gt(28)).orderBy(['name']));
 
-    // 5. Execute the query
-    final results = await db.query(builder);
-
-    // 6. Verify the results
+    // 5. Verify the results
     expect(results.length, 2);
     expect(results[0]['name'], 'Alice');
     expect(results[1]['name'], 'Charlie');

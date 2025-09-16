@@ -4,10 +4,8 @@ import 'package:declarative_sqlite/src/schema/column.dart';
 class IntegerColumnBuilder extends ColumnBuilder {
   num? _minValue;
   num? _maxValue;
-  bool _isSequence = false;
-  bool _sequencePerParent = false;
 
-  IntegerColumnBuilder(String name) : super(name, 'integer');
+  IntegerColumnBuilder(String name) : super(name, 'integer', 'INTEGER');
 
   IntegerColumnBuilder min(num value) {
     _minValue = value;
@@ -19,24 +17,18 @@ class IntegerColumnBuilder extends ColumnBuilder {
     return this;
   }
 
-  IntegerColumnBuilder sequence({bool perParent = false}) {
-    _isSequence = true;
-    _sequencePerParent = perParent;
-    return this;
-  }
-
   @override
   Column build() {
     return Column(
       name: name,
-      type: type,
+      logicalType: logicalType,
+      type: dbType,
       isNotNull: isNotNull,
+      defaultValue: defaultValue,
       isParent: isParent,
       isLww: isLww,
       minValue: _minValue,
       maxValue: _maxValue,
-      isSequence: _isSequence,
-      sequencePerParent: _sequencePerParent,
     );
   }
 }

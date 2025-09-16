@@ -3,6 +3,8 @@ import 'package:test/test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:uuid/uuid.dart';
 
+import 'in_memory_file_repository.dart';
+
 void main() {
   sqfliteFfiInit();
   final databaseFactory = databaseFactoryFfi;
@@ -24,6 +26,7 @@ void main() {
         databaseFactory: databaseFactory,
         schema: initialSchema,
         operationStore: MockOperationStore(),
+        fileRepository: InMemoryFileRepository(),
       );
 
       // Insert some data to make the migration more realistic
@@ -51,6 +54,7 @@ void main() {
         databaseFactory: databaseFactory,
         schema: migratedSchema,
         operationStore: MockOperationStore(),
+        fileRepository: InMemoryFileRepository(),
       );
       stopwatch.stop();
       print('Schema migration (100 rows): ${stopwatch.elapsedMilliseconds}ms');
@@ -71,6 +75,7 @@ void main() {
         databaseFactory: databaseFactory,
         schema: schema,
         operationStore: MockOperationStore(),
+        fileRepository: InMemoryFileRepository(),
       );
 
       final items = List.generate(1000, (i) => {'id': i, 'name': 'Item $i'});
@@ -97,13 +102,14 @@ void main() {
         databaseFactory: databaseFactory,
         schema: schema,
         operationStore: MockOperationStore(),
+        fileRepository: InMemoryFileRepository(),
       );
 
       final items = List.generate(1000, (i) => {'id': i, 'name': 'Item $i'});
       await db.dataAccess.bulkLoad('items', items);
 
       final stopwatch = Stopwatch()..start();
-      await db.query(QueryBuilder().from('items'));
+      await db.queryWith(QueryBuilder().from('items'));
       stopwatch.stop();
       print('Query (1000 items): ${stopwatch.elapsedMilliseconds}ms');
 
@@ -124,6 +130,7 @@ void main() {
         databaseFactory: databaseFactory,
         schema: schema,
         operationStore: MockOperationStore(),
+        fileRepository: InMemoryFileRepository(),
       );
 
       final items = List.generate(1000, (i) => {'id': i, 'name': 'Item $i'});

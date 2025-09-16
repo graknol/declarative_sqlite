@@ -25,8 +25,27 @@ void main() {
       expect(schema.views.length, 1);
       expect(schema.views.first.name, 'user_view');
     });
-  });
+    test('SchemaBuilder creates a table with a fileset column', () {
+      final schemaBuilder = SchemaBuilder();
+      schemaBuilder.table('files', (table) {
+        table.fileset('document');
+      });
+      final schema = schemaBuilder.build();
 
+      expect(schema.tables.length, 2);
+      final filesTable = schema.tables.firstWhere((t) => t.name == 'files');
+      expect(filesTable.name, 'files');
+      expect(filesTable.columns.any((c) => c.name == 'document'), isTrue);
+      final column = filesTable.columns.firstWhere((c) => c.name == 'document');
+      expect(column.logicalType, 'fileset');
+      expect(column.type, 'TEXT');
+
+      final systemFilesTable =
+          schema.tables.firstWhere((t) => t.name == '__files');
+      expect(systemFilesTable, isNotNull);
+      expect(systemFilesTable.columns.length, 9); // 6 + 3 system columns
+    });
+  });
   group('TableBuilder', () {
     test('can build table with columns, keys, and references', () {
       final builder = TableBuilder('orders');
@@ -41,6 +60,31 @@ void main() {
       expect(table.keys.length, 1);
       expect(table.references.length, 1);
       expect(table.references.first.foreignTable, 'customer');
+    });
+
+    test('min constraint is added to column definition', () {
+      final builder = TableBuilder('products');
+      builder.integer('quantity').min(0);
+      final table = builder.build();
+      final column = table.columns.firstWhere((c) => c.name == 'quantity');
+      expect(column.minValue, 0);
+    });
+
+    test('maxLength constraint is added to column definition', () {
+      final builder = TableBuilder('products');
+      builder.text('name').maxLength(50);
+      final table = builder.build();
+      final column = table.columns.firstWhere((c) => c.name == 'name');
+      expect(column.maxLength, 50);
+    });
+
+    test('date column is created with TEXT type', () {
+      final builder = TableBuilder('events');
+      builder.date('start_date');
+      final table = builder.build();
+      final column = table.columns.firstWhere((c) => c.name == 'start_date');
+      expect(column.logicalType, 'date');
+      expect(column.type, 'TEXT');
     });
   });
 

@@ -1,6 +1,9 @@
+import 'package:declarative_sqlite/src/utils/sql_escaping_utils.dart';
+
 class Column {
   final String name;
-  final String type;
+  final String logicalType;
+  final String type; // The actual DB type (e.g., TEXT, INTEGER)
   final bool isNotNull;
   final num? minValue;
   final num? maxValue;
@@ -9,12 +12,11 @@ class Column {
   final bool isSequence;
   final bool sequencePerParent;
   final bool isLww;
-  final int? maxFileSizeMb;
-  final int? maxCount;
   final Object? defaultValue;
 
   const Column({
     required this.name,
+    required this.logicalType,
     required this.type,
     this.isNotNull = false,
     this.minValue,
@@ -24,8 +26,6 @@ class Column {
     this.isSequence = false,
     this.sequencePerParent = false,
     this.isLww = false,
-    this.maxFileSizeMb,
-    this.maxCount,
     this.defaultValue,
   });
 
@@ -36,7 +36,7 @@ class Column {
     }
     if (defaultValue != null) {
       if (defaultValue is String) {
-        parts.add("DEFAULT '$defaultValue'");
+        parts.add("DEFAULT '${escapeSingleQuotes(defaultValue as String)}'");
       } else {
         parts.add('DEFAULT $defaultValue');
       }
@@ -47,6 +47,7 @@ class Column {
   Map<String, dynamic> toMap() {
     return {
       'name': name,
+      'logicalType': logicalType,
       'type': type,
       'isNotNull': isNotNull,
       'minValue': minValue,
@@ -56,8 +57,6 @@ class Column {
       'isSequence': isSequence,
       'sequencePerParent': sequencePerParent,
       'isLww': isLww,
-      'maxFileSizeMb': maxFileSizeMb,
-      'maxCount': maxCount,
       'defaultValue': defaultValue,
     };
   }

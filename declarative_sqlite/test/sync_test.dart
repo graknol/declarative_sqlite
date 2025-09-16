@@ -1,8 +1,4 @@
 import 'package:declarative_sqlite/declarative_sqlite.dart';
-import 'package:declarative_sqlite/src/sync/operation.dart';
-import 'package:declarative_sqlite/src/sync/operation_store.dart';
-import 'package:declarative_sqlite/src/sync/server_sync_manager.dart';
-import 'package:declarative_sqlite/src/sync/sqlite_operation_store.dart';
 import 'package:sqflite_common/sqlite_api.dart' as sqflite;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:test/test.dart';
@@ -37,6 +33,7 @@ void main() {
       databaseFactory: databaseFactory,
       schema: schema,
       operationStore: operationStore,
+      fileRepository: InMemoryFileRepository(),
     );
   });
 

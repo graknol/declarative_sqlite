@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'package:declarative_sqlite/src/database.dart';
 import 'package:declarative_sqlite/src/sync/sync_types.dart';
 
 class ServerSyncManager {

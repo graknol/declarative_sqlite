@@ -66,6 +66,22 @@ class SchemaBuilder {
   ///
   /// This should be called after all tables and views have been defined.
   Schema build() {
+    final hasFileset =
+        _tables.any((t) => t.columns.any((c) => c.logicalType == 'fileset'));
+
+    if (hasFileset) {
+      final filesTableBuilder = TableBuilder('__files');
+      filesTableBuilder.guid('id').notNull();
+      filesTableBuilder.guid('owner_id').notNull();
+      filesTableBuilder.text('filename').notNull();
+      filesTableBuilder.text('path');
+      filesTableBuilder.text('mimetype').notNull();
+      filesTableBuilder.integer('size').notNull();
+      filesTableBuilder.key(['id']).primary();
+      filesTableBuilder.key(['owner_id']).index();
+      _tables.add(filesTableBuilder.build());
+    }
+
     return Schema(version: _version, tables: _tables, views: _views);
   }
 }

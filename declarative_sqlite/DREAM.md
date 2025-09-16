@@ -48,8 +48,8 @@ class MyApp extends StatelessWidget {
             builder.table('work_order_line', (table) {
               // Each work order line must have its work order's ID as one of its columns to be able to link them together
               table.guid('work_order_id').notNull().parent();
-              // Each work order has multiple lines and those should be numbered 1, 2, 3 and so on...
-              table.integer('line_no').notNull().sequence(perParent: true);
+              // Each work order has multiple lines
+              table.integer('line_no').notNull();
               // Each line has a description of up to 500 characters
               table.text('description').maxLength(500);
               // Each line must have a start date
@@ -68,10 +68,10 @@ class MyApp extends StatelessWidget {
             builder.table('work_order_line_note', (table) {
               table.guid('work_order_id').notNull().parent();
               table.integer('work_order_line_no').notNull().parent();
-              table.integer('note_no').notNull().sequence(perParent: true);
+              table.guid('note_id').notNull();
               // Each note can be up to 2000 characters and multiple users can edit the same note, but the last write wins.
               table.text('note').maxLength(2000).lww();
-              table.key(['work_order_id', 'work_order_line_no', 'note_no']).primary();
+              table.key(['work_order_id', 'work_order_line_no', 'note_id']).primary();
               // All indexes automatically append all primary key columns, thus this index will actually be: [note, work_order_id, work_order_line_no, note_no]
               table.key(['note']).index();
               // Each note has one work order line

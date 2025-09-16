@@ -4,7 +4,8 @@ import 'package:meta/meta.dart';
 /// Base class for all column builders.
 abstract class ColumnBuilder {
   final String name;
-  final String type;
+  final String logicalType;
+  final String dbType;
 
   @protected
   bool isNotNull = false;
@@ -15,7 +16,7 @@ abstract class ColumnBuilder {
   @protected
   Object? defaultValue;
 
-  ColumnBuilder(this.name, this.type);
+  ColumnBuilder(this.name, this.logicalType, this.dbType);
 
   ColumnBuilder notNull([Object? defaultValue]) {
     isNotNull = true;
@@ -36,7 +37,8 @@ abstract class ColumnBuilder {
   Column build() {
     return Column(
       name: name,
-      type: type,
+      logicalType: logicalType,
+      type: dbType,
       isNotNull: isNotNull,
       defaultValue: defaultValue,
       isParent: isParent,

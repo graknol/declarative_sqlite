@@ -43,6 +43,14 @@ String _generateColumnDefinition(Column column) {
     column.type,
     if (column.isNotNull) 'NOT NULL',
   ];
+
+  if (column.minValue != null) {
+    parts.add('CHECK(${column.name} >= ${column.minValue})');
+  }
+  if (column.maxLength != null) {
+    parts.add('CHECK(length(${column.name}) <= ${column.maxLength})');
+  }
+
   return parts.join(' ');
 }
 

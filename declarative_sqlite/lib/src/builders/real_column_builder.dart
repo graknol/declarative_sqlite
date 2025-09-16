@@ -5,7 +5,7 @@ class RealColumnBuilder extends ColumnBuilder {
   num? _minValue;
   num? _maxValue;
 
-  RealColumnBuilder(String name) : super(name, 'real');
+  RealColumnBuilder(String name) : super(name, 'real', 'REAL');
 
   RealColumnBuilder min(num value) {
     _minValue = value;
@@ -21,8 +21,10 @@ class RealColumnBuilder extends ColumnBuilder {
   Column build() {
     return Column(
       name: name,
-      type: type,
+      logicalType: logicalType,
+      type: dbType,
       isNotNull: isNotNull,
+      defaultValue: defaultValue,
       isParent: isParent,
       isLww: isLww,
       minValue: _minValue,

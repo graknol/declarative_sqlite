@@ -4,7 +4,7 @@ import 'package:declarative_sqlite/src/schema/column.dart';
 class TextColumnBuilder extends ColumnBuilder {
   int? _maxLength;
 
-  TextColumnBuilder(String name) : super(name, 'text');
+  TextColumnBuilder(String name) : super(name, 'text', 'TEXT');
 
   TextColumnBuilder maxLength(int value) {
     _maxLength = value;
@@ -15,8 +15,10 @@ class TextColumnBuilder extends ColumnBuilder {
   Column build() {
     return Column(
       name: name,
-      type: type,
+      logicalType: logicalType,
+      type: dbType,
       isNotNull: isNotNull,
+      defaultValue: defaultValue,
       isParent: isParent,
       isLww: isLww,
       maxLength: _maxLength,
