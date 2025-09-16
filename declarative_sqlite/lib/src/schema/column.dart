@@ -43,4 +43,22 @@ class Column {
     }
     return parts.join(' ');
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'type': type,
+      'isNotNull': isNotNull,
+      'minValue': minValue,
+      'maxValue': maxValue,
+      'maxLength': maxLength,
+      'isParent': isParent,
+      'isSequence': isSequence,
+      'sequencePerParent': sequencePerParent,
+      'isLww': isLww,
+      'maxFileSizeMb': maxFileSizeMb,
+      'maxCount': maxCount,
+      'defaultValue': defaultValue,
+    };
+  }
 }

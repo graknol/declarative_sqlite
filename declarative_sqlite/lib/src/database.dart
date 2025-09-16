@@ -109,61 +109,58 @@ class DeclarativeDatabase {
     required Schema schema,
     required OperationStore operationStore,
   }) async {
+    // Ensure settings table exists before anything else
     final db = await databaseFactory.openDatabase(
       path,
-      options: sqflite.OpenDatabaseOptions(
-        version: schema.version,
-        onCreate: (db, version) async {
-          final batch = db.batch();
-          // Create user-defined tables and views
-          for (final table in schema.tables) {
-            final columns = table.columns.map((c) => c.toSql()).join(',\n  ');
-            batch.execute('CREATE TABLE ${table.name} (\n  $columns\n)');
-          }
-          for (final view in schema.views) {
-            batch.execute(view.toSql());
-          }
-          await batch.commit(noResult: true);
-
-          // Create internal system tables
-          await db.execute(
-            'CREATE TABLE _declarative_sqlite_settings (key TEXT PRIMARY KEY, value TEXT)',
-          );
-        },
-        onUpgrade: (db, oldVersion, newVersion) async {
-          // Ensure settings table exists on upgrade
-          await db.execute(
-            'CREATE TABLE IF NOT EXISTS _declarative_sqlite_settings (key TEXT PRIMARY KEY, value TEXT)',
-          );
-
-          final liveSchema = await introspectSchema(db);
-          final diff = diffSchemas(schema, liveSchema);
-          final migrationScripts = generateMigrationScripts(diff.changes);
-
-          await db.transaction((txn) async {
-            for (final script in migrationScripts) {
-              await txn.execute(script);
-            }
-          });
-        },
-      ),
+      options: sqflite.OpenDatabaseOptions(),
     );
+
+    await _createSystemTables(db);
+
+    final currentSchemaHash = schema.toHash();
+    String? storedSchemaHash;
+    final resultSchemaHash = await db.query(
+      '__settings',
+      where: 'key = ?',
+      whereArgs: ['schema_hash'],
+    );
+    if (resultSchemaHash.isNotEmpty) {
+      storedSchemaHash = resultSchemaHash.first['value'] as String?;
+    }
+
+    if (currentSchemaHash != storedSchemaHash) {
+      final liveSchema = await introspectSchema(db);
+      final diff = diffSchemas(schema, liveSchema);
+      final migrationScripts = generateMigrationScripts(diff.changes);
+
+      await db.transaction((txn) async {
+        for (final script in migrationScripts) {
+          await txn.execute(script);
+        }
+      });
+
+      await db.insert(
+        '__settings',
+        {'key': 'schema_hash', 'value': currentSchemaHash},
+        conflictAlgorithm: sqflite.ConflictAlgorithm.replace,
+      );
+    }
 
     await operationStore.init(db);
 
     // Get or create the persistent HLC node ID
     String? nodeId;
-    final result = await db.query(
-      '_declarative_sqlite_settings',
+    final resultHlcNodeId = await db.query(
+      '__settings',
       where: 'key = ?',
       whereArgs: ['hlc_node_id'],
     );
-    if (result.isNotEmpty) {
-      nodeId = result.first['value'] as String?;
+    if (resultHlcNodeId.isNotEmpty) {
+      nodeId = resultHlcNodeId.first['value'] as String?;
     }
     if (nodeId == null) {
       nodeId = Uuid().v4();
-      await db.insert('_declarative_sqlite_settings', {
+      await db.insert('__settings', {
         'key': 'hlc_node_id',
         'value': nodeId,
       });
@@ -176,6 +173,12 @@ class DeclarativeDatabase {
       schema,
       operationStore,
       hlcClock,
+    );
+  }
+
+  static Future<void> _createSystemTables(sqflite.DatabaseExecutor db) async {
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS __settings (key TEXT PRIMARY KEY, value TEXT)',
     );
   }
 
@@ -304,10 +307,15 @@ class DeclarativeDatabase {
         tableSchema.columns.where((c) => c.isLww).map((c) => c.name).toSet();
 
     final valuesToInsert = Map<String, dynamic>.from(values);
+    final now = _hlcClock.now();
+
+    // Add system columns
+    valuesToInsert['system_id'] = Uuid().v4();
+    valuesToInsert['system_created_at'] = now.toString();
+    valuesToInsert['system_version'] = now.toString();
 
     // Generate HLC timestamps for LWW columns
     if (lwwColumns.isNotEmpty) {
-      final now = _hlcClock.now();
       for (final colName in values.keys) {
         if (lwwColumns.contains(colName)) {
           valuesToInsert['${colName}__hlc'] = now.toString();
@@ -353,90 +361,94 @@ class DeclarativeDatabase {
     String table,
     Map<String, dynamic> values, {
     required String where,
-    required List<Object?> whereArgs,
+    required List<dynamic> whereArgs,
     bool logOperation = true,
-  }) async {
-    final tableSchema = _schema.tables.firstWhere((t) => t.name == table);
-    final pk = tableSchema.keys.firstWhere((k) => k.isPrimary);
-    final lwwColumns =
-        tableSchema.columns.where((c) => c.isLww).map((c) => c.name).toSet();
-    final lwwColumnsInUpdate = values.keys.where(lwwColumns.contains).toSet();
-
-    // If no LWW columns are being updated, perform a simple update.
-    if (lwwColumnsInUpdate.isEmpty) {
-      final count = await _executor.update(
-        table,
-        values,
-        where: where,
-        whereArgs: whereArgs,
-      );
-      // TODO: Log non-LWW updates
-      return count;
-    }
-
-    // For LWW updates, we need to fetch, compare, and then update.
+    sqflite.ConflictAlgorithm? conflictAlgorithm,
+  }) {
     return transaction((txnDb) async {
-      final rowsToUpdate = await txnDb.queryTable(
-        table,
-        where: where,
-        whereArgs: whereArgs,
-      );
+      final tableSchema = _schema.tables.firstWhere((t) => t.name == table);
+      final lwwColumns =
+          tableSchema.columns.where((c) => c.isLww).map((c) => c.name).toSet();
 
-      int updatedCount = 0;
-      for (final row in rowsToUpdate) {
-        final updateHlc = _hlcClock.now();
-        final valuesToUpdate = <String, dynamic>{};
-        final hlcValuesToUpdate = <String, dynamic>{};
+      final valuesToUpdate = Map<String, dynamic>.from(values);
+      final now = _hlcClock.now();
 
-        for (final entry in values.entries) {
-          final colName = entry.key;
-          if (lwwColumns.contains(colName)) {
-            // It's an LWW column, compare HLCs
-            final existingHlcString = row['${colName}__hlc'] as String?;
-            final existingHlc = existingHlcString != null
-                ? Hlc.fromString(existingHlcString)
-                : null;
+      // Always update system_version on every change
+      valuesToUpdate['system_version'] = now.toString();
 
-            if (existingHlc == null || updateHlc.compareTo(existingHlc) > 0) {
-              // Incoming write wins
-              valuesToUpdate[colName] = entry.value;
-              hlcValuesToUpdate['${colName}__hlc'] = updateHlc.toString();
-            }
-          } else {
-            // It's a regular column, just update it
-            valuesToUpdate[colName] = entry.value;
-          }
-        }
-
-        if (valuesToUpdate.isEmpty) {
-          continue; // Nothing to update for this row
-        }
-
-        final finalValues = {...valuesToUpdate, ...hlcValuesToUpdate};
-        final rowId = _getRowId(pk.columns, row);
-        final (rowWhere, rowWhereArgs) = _getRowWhereClause(pk.columns, row);
-
-        final count = await txnDb._executor.update(
+      if (lwwColumns.isNotEmpty) {
+        final existingRows = await txnDb.queryTable(
           table,
-          finalValues,
-          where: rowWhere,
-          whereArgs: rowWhereArgs,
+          columns: [
+            ...values.keys.where(lwwColumns.contains).map((c) => '${c}__hlc'),
+          ],
+          where: where,
+          whereArgs: whereArgs,
         );
 
-        if (count > 0) {
-          updatedCount += count;
-          if (logOperation) {
-            await txnDb._operationStore.add(Operation(
-              tableName: table,
-              rowId: rowId,
-              type: OperationType.update,
-              data: finalValues,
-              timestamp: DateTime.now(),
-            ));
+        if (existingRows.isNotEmpty) {
+          final existingHlcs = existingRows.first;
+          for (final colName in values.keys) {
+            if (lwwColumns.contains(colName)) {
+              final hlcColName = '${colName}__hlc';
+              final existingHlc = existingHlcs[hlcColName] != null
+                  ? Hlc.fromString(existingHlcs[hlcColName] as String)
+                  : null;
+              if (existingHlc == null || now.compareTo(existingHlc) > 0) {
+                valuesToUpdate[hlcColName] = now.toString();
+              } else {
+                // The value in the database is newer, so we remove this
+                // column from the update.
+                valuesToUpdate.remove(colName);
+              }
+            }
           }
         }
       }
-      return updatedCount;
+
+      if (valuesToUpdate.isEmpty ||
+          (valuesToUpdate.length == 1 &&
+              valuesToUpdate.containsKey('system_version') &&
+              !values.containsKey('system_version'))) {
+        return 0; // Nothing to update
+      }
+
+      final count = await txnDb._executor.update(
+        table,
+        valuesToUpdate,
+        where: where,
+        whereArgs: whereArgs,
+        conflictAlgorithm: conflictAlgorithm,
+      );
+
+      if (logOperation && count > 0) {
+        // To keep the log simple, we log the intended data, not the final
+        // merged data. The conflict resolution happens on the receiving end.
+        final pk = tableSchema.keys.firstWhere((k) => k.isPrimary);
+        final whereClauseParts = where.split('AND').map((s) => s.trim());
+        final rowIdParts = <String, dynamic>{};
+        for (final col in pk.columns) {
+          final part = whereClauseParts.firstWhere(
+            (p) => p.startsWith('$col = ?'),
+            orElse: () => '',
+          );
+          if (part.isNotEmpty) {
+            final index = whereClauseParts.toList().indexOf(part);
+            rowIdParts[col] = whereArgs[index];
+          }
+        }
+        final rowId = _getRowId(pk.columns, rowIdParts);
+
+        await _operationStore.add(Operation(
+          tableName: table,
+          rowId: rowId,
+          type: OperationType.update,
+          data: values, // Log the original intended update
+          timestamp: DateTime.now(),
+        ));
+      }
+
+      return count;
     });
   }
 
@@ -487,19 +499,6 @@ class DeclarativeDatabase {
     }
   }
 
-  (String, List<Object?>) _getRowWhereClause(
-    List<String> pkColumnNames,
-    Map<String, dynamic> row,
-  ) {
-    final whereParts = <String>[];
-    final whereArgs = <Object?>[];
-    for (final colName in pkColumnNames) {
-      whereParts.add('$colName = ?');
-      whereArgs.add(row[colName]);
-    }
-    return (whereParts.join(' AND '), whereArgs);
-  }
-
   /// Executes a query and maps the results to a list of objects.
   /// Queries the database and maps the results to a list of objects.
   Future<List<T>> queryMapped<T>(DataMapper<T> mapper,
@@ -527,79 +526,111 @@ class DataAccess {
   /// synchronization operations.
   Future<void> bulkLoad(
       String tableName, List<Map<String, dynamic>> data) async {
-    if (data.isEmpty) {
-      return;
-    }
-    final tableSchema =
-        _db.schema.tables.firstWhere((t) => t.name == tableName);
-    final pkColumns = tableSchema.keys.firstWhere((k) => k.isPrimary).columns;
-    final lwwColumns =
-        tableSchema.columns.where((c) => c.isLww).map((c) => c.name).toSet();
+    await _db.transaction((txnDb) async {
+      final tableSchema =
+          txnDb.schema.tables.firstWhere((t) => t.name == tableName);
+      final pkColumns = tableSchema.keys.firstWhere((k) => k.isPrimary).columns;
+      final lwwColumns =
+          tableSchema.columns.where((c) => c.isLww).map((c) => c.name).toSet();
+      final systemColumns = {
+        'system_id',
+        'system_created_at',
+        'system_version'
+      };
 
-    await _db.transaction((txn) async {
-      for (final incomingRow in data) {
-        final (where, whereArgs) =
-            _db._getRowWhereClause(pkColumns, incomingRow);
-        final existingRows = await txn.queryTable(
+      for (final row in data) {
+        final pkValues = pkColumns.map((c) => row[c]).toList();
+        final whereClause = pkColumns.map((c) => '$c = ?').join(' AND ');
+
+        final existing = await txnDb.queryTable(
           tableName,
-          where: where,
-          whereArgs: whereArgs,
+          where: whereClause,
+          whereArgs: pkValues,
         );
 
-        if (existingRows.isEmpty) {
-          // Row doesn't exist, just insert it.
-          final valuesToInsert = Map<String, dynamic>.from(incomingRow);
-          if (lwwColumns.isNotEmpty) {
-            final now = _db._hlcClock.now();
-            for (final colName in lwwColumns) {
-              if (valuesToInsert.containsKey(colName) &&
-                  !valuesToInsert.containsKey('${colName}__hlc')) {
-                valuesToInsert['${colName}__hlc'] = now.toString();
-              }
+        if (existing.isEmpty) {
+          // Insert new row
+          final valuesToInsert = Map<String, dynamic>.from(row);
+          final now = txnDb._hlcClock.now();
+          if (!valuesToInsert.containsKey('system_id')) {
+            valuesToInsert['system_id'] = Uuid().v4();
+          }
+          if (!valuesToInsert.containsKey('system_created_at')) {
+            valuesToInsert['system_created_at'] = now.toString();
+          }
+          if (!valuesToInsert.containsKey('system_version')) {
+            valuesToInsert['system_version'] = now.toString();
+          }
+
+          for (final colName in lwwColumns) {
+            if (valuesToInsert.containsKey(colName) &&
+                !valuesToInsert.containsKey('${colName}__hlc')) {
+              valuesToInsert['${colName}__hlc'] = now.toString();
             }
           }
-          await txn.insert(tableName, valuesToInsert, logOperation: false);
+          await txnDb.insert(tableName, valuesToInsert, logOperation: false);
         } else {
-          // Row exists, merge LWW columns.
-          final existingRow = existingRows.first;
-          final mergedRow = Map<String, dynamic>.from(existingRow);
+          // Update existing row, respecting LWW
+          final existingRow = existing.first;
+          final updateValues = <String, dynamic>{};
+          final now = txnDb._hlcClock.now();
 
-          for (final entry in incomingRow.entries) {
+          // Always update system_version
+          updateValues['system_version'] = now.toString();
+
+          for (final entry in row.entries) {
             final colName = entry.key;
+            if (pkColumns.contains(colName) || colName.endsWith('__hlc')) {
+              continue;
+            }
+
             if (lwwColumns.contains(colName)) {
-              // It's an LWW column, compare HLCs.
-              final incomingHlcString =
-                  incomingRow['${colName}__hlc'] as String?;
-              final existingHlcString =
-                  existingRow['${colName}__hlc'] as String?;
+              final hlcColName = '${colName}__hlc';
+              final localHlcString = existingRow[hlcColName] as String?;
+              final remoteHlcString = row[hlcColName] as String?;
 
-              if (incomingHlcString != null) {
-                final incomingHlc = Hlc.fromString(incomingHlcString);
-                final existingHlc = existingHlcString != null
-                    ? Hlc.fromString(existingHlcString)
-                    : null;
+              final localHlc = localHlcString != null
+                  ? Hlc.fromString(localHlcString)
+                  : null;
+              final remoteHlc = remoteHlcString != null
+                  ? Hlc.fromString(remoteHlcString)
+                  : null;
 
-                if (existingHlc == null ||
-                    incomingHlc.compareTo(existingHlc) > 0) {
-                  mergedRow[colName] = entry.value;
-                  mergedRow['${colName}__hlc'] = incomingHlcString;
-                }
+              // Take the remote value only if local doesn't exist or remote is strictly newer
+              if (remoteHlc != null &&
+                  (localHlc == null || remoteHlc.compareTo(localHlc) > 0)) {
+                updateValues[colName] = entry.value;
+                updateValues[hlcColName] = remoteHlc.toString();
               }
-            } else if (!colName.endsWith('__hlc')) {
-              // It's a regular column, update from incoming row.
-              mergedRow[colName] = entry.value;
+              // If local is newer or they are the same, or remoteHlc is null, do nothing.
+            } else if (existingRow[colName] != entry.value &&
+                !systemColumns.contains(colName)) {
+              // For non-LWW columns, we just take the incoming value if different
+              updateValues[colName] = entry.value;
             }
           }
 
-          // Use the low-level executor to prevent re-running LWW logic in `update`
-          await txn._executor.update(
-            tableName,
-            mergedRow,
-            where: where,
-            whereArgs: whereArgs,
-          );
+          if (updateValues.isNotEmpty) {
+            await txnDb.update(
+              tableName,
+              updateValues,
+              where: whereClause,
+              whereArgs: pkValues,
+              logOperation: false,
+            );
+          }
         }
       }
     });
+  }
+
+  Future<List<Map<String, dynamic>>> getOperations({
+    int limit = 100,
+  }) async {
+    final result = await _db.rawQuery(
+      'SELECT * FROM _declarative_sqlite_operations ORDER BY timestamp ASC LIMIT ?',
+      [limit],
+    );
+    return result;
   }
 }

@@ -1,8 +1,8 @@
-import 'package:test/test.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'package:declarative_sqlite/src/builders/text_column_builder.dart';
 import 'package:declarative_sqlite/src/schema/key.dart';
 import 'package:declarative_sqlite/src/schema/reference.dart';
-import 'package:declarative_sqlite/src/builders/text_column_builder.dart';
+import 'package:test/test.dart';
 
 dynamic _dummySubQueryBuilder(dynamic sub) => null;
 dynamic _dummyConditionBuilder(dynamic cond) => null;
@@ -37,7 +37,7 @@ void main() {
       builder.reference(['customer_id']).to('customer', ['id']);
       final table = builder.build();
       expect(table.name, 'orders');
-      expect(table.columns.length, 3);
+      expect(table.columns.length, 6);
       expect(table.keys.length, 1);
       expect(table.references.length, 1);
       expect(table.references.first.foreignTable, 'customer');
@@ -94,10 +94,11 @@ void main() {
     });
     test('can add selectSubQuery and where', () {
       final builder = ViewBuilder('v2');
-      builder.select('foo')
-        .selectSubQuery(_dummySubQueryBuilder, 'cnt')
-        .from('bar')
-        .where(_dummyConditionBuilder);
+      builder
+          .select('foo')
+          .selectSubQuery(_dummySubQueryBuilder, 'cnt')
+          .from('bar')
+          .where(_dummyConditionBuilder);
       final view = builder.build();
       expect(view.definition, contains('SELECT foo'));
       expect(view.definition, contains('AS cnt'));

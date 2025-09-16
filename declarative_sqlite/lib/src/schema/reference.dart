@@ -12,4 +12,13 @@ class Reference {
     required this.foreignColumns,
     required this.type,
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'columns': columns,
+      'foreignTable': foreignTable,
+      'foreignColumns': foreignColumns,
+      'type': type.toString(),
+    };
+  }
 }

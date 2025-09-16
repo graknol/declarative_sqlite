@@ -1,6 +1,4 @@
 import 'package:declarative_sqlite/src/schema/column.dart';
-import 'package:declarative_sqlite/src/sync/hlc.dart';
-
 import 'package:declarative_sqlite/src/builders/column_builder.dart';
 import 'package:declarative_sqlite/src/builders/date_column_builder.dart';
 import 'package:declarative_sqlite/src/builders/fileset_column_builder.dart';
@@ -55,21 +53,41 @@ class TableBuilder {
           Column(
             name: '${column.name}__hlc',
             type: 'TEXT',
-            isNotNull: true,
-            // This default value ensures that existing rows get a valid,
-            // albeit very old, HLC timestamp. New inserts should always
-            // provide a fresh timestamp.
-            defaultValue: Hlc(0, 0, 'initial').toString(),
+            isNotNull: false, // Nullable to support partial inserts
             isParent: false,
-            isLww: false, // The HLC column itself is not an LWW column
+            isLww: false,
           ),
         );
       }
     }
 
+    final systemColumns = [
+      Column(
+        name: 'system_id',
+        type: 'TEXT', // GUID
+        isNotNull: false, // Nullable for migrations
+        isParent: false,
+        isLww: false,
+      ),
+      Column(
+        name: 'system_created_at',
+        type: 'TEXT', // HLC
+        isNotNull: false, // Nullable for migrations
+        isParent: false,
+        isLww: false,
+      ),
+      Column(
+        name: 'system_version',
+        type: 'TEXT', // HLC
+        isNotNull: false, // Nullable for migrations
+        isParent: false,
+        isLww: false,
+      ),
+    ];
+
     return Table(
       name: name,
-      columns: [...columns, ...hlcColumns],
+      columns: [...systemColumns, ...columns, ...hlcColumns],
       keys: _keyBuilders.map((b) => b.build()).toList(),
       references: _referenceBuilders.map((b) => b.build()).toList(),
     );

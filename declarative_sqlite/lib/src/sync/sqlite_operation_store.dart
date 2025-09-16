@@ -7,7 +7,7 @@ import 'package:sqflite_common/sqlite_api.dart' as sqflite;
 /// An implementation of [OperationStore] that uses a SQLite table.
 class SqliteOperationStore implements OperationStore {
   late final sqflite.DatabaseExecutor _db;
-  final String _tableName = '_pending_operations';
+  final String _tableName = '__operations';
 
   SqliteOperationStore();
 

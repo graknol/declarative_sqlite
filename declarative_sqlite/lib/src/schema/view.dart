@@ -10,4 +10,11 @@ class View {
   String toSql() {
     return 'CREATE VIEW $name AS $definition';
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'definition': definition,
+    };
+  }
 }

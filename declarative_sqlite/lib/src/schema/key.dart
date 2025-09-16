@@ -10,4 +10,11 @@ class Key {
   });
 
   bool get isPrimary => type == KeyType.primary;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'columns': columns,
+      'type': type.toString(),
+    };
+  }
 }

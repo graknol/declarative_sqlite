@@ -5,12 +5,26 @@ import 'package:declarative_sqlite/src/migration/introspect_schema.dart';
 import 'package:test/test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'test_helper.dart';
+
 void main() {
   sqfliteFfiInit();
 
-  test('Migration test: create table, add column, create view', () async {
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+  late Database db;
 
+  setUpAll(() async {
+    db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+  });
+
+  setUp(() async {
+    await clearDatabase(db);
+  });
+
+  tearDownAll(() async {
+    await db.close();
+  });
+
+  test('Migration test: create table, add column, create view', () async {
     // 1. Initial schema with one table
     var schemaBuilder = SchemaBuilder();
     schemaBuilder.table('users', (table) {
@@ -34,7 +48,8 @@ void main() {
     liveSchema = await introspectSchema(db);
     expect(liveSchema.tables.length, 1);
     expect(liveSchema.tables.first.name, 'users');
-    expect(liveSchema.tables.first.columns.length, 2);
+    // 2 user columns + 3 system columns
+    expect(liveSchema.tables.first.columns.length, 5);
 
     // 2. Add a column and a view
     schemaBuilder = SchemaBuilder();
@@ -61,16 +76,13 @@ void main() {
 
     // Verify column addition and view creation
     liveSchema = await introspectSchema(db);
-    expect(liveSchema.tables.first.columns.length, 3);
+    // 3 user columns + 3 system columns
+    expect(liveSchema.tables.first.columns.length, 6);
     expect(liveSchema.views.length, 1);
     expect(liveSchema.views.first.name, 'user_names');
-
-    await db.close();
   });
 
   test('Migration test: drop table and view', () async {
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-
     // 1. Initial schema with one table and one view
     var schemaBuilder = SchemaBuilder();
     schemaBuilder.table('users', (table) {
@@ -116,13 +128,9 @@ void main() {
     liveSchema = await introspectSchema(db);
     expect(liveSchema.tables.isEmpty, isTrue);
     expect(liveSchema.views.isEmpty, isTrue);
-
-    await db.close();
   });
 
   test('Migration test: drop column', () async {
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-
     // 1. Initial schema with one table
     var schemaBuilder = SchemaBuilder();
     schemaBuilder.table('users', (table) {
@@ -146,7 +154,8 @@ void main() {
     // Verify table creation
     liveSchema = await introspectSchema(db);
     expect(liveSchema.tables.length, 1);
-    expect(liveSchema.tables.first.columns.length, 3);
+    // 3 user columns + 3 system columns
+    expect(liveSchema.tables.first.columns.length, 6);
 
     // 2. Drop a column
     schemaBuilder = SchemaBuilder();
@@ -170,16 +179,13 @@ void main() {
 
     // Verify column drop
     liveSchema = await introspectSchema(db);
-    expect(liveSchema.tables.first.columns.length, 2);
+    // 2 user columns + 3 system columns
+    expect(liveSchema.tables.first.columns.length, 5);
     expect(
         liveSchema.tables.first.columns.any((c) => c.name == 'age'), isFalse);
-
-    await db.close();
   });
 
   test('Migration test: drop column with data preservation', () async {
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-
     // 1. Initial schema with one table
     var schemaBuilder = SchemaBuilder();
     schemaBuilder.table('users', (table) {
@@ -201,8 +207,22 @@ void main() {
     });
 
     // Insert data
-    await db.insert('users', {'id': '1', 'name': 'Alice', 'age': 30});
-    await db.insert('users', {'id': '2', 'name': 'Bob', 'age': 40});
+    await db.insert('users', {
+      'id': '1',
+      'name': 'Alice',
+      'age': 30,
+      'system_id': 's1',
+      'system_created_at': 'h1',
+      'system_version': 'h1'
+    });
+    await db.insert('users', {
+      'id': '2',
+      'name': 'Bob',
+      'age': 40,
+      'system_id': 's2',
+      'system_created_at': 'h2',
+      'system_version': 'h2'
+    });
 
     // Verify data insertion
     var result = await db.query('users');
@@ -231,7 +251,8 @@ void main() {
 
     // Verify column drop and data preservation
     liveSchema = await introspectSchema(db);
-    expect(liveSchema.tables.first.columns.length, 2);
+    // 2 user columns + 3 system columns
+    expect(liveSchema.tables.first.columns.length, 5);
     expect(
         liveSchema.tables.first.columns.any((c) => c.name == 'age'), isFalse);
 
@@ -240,13 +261,9 @@ void main() {
     expect(result.first['name'], 'Alice');
     expect(result.last['name'], 'Bob');
     expect(result.first.containsKey('age'), isFalse);
-
-    await db.close();
   });
 
   test('Migration test: add not null constraint', () async {
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-
     // 1. Initial schema with a nullable column
     var schemaBuilder = SchemaBuilder();
     schemaBuilder.table('users', (table) {
@@ -267,7 +284,13 @@ void main() {
     });
 
     // Insert data with null name
-    await db.insert('users', {'id': '1', 'name': null});
+    await db.insert('users', {
+      'id': '1',
+      'name': null,
+      'system_id': 's1',
+      'system_created_at': 'h1',
+      'system_version': 'h1'
+    });
 
     // 2. Add NOT NULL constraint
     schemaBuilder = SchemaBuilder();
@@ -303,13 +326,9 @@ void main() {
     final nameColumn =
         liveSchema.tables.first.columns.firstWhere((c) => c.name == 'name');
     expect(nameColumn.isNotNull, isTrue);
-
-    await db.close();
   });
 
   test('Migration test: add primary key', () async {
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-
     // 1. Initial schema without a primary key
     var schemaBuilder = SchemaBuilder();
     schemaBuilder.table('users', (table) {
@@ -346,9 +365,8 @@ void main() {
     });
 
     liveSchema = await introspectSchema(db);
-    final idColumn = liveSchema.tables.first.columns.first;
+    final idColumn =
+        liveSchema.tables.first.columns.firstWhere((c) => c.name == 'id');
     expect(idColumn.isPrimaryKey, isTrue);
-
-    await db.close();
   });
 }

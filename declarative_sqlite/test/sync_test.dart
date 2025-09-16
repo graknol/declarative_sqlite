@@ -3,9 +3,12 @@ import 'package:declarative_sqlite/src/sync/operation.dart';
 import 'package:declarative_sqlite/src/sync/operation_store.dart';
 import 'package:declarative_sqlite/src/sync/server_sync_manager.dart';
 import 'package:declarative_sqlite/src/sync/sqlite_operation_store.dart';
+import 'package:sqflite_common/sqlite_api.dart' as sqflite;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:test/test.dart';
 import 'package:uuid/uuid.dart';
+
+import 'test_helper.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -13,9 +16,11 @@ void main() {
   late DeclarativeDatabase db;
   late ServerSyncManager syncManager;
   late OperationStore operationStore;
+  late sqflite.DatabaseFactory databaseFactory;
 
-  setUp(() async {
+  setUpAll(() async {
     databaseFactory = databaseFactoryFfi;
+
     final schemaBuilder = SchemaBuilder();
     schemaBuilder.version(1);
     schemaBuilder.table('users', (table) {
@@ -25,6 +30,8 @@ void main() {
     });
     final schema = schemaBuilder.build();
     operationStore = SqliteOperationStore();
+
+    // 2. Open the database (which also runs migrations)
     db = await DeclarativeDatabase.open(
       inMemoryDatabasePath,
       databaseFactory: databaseFactory,
@@ -33,7 +40,11 @@ void main() {
     );
   });
 
-  tearDown(() async {
+  setUp(() async {
+    await clearDatabase(db.db);
+  });
+
+  tearDownAll(() async {
     await db.close();
   });
 

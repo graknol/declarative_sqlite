@@ -28,4 +28,13 @@ class Table {
       references: references ?? this.references,
     );
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'columns': columns.map((c) => c.toMap()).toList(),
+      'keys': keys.map((k) => k.toMap()).toList(),
+      'references': references.map((r) => r.toMap()).toList(),
+    };
+  }
 }
