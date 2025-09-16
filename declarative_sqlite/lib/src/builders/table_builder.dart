@@ -1,3 +1,6 @@
+import 'package:declarative_sqlite/src/schema/column.dart';
+import 'package:declarative_sqlite/src/sync/hlc.dart';
+
 import 'package:declarative_sqlite/src/builders/column_builder.dart';
 import 'package:declarative_sqlite/src/builders/date_column_builder.dart';
 import 'package:declarative_sqlite/src/builders/fileset_column_builder.dart';
@@ -44,9 +47,29 @@ class TableBuilder {
   }
 
   Table build() {
+    final columns = _columnBuilders.map((b) => b.build()).toList();
+    final hlcColumns = <Column>[];
+    for (final column in columns) {
+      if (column.isLww) {
+        hlcColumns.add(
+          Column(
+            name: '${column.name}__hlc',
+            type: 'TEXT',
+            isNotNull: true,
+            // This default value ensures that existing rows get a valid,
+            // albeit very old, HLC timestamp. New inserts should always
+            // provide a fresh timestamp.
+            defaultValue: Hlc(0, 0, 'initial').toString(),
+            isParent: false,
+            isLww: false, // The HLC column itself is not an LWW column
+          ),
+        );
+      }
+    }
+
     return Table(
       name: name,
-      columns: _columnBuilders.map((b) => b.build()).toList(),
+      columns: [...columns, ...hlcColumns],
       keys: _keyBuilders.map((b) => b.build()).toList(),
       references: _referenceBuilders.map((b) => b.build()).toList(),
     );

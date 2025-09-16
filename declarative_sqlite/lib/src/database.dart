@@ -3,9 +3,11 @@ import 'dart:convert';
 
 import 'package:declarative_sqlite/src/builders/query_builder.dart';
 import 'package:declarative_sqlite/src/schema/schema.dart';
+import 'package:declarative_sqlite/src/sync/hlc.dart';
 import 'package:declarative_sqlite/src/sync/operation.dart';
 import 'package:declarative_sqlite/src/sync/operation_store.dart';
 import 'package:sqflite_common/sqlite_api.dart' as sqflite;
+import 'package:uuid/uuid.dart';
 
 import 'data_mapping.dart';
 import 'migration/generate_migration_scripts.dart';
@@ -62,6 +64,9 @@ class DeclarativeDatabase {
 
   final OperationStore _operationStore;
 
+  /// The Hybrid Logical Clock for generating timestamps.
+  final HlcClock _hlcClock;
+
   /// Returns an object that can be used to perform database operations
   /// that are not logged for synchronization purposes.
   late final DataAccess dataAccess;
@@ -69,8 +74,12 @@ class DeclarativeDatabase {
   sqflite.DatabaseExecutor get _executor => _txn ?? _db;
   final sqflite.Transaction? _txn;
 
-  DeclarativeDatabase._internal(this._db, this._schema, this._operationStore)
-      : _txn = null {
+  DeclarativeDatabase._internal(
+    this._db,
+    this._schema,
+    this._operationStore,
+    this._hlcClock,
+  ) : _txn = null {
     dataAccess = DataAccess(this);
   }
 
@@ -79,6 +88,7 @@ class DeclarativeDatabase {
     this._db,
     this._schema,
     this._operationStore,
+    this._hlcClock,
     this._txn,
   ) {
     dataAccess = DataAccess(this);
@@ -105,6 +115,7 @@ class DeclarativeDatabase {
         version: schema.version,
         onCreate: (db, version) async {
           final batch = db.batch();
+          // Create user-defined tables and views
           for (final table in schema.tables) {
             final columns = table.columns.map((c) => c.toSql()).join(',\n  ');
             batch.execute('CREATE TABLE ${table.name} (\n  $columns\n)');
@@ -112,9 +123,19 @@ class DeclarativeDatabase {
           for (final view in schema.views) {
             batch.execute(view.toSql());
           }
-          await batch.commit();
+          await batch.commit(noResult: true);
+
+          // Create internal system tables
+          await db.execute(
+            'CREATE TABLE _declarative_sqlite_settings (key TEXT PRIMARY KEY, value TEXT)',
+          );
         },
         onUpgrade: (db, oldVersion, newVersion) async {
+          // Ensure settings table exists on upgrade
+          await db.execute(
+            'CREATE TABLE IF NOT EXISTS _declarative_sqlite_settings (key TEXT PRIMARY KEY, value TEXT)',
+          );
+
           final liveSchema = await introspectSchema(db);
           final diff = diffSchemas(schema, liveSchema);
           final migrationScripts = generateMigrationScripts(diff.changes);
@@ -130,7 +151,32 @@ class DeclarativeDatabase {
 
     await operationStore.init(db);
 
-    return DeclarativeDatabase._internal(db, schema, operationStore);
+    // Get or create the persistent HLC node ID
+    String? nodeId;
+    final result = await db.query(
+      '_declarative_sqlite_settings',
+      where: 'key = ?',
+      whereArgs: ['hlc_node_id'],
+    );
+    if (result.isNotEmpty) {
+      nodeId = result.first['value'] as String?;
+    }
+    if (nodeId == null) {
+      nodeId = Uuid().v4();
+      await db.insert('_declarative_sqlite_settings', {
+        'key': 'hlc_node_id',
+        'value': nodeId,
+      });
+    }
+
+    final hlcClock = HlcClock(nodeId: nodeId);
+
+    return DeclarativeDatabase._internal(
+      db,
+      schema,
+      operationStore,
+      hlcClock,
+    );
   }
 
   /// Closes the database.
@@ -174,6 +220,7 @@ class DeclarativeDatabase {
         _db,
         _schema,
         _operationStore,
+        _hlcClock,
         txn,
       );
       return await action(txnDb);
@@ -252,24 +299,36 @@ class DeclarativeDatabase {
     bool logOperation = true,
     sqflite.ConflictAlgorithm? conflictAlgorithm,
   }) async {
+    final tableSchema = _schema.tables.firstWhere((t) => t.name == table);
+    final lwwColumns =
+        tableSchema.columns.where((c) => c.isLww).map((c) => c.name).toSet();
+
+    final valuesToInsert = Map<String, dynamic>.from(values);
+
+    // Generate HLC timestamps for LWW columns
+    if (lwwColumns.isNotEmpty) {
+      final now = _hlcClock.now();
+      for (final colName in values.keys) {
+        if (lwwColumns.contains(colName)) {
+          valuesToInsert['${colName}__hlc'] = now.toString();
+        }
+      }
+    }
+
     final id = await _executor.insert(
       table,
-      values,
+      valuesToInsert,
       conflictAlgorithm: conflictAlgorithm,
     );
     if (logOperation) {
-      final pk = _schema.tables
-          .firstWhere((t) => t.name == table)
-          .keys
-          .firstWhere((k) => k.isPrimary);
-
-      final rowId = _getRowId(pk.columns, values);
+      final pk = tableSchema.keys.firstWhere((k) => k.isPrimary);
+      final rowId = _getRowId(pk.columns, valuesToInsert);
 
       await _operationStore.add(Operation(
         tableName: table,
         rowId: rowId,
         type: OperationType.insert,
-        data: values,
+        data: valuesToInsert,
         timestamp: DateTime.now(),
       ));
     }
@@ -297,32 +356,88 @@ class DeclarativeDatabase {
     required List<Object?> whereArgs,
     bool logOperation = true,
   }) async {
-    final count = await _executor.update(
-      table,
-      values,
-      where: where,
-      whereArgs: whereArgs,
-    );
-    if (logOperation) {
-      // way to identify the updated rows and log them.
-      final pk = _schema.tables
-          .firstWhere((t) => t.name == table)
-          .keys
-          .firstWhere((k) => k.isPrimary);
-      final updatedRows =
-          await queryTable(table, where: where, whereArgs: whereArgs);
-      for (final row in updatedRows) {
-        final rowId = _getRowId(pk.columns, row);
-        await _operationStore.add(Operation(
-          tableName: table,
-          rowId: rowId,
-          type: OperationType.update,
-          data: values,
-          timestamp: DateTime.now(),
-        ));
-      }
+    final tableSchema = _schema.tables.firstWhere((t) => t.name == table);
+    final pk = tableSchema.keys.firstWhere((k) => k.isPrimary);
+    final lwwColumns =
+        tableSchema.columns.where((c) => c.isLww).map((c) => c.name).toSet();
+    final lwwColumnsInUpdate = values.keys.where(lwwColumns.contains).toSet();
+
+    // If no LWW columns are being updated, perform a simple update.
+    if (lwwColumnsInUpdate.isEmpty) {
+      final count = await _executor.update(
+        table,
+        values,
+        where: where,
+        whereArgs: whereArgs,
+      );
+      // TODO: Log non-LWW updates
+      return count;
     }
-    return count;
+
+    // For LWW updates, we need to fetch, compare, and then update.
+    return transaction((txnDb) async {
+      final rowsToUpdate = await txnDb.queryTable(
+        table,
+        where: where,
+        whereArgs: whereArgs,
+      );
+
+      int updatedCount = 0;
+      for (final row in rowsToUpdate) {
+        final updateHlc = _hlcClock.now();
+        final valuesToUpdate = <String, dynamic>{};
+        final hlcValuesToUpdate = <String, dynamic>{};
+
+        for (final entry in values.entries) {
+          final colName = entry.key;
+          if (lwwColumns.contains(colName)) {
+            // It's an LWW column, compare HLCs
+            final existingHlcString = row['${colName}__hlc'] as String?;
+            final existingHlc = existingHlcString != null
+                ? Hlc.fromString(existingHlcString)
+                : null;
+
+            if (existingHlc == null || updateHlc.compareTo(existingHlc) > 0) {
+              // Incoming write wins
+              valuesToUpdate[colName] = entry.value;
+              hlcValuesToUpdate['${colName}__hlc'] = updateHlc.toString();
+            }
+          } else {
+            // It's a regular column, just update it
+            valuesToUpdate[colName] = entry.value;
+          }
+        }
+
+        if (valuesToUpdate.isEmpty) {
+          continue; // Nothing to update for this row
+        }
+
+        final finalValues = {...valuesToUpdate, ...hlcValuesToUpdate};
+        final rowId = _getRowId(pk.columns, row);
+        final (rowWhere, rowWhereArgs) = _getRowWhereClause(pk.columns, row);
+
+        final count = await txnDb._executor.update(
+          table,
+          finalValues,
+          where: rowWhere,
+          whereArgs: rowWhereArgs,
+        );
+
+        if (count > 0) {
+          updatedCount += count;
+          if (logOperation) {
+            await txnDb._operationStore.add(Operation(
+              tableName: table,
+              rowId: rowId,
+              type: OperationType.update,
+              data: finalValues,
+              timestamp: DateTime.now(),
+            ));
+          }
+        }
+      }
+      return updatedCount;
+    });
   }
 
   /// Deletes a row from a table.
@@ -372,6 +487,19 @@ class DeclarativeDatabase {
     }
   }
 
+  (String, List<Object?>) _getRowWhereClause(
+    List<String> pkColumnNames,
+    Map<String, dynamic> row,
+  ) {
+    final whereParts = <String>[];
+    final whereArgs = <Object?>[];
+    for (final colName in pkColumnNames) {
+      whereParts.add('$colName = ?');
+      whereArgs.add(row[colName]);
+    }
+    return (whereParts.join(' AND '), whereArgs);
+  }
+
   /// Executes a query and maps the results to a list of objects.
   /// Queries the database and maps the results to a list of objects.
   Future<List<T>> queryMapped<T>(DataMapper<T> mapper,
@@ -402,14 +530,75 @@ class DataAccess {
     if (data.isEmpty) {
       return;
     }
+    final tableSchema =
+        _db.schema.tables.firstWhere((t) => t.name == tableName);
+    final pkColumns = tableSchema.keys.firstWhere((k) => k.isPrimary).columns;
+    final lwwColumns =
+        tableSchema.columns.where((c) => c.isLww).map((c) => c.name).toSet();
+
     await _db.transaction((txn) async {
-      for (final row in data) {
-        await txn.insert(
+      for (final incomingRow in data) {
+        final (where, whereArgs) =
+            _db._getRowWhereClause(pkColumns, incomingRow);
+        final existingRows = await txn.queryTable(
           tableName,
-          row,
-          logOperation: false, // Don't log these operations
-          conflictAlgorithm: sqflite.ConflictAlgorithm.replace,
+          where: where,
+          whereArgs: whereArgs,
         );
+
+        if (existingRows.isEmpty) {
+          // Row doesn't exist, just insert it.
+          final valuesToInsert = Map<String, dynamic>.from(incomingRow);
+          if (lwwColumns.isNotEmpty) {
+            final now = _db._hlcClock.now();
+            for (final colName in lwwColumns) {
+              if (valuesToInsert.containsKey(colName) &&
+                  !valuesToInsert.containsKey('${colName}__hlc')) {
+                valuesToInsert['${colName}__hlc'] = now.toString();
+              }
+            }
+          }
+          await txn.insert(tableName, valuesToInsert, logOperation: false);
+        } else {
+          // Row exists, merge LWW columns.
+          final existingRow = existingRows.first;
+          final mergedRow = Map<String, dynamic>.from(existingRow);
+
+          for (final entry in incomingRow.entries) {
+            final colName = entry.key;
+            if (lwwColumns.contains(colName)) {
+              // It's an LWW column, compare HLCs.
+              final incomingHlcString =
+                  incomingRow['${colName}__hlc'] as String?;
+              final existingHlcString =
+                  existingRow['${colName}__hlc'] as String?;
+
+              if (incomingHlcString != null) {
+                final incomingHlc = Hlc.fromString(incomingHlcString);
+                final existingHlc = existingHlcString != null
+                    ? Hlc.fromString(existingHlcString)
+                    : null;
+
+                if (existingHlc == null ||
+                    incomingHlc.compareTo(existingHlc) > 0) {
+                  mergedRow[colName] = entry.value;
+                  mergedRow['${colName}__hlc'] = incomingHlcString;
+                }
+              }
+            } else if (!colName.endsWith('__hlc')) {
+              // It's a regular column, update from incoming row.
+              mergedRow[colName] = entry.value;
+            }
+          }
+
+          // Use the low-level executor to prevent re-running LWW logic in `update`
+          await txn._executor.update(
+            tableName,
+            mergedRow,
+            where: where,
+            whereArgs: whereArgs,
+          );
+        }
       }
     });
   }
