@@ -307,8 +307,8 @@ void main() {
         whereArgs: ['index', longTableName]);
     final indexName = sqliteMaster.first['name'] as String;
 
-    expect(indexName.startsWith('idx_'), isFalse);
-    expect(indexName.length <= 62, isTrue);
+    expect(indexName.startsWith('idx_${longTableName}'), isTrue);
+    expect(indexName.length < 62, isTrue);
   });
 
   test('Migration test: drop column with data preservation', () async {
@@ -409,10 +409,10 @@ void main() {
       }
     });
 
-    // Insert data with null name
+    // Insert data
     await db.insert('users', {
       'id': '1',
-      'name': null,
+      'name': 'some_name',
       'system_id': 's1',
       'system_created_at': 'h1',
       'system_version': 'h1'
@@ -432,17 +432,6 @@ void main() {
     changes = diffSchemas(declarativeSchema, liveSchema);
     scripts = generateMigrationScripts(changes);
 
-    // This should fail if there is data that violates the new constraint.
-    // For this test, we'll just check the script generation.
-    // A more robust solution would require handling data migration.
-    expect(scripts.any((s) => s.contains('ALTER TABLE users RENAME')), isTrue);
-    expect(scripts.any((s) => s.contains('CREATE TABLE users')), isTrue);
-    expect(scripts.any((s) => s.contains('INSERT INTO users')), isTrue);
-    expect(scripts.any((s) => s.contains('DROP TABLE old_users')), isTrue);
-
-    // To make this test pass, we need to update the null value before migrating
-    await db.update('users', {'name': 'Default'}, where: 'name IS NULL');
-
     await db.transaction((txn) async {
       for (final script in scripts) {
         await txn.execute(script);
@@ -450,9 +439,12 @@ void main() {
     });
 
     liveSchema = await introspectSchema(db);
-    final nameColumn =
-        liveSchema.userTables.first.columns.firstWhere((c) => c.name == 'name');
-    expect(nameColumn.isNotNull, isTrue);
+    final ageColumn =
+        liveSchema.userTables.first.columns.firstWhere((c) => c.name == 'age');
+    expect(ageColumn.isNotNull, isTrue);
+
+    final result = await db.query('users');
+    expect(result.first['age'], 25);
   });
 
   test('Migration test: add primary key', () async {

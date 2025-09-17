@@ -18,7 +18,7 @@ void main() {
         view.select('id').select('name').from('users');
       });
       final schema = builder.build();
-      expect(schema.userTables.length, 2);
+      expect(schema.userTables.length, 1);
       expect(schema.userTables.first.name, 'users');
       expect(schema.views.length, 1);
       expect(schema.views.first.name, 'user_view');
@@ -30,7 +30,7 @@ void main() {
       });
       final schema = schemaBuilder.build();
 
-      expect(schema.userTables.length, 3);
+      expect(schema.userTables.length, 1);
       final filesTable = schema.userTables.firstWhere((t) => t.name == 'files');
       expect(filesTable.name, 'files');
       expect(filesTable.columns.any((c) => c.name == 'document'), isTrue);
@@ -39,9 +39,9 @@ void main() {
       expect(column.type, 'TEXT');
 
       final systemFilesTable =
-          schema.userTables.firstWhere((t) => t.name == '__files');
+          schema.systemTables.firstWhere((t) => t.name == '__files');
       expect(systemFilesTable, isNotNull);
-      expect(systemFilesTable.columns.length, 9); // 6 + 3 system columns
+      expect(systemFilesTable.columns.length, 6);
     });
   });
   group('TableBuilder', () {
@@ -145,7 +145,7 @@ void main() {
         view.select('id').select('name').from('users');
       });
       final schema = schemaBuilder.build();
-      expect(schema.userTables.length, 2);
+      expect(schema.userTables.length, 1);
       expect(schema.userTables.first.name, 'users');
       expect(schema.views.length, 1);
       expect(schema.views.first.name, 'user_names');

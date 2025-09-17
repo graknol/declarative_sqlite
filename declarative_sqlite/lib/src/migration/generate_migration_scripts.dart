@@ -89,12 +89,24 @@ List<String> _generateAlterTableScripts(AlterTable change) {
     final selectColumns = newTable.columns.map((newCol) {
       final oldCol =
           oldTable.columns.firstWhereOrNull((c) => c.name == newCol.name);
-      if (oldCol == null && newCol.isNotNull) {
-        final defaultValue = newCol.defaultValue;
-        if (defaultValue != null) {
+      if (oldCol == null) {
+        if (newCol.isNotNull) {
+          final defaultValue = newCol.defaultValue;
+          if (defaultValue != null) {
+            final value =
+                defaultValue is String ? "'$defaultValue'" : defaultValue;
+            return '$value AS ${newCol.name}';
+          }
+        }
+      } else {
+        // The column exists in the old table, so we can select it.
+        // We need to handle the case where a column is now NOT NULL,
+        // but was previously nullable.
+        if (newCol.isNotNull && !oldCol.isNotNull) {
+          final defaultValue = newCol.defaultValue;
           final value =
               defaultValue is String ? "'$defaultValue'" : defaultValue;
-          return '$value AS ${newCol.name}';
+          return 'IFNULL(${newCol.name}, $value) AS ${newCol.name}';
         }
       }
       return newCol.name;
