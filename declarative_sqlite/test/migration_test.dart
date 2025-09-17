@@ -1,26 +1,28 @@
+import 'dart:math';
+
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:declarative_sqlite/src/migration/diff_schemas.dart';
 import 'package:declarative_sqlite/src/migration/generate_migration_scripts.dart';
 import 'package:declarative_sqlite/src/migration/introspect_schema.dart';
-import 'package:test/test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-
-import 'test_helper.dart';
+import 'package:test/test.dart';
 
 void main() {
-  sqfliteFfiInit();
-
   late Database db;
 
-  setUpAll(() async {
-    db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+  // Initialize FFI once for all tests.
+  setUpAll(() {
+    sqfliteFfiInit();
   });
 
   setUp(() async {
-    await clearDatabase(db);
+    // Use a unique path for the in-memory database to ensure isolation for each test.
+    final dbPath =
+        'file:migration_test_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(100000)}?mode=memory&cache=shared';
+    db = await databaseFactoryFfi.openDatabase(dbPath);
   });
 
-  tearDownAll(() async {
+  tearDown(() async {
     await db.close();
   });
 

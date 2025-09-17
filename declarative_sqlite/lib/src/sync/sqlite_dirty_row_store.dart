@@ -65,4 +65,9 @@ class SqliteDirtyRowStore implements DirtyRowStore {
       );
     }
   }
+
+  @override
+  Future<void> clear() async {
+    await _db.delete(_tableName);
+  }
 }

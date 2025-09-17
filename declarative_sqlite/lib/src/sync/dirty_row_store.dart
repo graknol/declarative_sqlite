@@ -16,4 +16,7 @@ abstract class DirtyRowStore {
   /// Removes a list of operations from the store, usually after they have been
   /// successfully synchronized.
   Future<void> remove(List<DirtyRow> operations);
+
+  /// Clears all pending operations from the store.
+  Future<void> clear();
 }

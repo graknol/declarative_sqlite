@@ -242,29 +242,34 @@ class DeclarativeDatabase {
   ///
   /// Returns the System ID of the last inserted row.
   Future<String> insert(String tableName, Map<String, Object?> values) async {
+    final now = hlcClock.now();
+    final systemId = await _insert(tableName, values, now);
+    await dirtyRowStore.add(tableName, systemId, now);
+    return systemId;
+  }
+
+  Future<String> _insert(
+      String tableName, Map<String, Object?> values, Hlc hlc) async {
     final tableDef = _getTableDefinition(tableName);
 
-    final now = hlcClock.now();
     final valuesToInsert = {...values};
-    valuesToInsert['system_version'] = now.toString();
+    valuesToInsert['system_version'] = hlc.toString();
     if (valuesToInsert['system_id'] == null) {
       valuesToInsert['system_id'] = Uuid().v4();
     }
     if (valuesToInsert['system_created_at'] == null) {
-      valuesToInsert['system_created_at'] = now.toString();
+      valuesToInsert['system_created_at'] = hlc.toString();
     }
 
     for (final col in tableDef.columns) {
       if (col.isLww) {
-        valuesToInsert['${col.name}__hlc'] = now.toString();
+        valuesToInsert['${col.name}__hlc'] = hlc.toString();
       }
     }
 
     await _db.insert(tableName, valuesToInsert);
 
-    final systemId = valuesToInsert['system_id']! as String;
-    await dirtyRowStore.add(tableName, systemId, now);
-    return systemId;
+    return valuesToInsert['system_id']! as String;
   }
 
   /// Updates rows in the given [tableName].
@@ -279,14 +284,45 @@ class DeclarativeDatabase {
     String? where,
     List<Object?>? whereArgs,
   }) async {
+    // We need to get the system_ids of the rows being updated so we can
+    // mark them as dirty.
+    final rowsToUpdate = await queryTable(
+      tableName,
+      columns: ['system_id'],
+      where: where,
+      whereArgs: whereArgs,
+    );
+
+    final now = hlcClock.now();
+    final result = await _update(
+      tableName,
+      values,
+      now,
+      where: where,
+      whereArgs: whereArgs,
+    );
+
+    for (final row in rowsToUpdate) {
+      await dirtyRowStore.add(tableName, row['system_id']! as String, now);
+    }
+
+    return result;
+  }
+
+  Future<int> _update(
+    String tableName,
+    Map<String, Object?> values,
+    Hlc hlc, {
+    String? where,
+    List<Object?>? whereArgs,
+  }) async {
     final tableDef = _getTableDefinition(tableName);
 
     final lwwColumns =
         tableDef.columns.where((c) => c.isLww).map((c) => c.name);
 
-    final now = hlcClock.now();
     final valuesToUpdate = {...values};
-    valuesToUpdate['system_version'] = now.toString();
+    valuesToUpdate['system_version'] = hlc.toString();
 
     if (lwwColumns.isNotEmpty) {
       // We need to check the HLCs of the existing rows to see if we can
@@ -308,8 +344,8 @@ class DeclarativeDatabase {
             final existingHlc = existingHlcs[hlcColName] != null
                 ? Hlc.parse(existingHlcs[hlcColName] as String)
                 : null;
-            if (existingHlc == null || now.compareTo(existingHlc) > 0) {
-              valuesToUpdate[hlcColName] = now.toString();
+            if (existingHlc == null || hlc.compareTo(existingHlc) > 0) {
+              valuesToUpdate[hlcColName] = hlc.toString();
             } else {
               // The value in the database is newer, so we remove this
               // column from the update.
@@ -326,27 +362,12 @@ class DeclarativeDatabase {
       return 0;
     }
 
-    // We need to get the system_ids of the rows being updated so we can
-    // mark them as dirty.
-    final rowsToUpdate = await queryTable(
-      tableName,
-      columns: ['system_id'],
-      where: where,
-      whereArgs: whereArgs,
-    );
-
-    final result = await _db.update(
+    return _db.update(
       tableName,
       valuesToUpdate,
       where: where,
       whereArgs: whereArgs,
     );
-
-    for (final row in rowsToUpdate) {
-      await dirtyRowStore.add(tableName, row['system_id']! as String, now);
-    }
-
-    return result;
   }
 
   Table _getTableDefinition(String table) {
@@ -428,7 +449,8 @@ class DeclarativeDatabase {
   /// - If no local row exists, it's an INSERT.
   ///
   /// Rows processed by this method are NOT marked as dirty.
-  Future<void> bulkLoad(String tableName, List<Map<String, Object?>> rows) async {
+  Future<void> bulkLoad(
+      String tableName, List<Map<String, Object?>> rows) async {
     final tableDef = _getTableDefinition(tableName);
     final pkColumns = tableDef.keys
         .where((k) => k.isPrimary)
@@ -437,12 +459,10 @@ class DeclarativeDatabase {
     final lwwColumns =
         tableDef.columns.where((c) => c.isLww).map((c) => c.name).toSet();
 
-print(1);
     await transaction((db) async {
       for (final row in rows) {
         final systemId = row['system_id'] as String?;
         if (systemId == null) continue;
-print(2);
 
         final existing = await db.queryTable(
           tableName,
@@ -451,7 +471,6 @@ print(2);
           limit: 1,
         );
 
-print(3);
         if (existing.isNotEmpty) {
           // UPDATE logic
           final existingRow = existing.first;
@@ -466,45 +485,43 @@ print(3);
 
             if (lwwColumns.contains(colName)) {
               final hlcColName = '${colName}__hlc';
-              final localHlcString = existingRow[hlcColName] as String?;
               final remoteHlcString = row[hlcColName] as String?;
 
-              final localHlc =
-                  localHlcString != null ? Hlc.parse(localHlcString) : null;
-              final remoteHlc =
-                  remoteHlcString != null ? Hlc.parse(remoteHlcString) : null;
+              if (remoteHlcString != null) {
+                // If HLC is provided, do a proper LWW comparison.
+                final localHlcString = existingRow[hlcColName] as String?;
+                final localHlc =
+                    localHlcString != null ? Hlc.parse(localHlcString) : null;
+                final remoteHlc = Hlc.parse(remoteHlcString);
 
-              // Take the remote value only if local doesn't exist or remote is strictly newer
-              if (remoteHlc != null &&
-                  (localHlc == null || remoteHlc.compareTo(localHlc) > 0)) {
+                if (localHlc == null || remoteHlc.compareTo(localHlc) > 0) {
+                  valuesToUpdate[colName] = entry.value;
+                  valuesToUpdate[hlcColName] = remoteHlc.toString();
+                }
+              } else {
+                // If no HLC is provided, the server value wins (non-LWW update).
                 valuesToUpdate[colName] = entry.value;
-                valuesToUpdate[hlcColName] = remoteHlc.toString();
               }
             } else {
-              // Regular column, always update
+              // Regular column, always update.
               valuesToUpdate[colName] = entry.value;
             }
           }
 
           if (valuesToUpdate.isNotEmpty) {
-            valuesToUpdate['system_version'] = now.toString();
-print(4);
-            await db.update(
+            await db._update(
               tableName,
               valuesToUpdate,
+              now,
               where: 'system_id = ?',
               whereArgs: [systemId],
             );
-print(5);
           }
         } else {
           // INSERT logic
-print(6);
-          await db.insert(tableName, row);
-print(7);
+          await db._insert(tableName, row, hlcClock.now());
         }
       }
-print(8);
     });
   }
 }
