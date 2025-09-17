@@ -41,6 +41,13 @@ class Column {
         parts.add('DEFAULT $defaultValue');
       }
     }
+  if (minValue != null) {
+    parts.add('CHECK($name >= $minValue)');
+  }
+  if (maxLength != null) {
+    parts.add('CHECK(length($name) <= $maxLength)');
+  }
+
     return parts.join(' ');
   }
 

@@ -6,7 +6,6 @@ import 'package:declarative_sqlite/src/builders/guid_column_builder.dart';
 import 'package:declarative_sqlite/src/builders/integer_column_builder.dart';
 import 'package:declarative_sqlite/src/builders/key_builder.dart';
 import 'package:declarative_sqlite/src/builders/real_column_builder.dart';
-import 'package:declarative_sqlite/src/builders/reference_builder.dart';
 import 'package:declarative_sqlite/src/builders/text_column_builder.dart';
 import 'package:declarative_sqlite/src/schema/table.dart';
 
@@ -14,7 +13,6 @@ class TableBuilder {
   final String name;
   final List<ColumnBuilder> _columnBuilders = [];
   final List<KeyBuilder> _keyBuilders = [];
-  final List<ReferenceBuilder> _referenceBuilders = [];
 
   TableBuilder(this.name);
 
@@ -38,12 +36,6 @@ class TableBuilder {
     return builder;
   }
 
-  ReferenceBuilder reference(List<String> columns) {
-    final builder = ReferenceBuilder(columns);
-    _referenceBuilders.add(builder);
-    return builder;
-  }
-
   Table build() {
     final columns = _columnBuilders.map((b) => b.build()).toList();
     final hlcColumns = <Column>[];
@@ -62,38 +54,44 @@ class TableBuilder {
       }
     }
 
-    final systemColumns = [
-      Column(
-        name: 'system_id',
-        logicalType: 'guid',
-        type: 'TEXT', // GUID
-        isNotNull: false, // Nullable for migrations
-        isParent: false,
-        isLww: false,
-      ),
-      Column(
-        name: 'system_created_at',
-        logicalType: 'hlc',
-        type: 'TEXT', // HLC
-        isNotNull: false, // Nullable for migrations
-        isParent: false,
-        isLww: false,
-      ),
-      Column(
-        name: 'system_version',
-        logicalType: 'hlc',
-        type: 'TEXT', // HLC
-        isNotNull: false, // Nullable for migrations
-        isParent: false,
-        isLww: false,
-      ),
-    ];
+    final isSystemTable = name.startsWith('__');
+
+    final systemColumns = isSystemTable
+        ? <Column>[]
+        : [
+            Column(
+              name: 'system_id',
+              logicalType: 'guid',
+              type: 'TEXT', // GUID
+              isNotNull: true,
+              defaultValue: '00000000-0000-0000-0000-000000000000',
+              isParent: false,
+              isLww: false,
+            ),
+            Column(
+              name: 'system_created_at',
+              logicalType: 'hlc',
+              type: 'TEXT', // HLC
+              isNotNull: true,
+              defaultValue: '0000-00-00T00:00:00.000Z-0000-0000000000000000',
+              isParent: false,
+              isLww: false,
+            ),
+            Column(
+              name: 'system_version',
+              logicalType: 'hlc',
+              type: 'TEXT', // HLC
+              isNotNull: true,
+              defaultValue: '0000-00-00T00:00:00.000Z-0000-0000000000000000',
+              isParent: false,
+              isLww: false,
+            ),
+          ];
 
     return Table(
       name: name,
       columns: [...systemColumns, ...columns, ...hlcColumns],
       keys: _keyBuilders.map((b) => b.build()).toList(),
-      references: _referenceBuilders.map((b) => b.build()).toList(),
     );
   }
 }

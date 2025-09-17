@@ -7,6 +7,10 @@ class Schema {
   final List<Table> tables;
   final List<View> views;
 
+  Iterable<Table> get userTables => tables.where((t) => !t.isSystem);
+  Iterable<Table> get systemTables => tables.where((t) => t.isSystem);
+
+
   const Schema({
     required this.tables,
     required this.views,

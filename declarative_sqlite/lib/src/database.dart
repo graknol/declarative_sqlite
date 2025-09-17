@@ -61,16 +61,6 @@ class DeclarativeDatabase {
     files = FileSet(this);
   }
 
-  static Future<String?> _getSetting(
-      sqflite.DatabaseExecutor db, String key) async {
-    final result = await db.query('__settings',
-        where: 'key = ?', whereArgs: [key], limit: 1, columns: ['value']);
-    if (result.isNotEmpty) {
-      return result.first['value'] as String?;
-    }
-    return null;
-  }
-
   /// Opens the database at the given [path].
   ///
   /// The [schema] is used to create and migrate the database.
@@ -93,8 +83,6 @@ class DeclarativeDatabase {
       ),
     );
 
-    await _createSystemTables(db);
-
     // Migrate schema
     final liveSchemaHash = await _getSetting(db, 'schema_hash');
     final newSchemaHash = schema.toHash();
@@ -112,22 +100,8 @@ class DeclarativeDatabase {
     await dirtyRowStore.init(db);
 
     // Get or create the persistent HLC node ID
-    String? nodeId;
-    final resultHlcNodeId = await db.query(
-      '__settings',
-      where: 'key = ?',
-      whereArgs: ['hlc_node_id'],
-    );
-    if (resultHlcNodeId.isNotEmpty) {
-      nodeId = resultHlcNodeId.first['value'] as String?;
-    }
-    if (nodeId == null) {
-      nodeId = Uuid().v4();
-      await db.insert('__settings', {
-        'key': 'hlc_node_id',
-        'value': nodeId,
-      });
-    }
+    final nodeId =
+        await _setSettingIfNotSet(db, 'hlc_node_id', () => Uuid().v4());
 
     final hlcClock = HlcClock(nodeId: nodeId);
 
@@ -138,20 +112,6 @@ class DeclarativeDatabase {
       hlcClock,
       fileRepository,
     );
-  }
-
-  static Future<void> _createSystemTables(sqflite.DatabaseExecutor db) async {
-    await db.execute(
-      'CREATE TABLE IF NOT EXISTS __settings (key TEXT PRIMARY KEY, value TEXT)',
-    );
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS __dirty_rows (
-        table_name TEXT NOT NULL,
-        row_id TEXT NOT NULL,
-        hlc TEXT NOT NULL,
-        PRIMARY KEY (table_name, row_id)
-      )
-    ''');
   }
 
   /// Closes the database.
@@ -370,9 +330,12 @@ class DeclarativeDatabase {
     );
   }
 
-  Table _getTableDefinition(String table) {
-    return schema.tables.firstWhere((t) => t.name == table,
-        orElse: () => throw ArgumentError('Table not found in schema: $table'));
+  Table _getTableDefinition(String tableName) {
+    return schema.tables.firstWhere(
+      (t) => t.name == tableName,
+      orElse: () =>
+          throw ArgumentError('Table not found in schema: $tableName'),
+    );
   }
 
   /// Deletes rows from the given [tableName].
@@ -523,5 +486,68 @@ class DeclarativeDatabase {
         }
       }
     });
+  }
+
+  static Future<bool> _removeSetting(
+    sqflite.DatabaseExecutor db,
+    String key,
+  ) async {
+    final deleteCount = await db.delete(
+      '__settings',
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+    return deleteCount > 0;
+  }
+
+  static Future<String> _setSettingIfNotSet(
+    sqflite.DatabaseExecutor db,
+    String key,
+    String Function() defaultFactory,
+  ) async {
+    var result = await _getSetting(db, key);
+    result ??= await _setSetting(db, key, defaultFactory());
+    return result;
+  }
+
+  static Future<String> _setSetting(
+    sqflite.DatabaseExecutor db,
+    String key,
+    String value,
+  ) async {
+    await db.insert(
+      '__settings',
+      {
+        'key': key,
+        'value': value,
+      },
+      conflictAlgorithm: sqflite.ConflictAlgorithm.replace,
+    );
+    return value;
+  }
+
+  static Future<String?> _getSettingOrDefault(
+    sqflite.DatabaseExecutor db,
+    String key,
+    String Function() defaultFactory,
+  ) async {
+    return (await _getSetting(db, key)) ?? defaultFactory();
+  }
+
+  static Future<String?> _getSetting(
+    sqflite.DatabaseExecutor db,
+    String key,
+  ) async {
+    try {
+      final result = await db.query('__settings',
+          where: 'key = ?', whereArgs: [key], limit: 1, columns: ['value']);
+      if (result.isNotEmpty) {
+        return result.first['value'] as String?;
+      }
+    } on Exception {
+      // Ignore any errors, most likely due to missing table,
+      // in which case, there's nothing to do but to return null
+    }
+    return null;
   }
 }

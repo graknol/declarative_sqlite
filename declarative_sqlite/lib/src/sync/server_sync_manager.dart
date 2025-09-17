@@ -57,7 +57,7 @@ class ServerSyncManager {
       }
 
       // 2. Fetch new data from the server
-      for (final table in _db.schema.tables) {
+      for (final table in _db.schema.userTables) {
         // In a real implementation, we would manage the clock per table
         await onFetch(_db, table.name, null);
       }

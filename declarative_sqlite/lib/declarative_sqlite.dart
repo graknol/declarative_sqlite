@@ -10,7 +10,6 @@ export 'src/builders/integer_column_builder.dart';
 export 'src/builders/key_builder.dart';
 export 'src/builders/query_builder.dart';
 export 'src/builders/real_column_builder.dart';
-export 'src/builders/reference_builder.dart';
 export 'src/builders/schema_builder.dart';
 export 'src/builders/table_builder.dart';
 export 'src/builders/text_column_builder.dart';

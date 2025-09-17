@@ -21,6 +21,12 @@ void main() {
       table.integer('stock').notNull(0); // stock is a regular column
       table.key(['id']).primary();
     });
+    schemaBuilder.table('__dirty_rows', (table) {
+      table.text('table_name').notNull('default');
+      table.text('row_id').notNull('default');
+      table.text('hlc').notNull('default');
+      table.key(['table_name', 'row_id']).primary();
+    });
     return schemaBuilder.build();
   }
 

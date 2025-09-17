@@ -18,12 +18,15 @@ class Hlc extends Equatable implements Comparable<Hlc> {
   final int milliseconds;
   final int counter;
   final String nodeId;
-  
+
   @override
-  List<Object?> get props => [milliseconds.hashCode, counter.hashCode, nodeId.hashCode];
+  List<Object?> get props =>
+      [milliseconds.hashCode, counter.hashCode, nodeId.hashCode];
 
   @override
   bool? get stringify => false;
+
+  static Hlc min = const Hlc(0, 0, '0');
 
   const Hlc(this.milliseconds, this.counter, this.nodeId);
 

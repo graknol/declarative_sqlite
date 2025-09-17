@@ -18,6 +18,12 @@ void main() {
         table.integer('age').notNull(0);
         table.key(['id']).primary();
       });
+      initialSchemaBuilder.table('__dirty_rows', (table) {
+        table.text('table_name').notNull('default');
+        table.text('row_id').notNull('default');
+        table.text('hlc').notNull('default');
+        table.key(['table_name', 'row_id']).primary();
+      });
       final initialSchema = initialSchemaBuilder.build();
 
       // Initial creation

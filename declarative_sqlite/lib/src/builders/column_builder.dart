@@ -18,7 +18,7 @@ abstract class ColumnBuilder {
 
   ColumnBuilder(this.name, this.logicalType, this.dbType);
 
-  ColumnBuilder notNull([Object? defaultValue]) {
+  ColumnBuilder notNull(Object defaultValue) {
     isNotNull = true;
     this.defaultValue = defaultValue;
     return this;

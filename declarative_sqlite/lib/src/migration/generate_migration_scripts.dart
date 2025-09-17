@@ -1,13 +1,15 @@
+import 'dart:convert';
+
 import 'package:collection/collection.dart';
+import 'package:crypto/crypto.dart';
 import 'package:declarative_sqlite/src/migration/schema_diff.dart';
-import 'package:declarative_sqlite/src/schema/column.dart';
 import 'package:declarative_sqlite/src/schema/key.dart';
 
 List<String> generateMigrationScripts(List<SchemaChange> changes) {
   final scripts = <String>[];
   for (final change in changes) {
     if (change is CreateTable) {
-      scripts.add(_generateCreateTableScript(change));
+      scripts.addAll(_generateCreateTableScripts(change));
     } else if (change is DropTable) {
       scripts.add('DROP TABLE ${change.table.name};');
     } else if (change is AlterTable) {
@@ -28,30 +30,36 @@ List<String> generateMigrationScripts(List<SchemaChange> changes) {
 
 String _generateCreateTableScript(CreateTable change) {
   final table = change.table;
-  final columns = table.columns.map(_generateColumnDefinition).join(', ');
+  final columns = table.columns.map((c)=>c.toSql()).join(', ');
   final primaryKeys = table.keys
       .where((k) => k.type == KeyType.primary)
       .map((k) => 'PRIMARY KEY (${k.columns.join(', ')})')
       .join(', ');
-  final parts = [columns, if (primaryKeys.isNotEmpty) primaryKeys];
-  return 'CREATE TABLE ${table.name} (${parts.join(', ')});';
+
+  final parts = [
+    columns,
+    if (primaryKeys.isNotEmpty) primaryKeys,
+  ];
+  return 'CREATE TABLE ${table.name} (${parts.where((p) => p.isNotEmpty).join(', ')});';
 }
 
-String _generateColumnDefinition(Column column) {
-  final parts = [
-    column.name,
-    column.type,
-    if (column.isNotNull) 'NOT NULL',
-  ];
+List<String> _generateCreateTableScripts(CreateTable change) {
+  final scripts = <String>[];
+  final table = change.table;
+  scripts.add(_generateCreateTableScript(change));
 
-  if (column.minValue != null) {
-    parts.add('CHECK(${column.name} >= ${column.minValue})');
+  final indexKeys = table.keys.where((k) => k.type == KeyType.indexed);
+  for (final key in indexKeys) {
+    var indexName = 'idx_${table.name}_${key.columns.join('_')}';
+    if (indexName.length > 62) {
+      final hash =
+          sha1.convert(utf8.encode(indexName)).toString().substring(0, 10);
+      indexName = 'idx_${table.name}_$hash';
+    }
+    scripts.add(
+        'CREATE INDEX $indexName ON ${table.name} (${key.columns.join(', ')});');
   }
-  if (column.maxLength != null) {
-    parts.add('CHECK(length(${column.name}) <= ${column.maxLength})');
-  }
-
-  return parts.join(' ');
+  return scripts;
 }
 
 List<String> _generateAlterTableScripts(AlterTable change) {
@@ -62,12 +70,10 @@ List<String> _generateAlterTableScripts(AlterTable change) {
   final alterColumnChanges =
       change.columnChanges.whereType<AlterColumn>().toList();
   final keyChanges = change.keyChanges;
-  final referenceChanges = change.referenceChanges;
 
   if (dropColumnChanges.isNotEmpty ||
       alterColumnChanges.isNotEmpty ||
-      keyChanges.isNotEmpty ||
-      referenceChanges.isNotEmpty) {
+      keyChanges.isNotEmpty) {
     // Recreate table if columns are dropped or altered, or if keys/references change
     final newTable = change.targetTable;
     final oldTable = change.liveTable;
@@ -78,17 +84,17 @@ List<String> _generateAlterTableScripts(AlterTable change) {
     scripts.add('ALTER TABLE ${oldTable.name} RENAME TO $tempTableName;');
 
     // 2. Create new table with original name
-    scripts.add(_generateCreateTableScript(CreateTable(newTable)));
+    scripts.addAll(_generateCreateTableScripts(CreateTable(newTable)));
 
     final selectColumns = newTable.columns.map((newCol) {
       final oldCol =
           oldTable.columns.firstWhereOrNull((c) => c.name == newCol.name);
-      if (oldCol != null && !oldCol.isNotNull && newCol.isNotNull) {
+      if (oldCol == null && newCol.isNotNull) {
         final defaultValue = newCol.defaultValue;
         if (defaultValue != null) {
           final value =
               defaultValue is String ? "'$defaultValue'" : defaultValue;
-          return 'IFNULL(${newCol.name}, $value) AS ${newCol.name}';
+          return '$value AS ${newCol.name}';
         }
       }
       return newCol.name;
@@ -103,7 +109,7 @@ List<String> _generateAlterTableScripts(AlterTable change) {
   } else {
     // Only handle adding columns if no columns are dropped, altered, or keys/references change
     for (final columnChange in addColumnChanges) {
-      final columnDef = _generateColumnDefinition(columnChange.column);
+      final columnDef = columnChange.column.toSql();
       scripts
           .add('ALTER TABLE ${change.liveTable.name} ADD COLUMN $columnDef;');
     }

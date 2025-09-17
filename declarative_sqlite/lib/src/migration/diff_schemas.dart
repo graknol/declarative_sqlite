@@ -20,12 +20,9 @@ List<SchemaChange> diffSchemas(
     } else {
       final columnChanges = _diffColumns(declarativeTable, liveTable);
       final keyChanges = _diffKeys(declarativeTable, liveTable);
-      final referenceChanges = _diffReferences(declarativeTable, liveTable);
-      if (columnChanges.isNotEmpty ||
-          keyChanges.isNotEmpty ||
-          referenceChanges.isNotEmpty) {
-        changes.add(AlterTable(liveTable, declarativeTable, columnChanges,
-            keyChanges, referenceChanges));
+      if (columnChanges.isNotEmpty || keyChanges.isNotEmpty) {
+        changes.add(
+            AlterTable(liveTable, declarativeTable, columnChanges, keyChanges));
       }
     }
   }
@@ -111,13 +108,3 @@ List<KeyChange> _diffKeys(Table declarativeTable, LiveTable liveTable) {
   return changes;
 }
 
-List<ReferenceChange> _diffReferences(
-    Table declarativeTable, LiveTable liveTable) {
-  final changes = <ReferenceChange>[];
-  // Live schema introspection for references is not implemented yet.
-  // For now, we just add all declarative references.
-  for (final declarativeReference in declarativeTable.references) {
-    changes.add(AddReference(declarativeReference));
-  }
-  return changes;
-}

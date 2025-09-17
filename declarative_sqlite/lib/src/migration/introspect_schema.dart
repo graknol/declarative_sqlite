@@ -10,12 +10,16 @@ Future<LiveSchema> introspectSchema(sqflite.Database db) async {
 Future<List<LiveTable>> _introspectTables(sqflite.Database db) async {
   final tables = <LiveTable>[];
   final tableRows = await db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' AND name NOT LIKE 'android\\_metadata' ESCAPE '\\' AND name NOT LIKE '\\_\\_%' ESCAPE '\\'");
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' AND name NOT LIKE 'android\\_metadata' ESCAPE '\\'");
   for (final tableRow in tableRows) {
     final tableName = tableRow['name'] as String;
     final columns = await _introspectColumns(db, tableName);
     final keys = await _introspectKeys(db, tableName);
-    tables.add(LiveTable(name: tableName, columns: columns, keys: keys));
+    tables.add(LiveTable(
+      name: tableName,
+      columns: columns,
+      keys: keys,
+    ));
   }
   return tables;
 }

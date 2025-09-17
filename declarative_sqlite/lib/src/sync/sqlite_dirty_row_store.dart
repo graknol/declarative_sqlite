@@ -13,14 +13,6 @@ class SqliteDirtyRowStore implements DirtyRowStore {
   @override
   Future<void> init(DatabaseExecutor db) async {
     _db = db;
-    await _db.execute('''
-        CREATE TABLE IF NOT EXISTS $_tableName (
-          table_name TEXT NOT NULL,
-          row_id TEXT NOT NULL,
-          hlc TEXT NOT NULL,
-          PRIMARY KEY (table_name, row_id)
-        )
-      ''');
   }
 
   @override

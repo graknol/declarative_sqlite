@@ -2,6 +2,9 @@ class LiveSchema {
   final List<LiveTable> tables;
   final List<LiveView> views;
 
+  Iterable<LiveTable> get userTables => tables.where((t) => !t.isSystem);
+  Iterable<LiveTable> get systemTables => tables.where((t) => t.isSystem);
+
   LiveSchema({required this.tables, required this.views});
 }
 
@@ -10,7 +13,13 @@ class LiveTable {
   final List<LiveColumn> columns;
   final List<LiveKey> keys;
 
-  LiveTable({required this.name, required this.columns, required this.keys});
+  bool get isSystem => name.startsWith('__');
+
+  LiveTable({
+    required this.name,
+    required this.columns,
+    required this.keys,
+  });
 }
 
 class LiveView {
@@ -42,18 +51,4 @@ class LiveKey {
   final bool isUnique;
 
   LiveKey({required this.name, required this.columns, required this.isUnique});
-}
-
-class LiveReference {
-  final String fromTable;
-  final String fromColumn;
-  final String toTable;
-  final String toColumn;
-
-  LiveReference({
-    required this.fromTable,
-    required this.fromColumn,
-    required this.toTable,
-    required this.toColumn,
-  });
 }

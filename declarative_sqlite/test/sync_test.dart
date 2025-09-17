@@ -1,6 +1,5 @@
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:test/test.dart';
-import 'package:uuid/uuid.dart';
 
 import 'test_helper.dart';
 
@@ -11,9 +10,15 @@ void main() {
   setUp(() async {
     final schemaBuilder = SchemaBuilder();
     schemaBuilder.table('users', (table) {
-      table.guid('id').notNull(Uuid().v4());
-      table.text('name').notNull('');
+      table.guid('id').notNull('some_id');
+      table.text('name').notNull('some_name');
       table.key(['id']).primary();
+    });
+    schemaBuilder.table('__dirty_rows', (table) {
+      table.text('table_name').notNull('default');
+      table.text('row_id').notNull('default');
+      table.text('hlc').notNull('default');
+      table.key(['table_name', 'row_id']).primary();
     });
     final schema = schemaBuilder.build();
 

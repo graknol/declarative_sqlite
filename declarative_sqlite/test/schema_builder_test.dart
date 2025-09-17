@@ -1,6 +1,5 @@
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:declarative_sqlite/src/schema/key.dart';
-import 'package:declarative_sqlite/src/schema/reference.dart';
 import 'package:test/test.dart';
 
 dynamic _dummySubQueryBuilder(dynamic sub) => null;
@@ -11,16 +10,16 @@ void main() {
     test('can build schema with tables and views', () {
       final builder = SchemaBuilder();
       builder.table('users', (table) {
-        table.guid('id').notNull();
-        table.text('name').notNull();
+        table.guid('id').notNull('some-id');
+        table.text('name').notNull('some-name');
         table.key(['id']).primary();
       });
       builder.view('user_view', (view) {
         view.select('id').select('name').from('users');
       });
       final schema = builder.build();
-      expect(schema.tables.length, 1);
-      expect(schema.tables.first.name, 'users');
+      expect(schema.userTables.length, 2);
+      expect(schema.userTables.first.name, 'users');
       expect(schema.views.length, 1);
       expect(schema.views.first.name, 'user_view');
     });
@@ -31,8 +30,8 @@ void main() {
       });
       final schema = schemaBuilder.build();
 
-      expect(schema.tables.length, 2);
-      final filesTable = schema.tables.firstWhere((t) => t.name == 'files');
+      expect(schema.userTables.length, 3);
+      final filesTable = schema.userTables.firstWhere((t) => t.name == 'files');
       expect(filesTable.name, 'files');
       expect(filesTable.columns.any((c) => c.name == 'document'), isTrue);
       final column = filesTable.columns.firstWhere((c) => c.name == 'document');
@@ -40,25 +39,22 @@ void main() {
       expect(column.type, 'TEXT');
 
       final systemFilesTable =
-          schema.tables.firstWhere((t) => t.name == '__files');
+          schema.userTables.firstWhere((t) => t.name == '__files');
       expect(systemFilesTable, isNotNull);
       expect(systemFilesTable.columns.length, 9); // 6 + 3 system columns
     });
   });
   group('TableBuilder', () {
-    test('can build table with columns, keys, and references', () {
+    test('can build table with columns and keys', () {
       final builder = TableBuilder('orders');
-      builder.guid('id').notNull();
-      builder.text('customer_id').notNull();
-      builder.real('total').notNull();
+      builder.guid('id').notNull('some-id');
+      builder.text('customer_id').notNull('some-customer-id');
+      builder.real('total').notNull(0.0);
       builder.key(['id']).primary();
-      builder.reference(['customer_id']).to('customer', ['id']);
       final table = builder.build();
       expect(table.name, 'orders');
       expect(table.columns.length, 6);
       expect(table.keys.length, 1);
-      expect(table.references.length, 1);
-      expect(table.references.first.foreignTable, 'customer');
     });
 
     test('min constraint is added to column definition', () {
@@ -90,7 +86,7 @@ void main() {
   group('ColumnBuilder', () {
     test('can set notNull, parent, lww', () {
       final col = TextColumnBuilder('foo')
-        ..notNull()
+        ..notNull('a')
         ..parent()
         ..lww();
       final built = col.build();
@@ -112,19 +108,6 @@ void main() {
     });
   });
 
-  group('ReferenceBuilder', () {
-    test('can set to and toMany', () {
-      final ref = ReferenceBuilder(['foo_id']);
-      ref.to('bar', ['id']);
-      final built = ref.build();
-      expect(built.type, ReferenceType.toOne);
-      expect(built.foreignTable, 'bar');
-      ref.toMany('baz', ['id']);
-      final built2 = ref.build();
-      expect(built2.type, ReferenceType.toMany);
-      expect(built2.foreignTable, 'baz');
-    });
-  });
 
   group('ViewBuilder', () {
     test('can build simple view', () {
@@ -146,6 +129,58 @@ void main() {
       expect(view.definition, contains('SELECT foo'));
       expect(view.definition, contains('AS cnt'));
       expect(view.definition, contains('WHERE ...'));
+    });
+  });
+  group('SchemaBuilder', () {
+    test('SchemaBuilder builds a valid schema', () {
+      final schemaBuilder = SchemaBuilder();
+      schemaBuilder.table('users', (table) {
+        table.guid('id').notNull('some_id');
+        table.text('name').notNull('some_name');
+        table.integer('age').notNull(0);
+        table.key(['id']).primary();
+        table.key(['name']).index();
+      });
+      schemaBuilder.view('user_names', (view) {
+        view.select('id').select('name').from('users');
+      });
+      final schema = schemaBuilder.build();
+      expect(schema.userTables.length, 2);
+      expect(schema.userTables.first.name, 'users');
+      expect(schema.views.length, 1);
+      expect(schema.views.first.name, 'user_names');
+    });
+    test('SchemaBuilder builds a table with LWW columns', () {
+      final schemaBuilder = SchemaBuilder();
+      schemaBuilder.table('products', (table) {
+        table.guid('id').notNull('some_id');
+        table.text('description').lww();
+      });
+      final schema = schemaBuilder.build();
+      final productsTable = schema.userTables.firstWhere((t) => t.name == 'products');
+      expect(productsTable.columns.any((c) => c.name == 'description'), isTrue);
+      final column =
+          productsTable.columns.firstWhere((c) => c.name == 'description');
+      expect(column.isLww, isTrue);
+    });
+    test('SchemaBuilder builds a table with parent columns', () {
+      final schemaBuilder = SchemaBuilder();
+      schemaBuilder.table('order_lines', (table) {
+        table.guid('order_id').notNull('some_id').parent();
+        table.integer('line_no').notNull(0).parent();
+        table.text('product');
+      });
+      final schema = schemaBuilder.build();
+      final orderLinesTable =
+          schema.userTables.firstWhere((t) => t.name == 'order_lines');
+      expect(orderLinesTable.columns.any((c) => c.name == 'order_id'), isTrue);
+      expect(orderLinesTable.columns.any((c) => c.name == 'line_no'), isTrue);
+      final orderIdColumn =
+          orderLinesTable.columns.firstWhere((c) => c.name == 'order_id');
+      final lineNoColumn =
+          orderLinesTable.columns.firstWhere((c) => c.name == 'line_no');
+      expect(orderIdColumn.isParent, isTrue);
+      expect(lineNoColumn.isParent, isTrue);
     });
   });
 }
