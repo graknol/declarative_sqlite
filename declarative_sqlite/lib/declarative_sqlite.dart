@@ -22,4 +22,3 @@ export 'src/sync/dirty_row.dart';
 export 'src/sync/dirty_row_store.dart';
 export 'src/sync/server_sync_manager.dart';
 export 'src/sync/sqlite_dirty_row_store.dart';
-export 'src/sync/sync_types.dart';

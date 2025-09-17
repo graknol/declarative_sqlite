@@ -1,3 +1,4 @@
+import 'package:equatable/equatable.dart';
 import 'package:uuid/uuid.dart';
 
 /// A Hybrid Logical Clock (HLC) timestamp.
@@ -13,12 +14,18 @@ import 'package:uuid/uuid.dart';
 /// - `nodeId`: A unique identifier for the node that generated the timestamp.
 ///
 /// The padding ensures that HLC timestamps can be lexically sorted.
-class Hlc implements Comparable<Hlc> {
+class Hlc extends Equatable implements Comparable<Hlc> {
   final int milliseconds;
   final int counter;
   final String nodeId;
+  
+  @override
+  List<Object?> get props => [milliseconds.hashCode, counter.hashCode, nodeId.hashCode];
 
-  Hlc(this.milliseconds, this.counter, this.nodeId);
+  @override
+  bool? get stringify => false;
+
+  const Hlc(this.milliseconds, this.counter, this.nodeId);
 
   /// Creates an HLC timestamp from a string representation.
   factory Hlc.parse(String encoded) {
@@ -53,19 +60,6 @@ class Hlc implements Comparable<Hlc> {
     }
     return nodeId.compareTo(other.nodeId);
   }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is Hlc &&
-          runtimeType == other.runtimeType &&
-          milliseconds == other.milliseconds &&
-          counter == other.counter &&
-          nodeId == other.nodeId;
-
-  @override
-  int get hashCode =>
-      milliseconds.hashCode ^ counter.hashCode ^ nodeId.hashCode;
 }
 
 /// A clock that generates Hybrid Logical Clock timestamps.

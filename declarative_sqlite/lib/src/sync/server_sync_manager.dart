@@ -1,7 +1,14 @@
 import 'dart:async';
 
 import 'package:declarative_sqlite/src/database.dart';
-import 'package:declarative_sqlite/src/sync/sync_types.dart';
+
+import 'dirty_row.dart';
+
+typedef OnFetch = Future<void> Function(
+    DeclarativeDatabase database, String table, DateTime? lastSynced);
+
+typedef OnSend = Future<bool> Function(List<DirtyRow> operations);
+
 
 class ServerSyncManager {
   final DeclarativeDatabase _db;
