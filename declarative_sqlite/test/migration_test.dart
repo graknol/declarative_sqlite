@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:math';
+import 'package:crypto/crypto.dart';
 
 import 'package:collection/collection.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
@@ -303,12 +305,19 @@ void main() {
     table.keys.firstWhere((k) => k.columns.length == 2);
 
     final sqliteMaster = await db.query('sqlite_master',
-        where: 'type = ? AND tbl_name = ?',
-        whereArgs: ['index', longTableName]);
+        where: 'type = ? AND tbl_name = ? AND name NOT LIKE ?',
+        whereArgs: ['index', longTableName, 'sqlite_autoindex%']);
     final indexName = sqliteMaster.first['name'] as String;
 
-    expect(indexName.startsWith('idx_${longTableName}'), isTrue);
-    expect(indexName.length < 62, isTrue);
+    final unhashedIndexName =
+        'idx_${longTableName}_${longColumnName1}_$longColumnName2';
+    final hash = sha1
+        .convert(utf8.encode(unhashedIndexName))
+        .toString()
+        .substring(0, 10);
+    final expectedIndexName = 'idx_${longTableName}_$hash';
+
+    expect(indexName, expectedIndexName);
   });
 
   test('Migration test: drop column with data preservation', () async {
