@@ -7,14 +7,14 @@ void main() {
     test('builds a simple SELECT * query', () {
       final builder = QueryBuilder().from('users');
       final (sql, params) = builder.build();
-      expect(sql, 'SELECT * FROM users;');
+      expect(sql, 'SELECT * FROM users');
       expect(params, isEmpty);
     });
 
     test('builds a query with specific columns', () {
       final builder = QueryBuilder().select('id').select('name').from('users');
       final (sql, params) = builder.build();
-      expect(sql, 'SELECT id, name FROM users;');
+      expect(sql, 'SELECT id, name FROM users');
       expect(params, isEmpty);
     });
 
@@ -24,7 +24,7 @@ void main() {
           .select('u.name')
           .from('users', 'u');
       final (sql, params) = builder.build();
-      expect(sql, 'SELECT u.id AS user_id, u.name FROM users AS u;');
+      expect(sql, 'SELECT u.id AS user_id, u.name FROM users AS u');
       expect(params, isEmpty);
     });
 
@@ -36,7 +36,7 @@ void main() {
     test('builds a query with a simple WHERE clause', () {
       final builder = QueryBuilder().from('users').where(col('age').gt(18));
       final (sql, params) = builder.build();
-      expect(sql, 'SELECT * FROM users WHERE age > ?;');
+      expect(sql, 'SELECT * FROM users WHERE age > ?');
       expect(params, [18]);
     });
 
@@ -50,7 +50,7 @@ void main() {
           ]));
       final (sql, params) = builder.build();
       expect(sql,
-          'SELECT * FROM users WHERE (age >= ? AND (name LIKE ? OR status = ?));');
+          'SELECT * FROM users WHERE (age >= ? AND (name LIKE ? OR status = ?))');
       expect(params, [18, 'A%', 'active']);
     });
 
@@ -60,7 +60,7 @@ void main() {
           .where(or([col('email').nil, col('phone').notNil]));
       final (sql, params) = builder.build();
       expect(sql,
-          'SELECT * FROM users WHERE (email IS NULL OR phone IS NOT NULL);');
+          'SELECT * FROM users WHERE (email IS NULL OR phone IS NOT NULL)');
       expect(params, isEmpty);
     });
 
@@ -68,7 +68,7 @@ void main() {
       final builder =
           QueryBuilder().from('users').orderBy(['name DESC', 'age']);
       final (sql, params) = builder.build();
-      expect(sql, 'SELECT * FROM users ORDER BY name DESC, age;');
+      expect(sql, 'SELECT * FROM users ORDER BY name DESC, age');
       expect(params, isEmpty);
     });
 
@@ -80,7 +80,7 @@ void main() {
           .groupBy(['status']);
       final (sql, params) = builder.build();
       expect(
-          sql, 'SELECT status, COUNT(id) AS count FROM users GROUP BY status;');
+          sql, 'SELECT status, COUNT(id) AS count FROM users GROUP BY status');
       expect(params, isEmpty);
     });
 
@@ -93,8 +93,36 @@ void main() {
           .groupBy(['status']).orderBy(['count DESC']);
       final (sql, params) = builder.build();
       expect(sql,
-          'SELECT status, COUNT(id) AS count FROM users WHERE age > ? GROUP BY status ORDER BY count DESC;');
+          'SELECT status, COUNT(id) AS count FROM users WHERE age > ? GROUP BY status ORDER BY count DESC');
       expect(params, [18]);
+    });
+
+    test('builds a query with an EXISTS clause', () {
+      final builder = QueryBuilder().from('users').where(exists((sub) {
+        sub
+            .select('1')
+            .from('orders')
+            .where(and([
+              col('orders.user_id').eq(col('users.id')),
+              col('orders.status').eq('shipped'),
+            ]));
+      }));
+      final (sql, params) = builder.build();
+      expect(sql,
+          'SELECT * FROM users WHERE EXISTS (SELECT 1 FROM orders WHERE (orders.user_id = users.id AND orders.status = ?))');
+      expect(params, ['shipped']);
+    });
+
+    test('builds a query with a NOT EXISTS clause', () {
+      final builder = QueryBuilder().from('users').where(notExists((sub) {
+        sub.select('1').from('cancellations').where(
+              col('cancellations.user_id').eq(col('users.id')),
+            );
+      }));
+      final (sql, params) = builder.build();
+      expect(sql,
+          'SELECT * FROM users WHERE NOT EXISTS (SELECT 1 FROM cancellations WHERE cancellations.user_id = users.id)');
+      expect(params, isEmpty);
     });
   });
 }

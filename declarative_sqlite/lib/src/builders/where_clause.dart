@@ -1,4 +1,5 @@
 // lib/src/builders/where_clause.dart
+import 'package:declarative_sqlite/src/builders/query_builder.dart';
 
 abstract class WhereClause {
   BuiltWhereClause build();
@@ -69,3 +70,32 @@ Condition col(String column) => Condition(column);
 LogicalOperator and(List<WhereClause> clauses) =>
     LogicalOperator('AND', clauses);
 LogicalOperator or(List<WhereClause> clauses) => LogicalOperator('OR', clauses);
+
+class Exists extends WhereClause {
+  final QueryBuilder _subQuery;
+  final bool _negated;
+
+  Exists(this._subQuery, [this._negated = false]);
+
+  @override
+  BuiltWhereClause build() {
+    final builtSubQuery = _subQuery.build();
+    final subQuerySql = builtSubQuery.$1;
+    final subQueryParameters = builtSubQuery.$2;
+    final operator = _negated ? 'NOT EXISTS' : 'EXISTS';
+    return BuiltWhereClause(
+        '$operator ($subQuerySql)', subQueryParameters);
+  }
+}
+
+Exists exists(void Function(QueryBuilder) build) {
+  final builder = QueryBuilder();
+  build(builder);
+  return Exists(builder);
+}
+
+Exists notExists(void Function(QueryBuilder) build) {
+  final builder = QueryBuilder();
+  build(builder);
+  return Exists(builder, true);
+}

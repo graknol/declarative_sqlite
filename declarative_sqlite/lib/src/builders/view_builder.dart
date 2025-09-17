@@ -1,3 +1,4 @@
+import 'package:declarative_sqlite/src/builders/query_builder.dart';
 import 'package:declarative_sqlite/src/schema/view.dart';
 
 class ViewBuilder {
@@ -28,6 +29,23 @@ class ViewBuilder {
 
   ViewBuilder from(String table, [String? alias]) {
     _definition.write(' FROM $table');
+    if (alias != null) {
+      _definition.write(' AS $alias');
+    }
+    return this;
+  }
+
+  ViewBuilder fromSubQuery(
+    void Function(QueryBuilder) build, [
+    String? alias,
+  ]) {
+    final subQueryBuilder = QueryBuilder();
+    build(subQueryBuilder);
+    final built = subQueryBuilder.build();
+    // Remove trailing ; from subquery
+    final subQuery = built.$1.substring(0, built.$1.length - 1);
+
+    _definition.write(' FROM ($subQuery)');
     if (alias != null) {
       _definition.write(' AS $alias');
     }

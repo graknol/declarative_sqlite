@@ -64,8 +64,6 @@ class QueryBuilder {
       sql += ' ORDER BY ${_orderBy.join(', ')}';
     }
 
-    sql += ';';
-
     return (sql, parameters);
   }
 }
