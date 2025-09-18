@@ -27,10 +27,10 @@ This is a Flutter library that combines:
    - Layer management for annotation ordering
 
 3. **PDF Binary Editor**
-   - Direct PDF 2.0 structure manipulation
-   - Annotation embedding using PDF 2.0 standards (enhanced /Annot objects)
-   - Advanced metadata preservation and enhancement
-   - Cross-reference table management with PDF 2.0 features
+   - Direct PDF structure manipulation (PDF 1.7 baseline with forward compatibility)
+   - Annotation embedding using PDF 1.7 standards (/Annot objects)
+   - Metadata preservation and enhancement
+   - Cross-reference table management with PDF 1.7 compatibility
 
 4. **Metadata System**
    - Custom metadata fields for tracking applied annotations
@@ -41,11 +41,11 @@ This is a Flutter library that combines:
 ## Font and Image Rendering with Flutter Canvas
 
 ### Overview
-Rendering PDF fonts and images requires deep understanding of both PDF 2.0 specifications and Flutter's canvas capabilities. This section covers the technical implementation details for accurate font and image rendering.
+Rendering PDF fonts and images requires deep understanding of both PDF 1.7 specifications and Flutter's canvas capabilities. This section covers the technical implementation details for accurate font and image rendering.
 
 ### Font Rendering with Flutter Canvas
 
-#### PDF 2.0 Font Types Support
+#### PDF Font Types Support
 - **Type 1 Fonts**: PostScript-based fonts with custom rendering
 - **TrueType Fonts**: Standard TrueType font embedding and rendering
 - **Type 3 Fonts**: User-defined fonts with custom glyph procedures
@@ -81,7 +81,7 @@ class PDFTextRenderer {
 
 ### Image Rendering with Flutter Canvas
 
-#### PDF 2.0 Image Types Support
+#### PDF Image Types Support
 - **JPEG Images**: Direct rendering with compression support
 - **JPEG 2000**: Advanced compression format support
 - **PNG Images**: Full PNG specification including transparency
@@ -181,25 +181,27 @@ lib/
 - Optimize annotation rendering for real-time editing
 
 ### PDF Format Compliance
-- Follow PDF 2.0 specification (ISO32000-2) for all PDF operations
-- **IMPORTANT**: Only support PDF 2.0 files - older PDF versions should be rejected
-- Use standard PDF 2.0 annotation types and features
+- Follow PDF 1.7 specification (Adobe PDF Reference) for baseline compatibility
+- Support forward compatibility with newer PDF versions for annotation-only operations
+- Use standard PDF 1.7 annotation types and features
 - Implement proper coordinate system transformations
-- Leverage PDF 2.0 enhanced security and metadata features
+- Ensure broad compatibility with existing PDF viewers and editors
 
-### PDF Version Validation
+### PDF Version Strategy
 ```dart
-// Example validation logic
+// Example validation logic with forward compatibility
 class PDFVersionValidator {
   static bool isSupported(String pdfVersion) {
-    // Only accept PDF 2.0 and newer
-    return pdfVersion.startsWith('%PDF-2.');
+    // Support PDF 1.7 and newer for annotation operations
+    // Since we only edit annotations, newer versions should be safe
+    double version = double.tryParse(pdfVersion.replaceFirst('%PDF-', '')) ?? 0.0;
+    return version >= 1.7;
   }
   
   static void validateOrThrow(PDFDocument doc) {
     if (!isSupported(doc.version)) {
       throw UnsupportedPDFVersionException(
-        'Only PDF 2.0 files are supported. Found: ${doc.version}'
+        'PDF 1.7 or newer required for annotation support. Found: ${doc.version}'
       );
     }
   }
@@ -218,12 +220,12 @@ When implementing annotation features:
 
 ### Binary PDF Editing
 For PDF manipulation:
-- Parse PDF 2.0 structure safely with error handling
-- **Version Validation**: Reject PDF files older than PDF 2.0
+- Parse PDF structure safely with error handling (PDF 1.7 baseline)
+- **Version Strategy**: Support PDF 1.7+ with forward compatibility for annotation operations
 - Preserve existing document integrity
 - Implement incremental updates when possible
 - Support both in-memory and file-based operations
-- Include validation for PDF 2.0 compliance
+- Include validation for PDF 1.7+ compliance
 
 ### Metadata Management
 For annotation tracking:
@@ -249,7 +251,7 @@ For annotation tracking:
 - Mock PDF documents for consistent testing
 - **Font Rendering Tests**: Validate text accuracy across different font types
 - **Image Rendering Tests**: Verify image quality and color accuracy
-- **PDF Version Tests**: Ensure older PDF versions are properly rejected
+- **PDF Version Tests**: Ensure PDF 1.7+ support with forward compatibility
 
 ### Documentation
 - Comprehensive API documentation with examples
@@ -266,10 +268,11 @@ For annotation tracking:
 - `shared_preferences`: For user settings persistence
 
 ### PDF Format Resources
-- ISO 32000-2:2020 (PDF 2.0 standard)
-- PDF 2.0 annotation specification documents
-- XMP metadata specification for PDF 2.0
-- Adobe PDF 2.0 implementation notes
+- Adobe PDF Reference 1.7 (primary baseline)
+- ISO 32000-1:2008 (PDF 1.7 standard)
+- PDF annotation specification documents
+- XMP metadata specification
+- Forward compatibility notes for newer PDF versions
 
 ## Security Considerations
 
