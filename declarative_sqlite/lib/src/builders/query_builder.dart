@@ -1,4 +1,4 @@
-import 'package:declarative_sqlite/src/builders/where_clause.dart';
+import 'where_clause.dart';
 
 class QueryBuilder {
   String? _from;
@@ -6,6 +6,8 @@ class QueryBuilder {
   WhereClause? _where;
   final List<String> _orderBy = [];
   final List<String> _groupBy = [];
+  final List<String> _joins = [];
+  String? _having;
 
   QueryBuilder select(String column, [String? alias]) {
     if (alias != null) {
@@ -40,6 +42,56 @@ class QueryBuilder {
     return this;
   }
 
+  QueryBuilder having(String condition) {
+    _having = condition;
+    return this;
+  }
+
+  QueryBuilder join(String joinClause) {
+    _joins.add(joinClause);
+    return this;
+  }
+
+  QueryBuilder innerJoin(String table, String onCondition, [String? alias]) {
+    final tableWithAlias = alias != null ? '$table AS $alias' : table;
+    _joins.add('INNER JOIN $tableWithAlias ON $onCondition');
+    return this;
+  }
+
+  QueryBuilder leftJoin(String table, String onCondition, [String? alias]) {
+    final tableWithAlias = alias != null ? '$table AS $alias' : table;
+    _joins.add('LEFT JOIN $tableWithAlias ON $onCondition');
+    return this;
+  }
+
+  QueryBuilder rightJoin(String table, String onCondition, [String? alias]) {
+    final tableWithAlias = alias != null ? '$table AS $alias' : table;
+    _joins.add('RIGHT JOIN $tableWithAlias ON $onCondition');
+    return this;
+  }
+
+  QueryBuilder fullOuterJoin(String table, String onCondition, [String? alias]) {
+    final tableWithAlias = alias != null ? '$table AS $alias' : table;
+    _joins.add('FULL OUTER JOIN $tableWithAlias ON $onCondition');
+    return this;
+  }
+
+  QueryBuilder crossJoin(String table, [String? alias]) {
+    final tableWithAlias = alias != null ? '$table AS $alias' : table;
+    _joins.add('CROSS JOIN $tableWithAlias');
+    return this;
+  }
+
+  /// Select a subquery with an alias
+  QueryBuilder selectSubQuery(void Function(QueryBuilder) build, String alias) {
+    final subQueryBuilder = QueryBuilder();
+    build(subQueryBuilder);
+    final built = subQueryBuilder.build();
+    final subQuery = built.$1;
+    _columns.add('($subQuery) AS $alias');
+    return this;
+  }
+
   (String, List<Object?>) build() {
     if (_from == null) {
       throw StateError('A "from" clause is required to build a query.');
@@ -50,6 +102,11 @@ class QueryBuilder {
     var sql = 'SELECT $columns FROM $_from';
     var parameters = <Object?>[];
 
+    // Add JOINs
+    if (_joins.isNotEmpty) {
+      sql += ' ${_joins.join(' ')}';
+    }
+
     if (_where != null) {
       final builtWhere = _where!.build();
       sql += ' WHERE ${builtWhere.sql}';
@@ -58,6 +115,10 @@ class QueryBuilder {
 
     if (_groupBy.isNotEmpty) {
       sql += ' GROUP BY ${_groupBy.join(', ')}';
+    }
+
+    if (_having != null) {
+      sql += ' HAVING $_having';
     }
 
     if (_orderBy.isNotEmpty) {

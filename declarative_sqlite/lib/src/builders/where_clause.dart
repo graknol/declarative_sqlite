@@ -1,5 +1,5 @@
 // lib/src/builders/where_clause.dart
-import 'package:declarative_sqlite/src/builders/query_builder.dart';
+import 'query_builder.dart';
 
 abstract class WhereClause {
   BuiltWhereClause build();
@@ -16,6 +16,8 @@ class Condition {
   final String _column;
 
   Condition(this._column);
+  
+  String get column => _column;
 
   Comparison eq(Object value) => _compare('=', value);
   Comparison neq(Object value) => _compare('!=', value);
@@ -44,6 +46,13 @@ class Comparison extends WhereClause {
     if (value == null && (operator == 'IS NULL' || operator == 'IS NOT NULL')) {
       return BuiltWhereClause('$column $operator', []);
     }
+    
+    // Check if value is a column reference (Condition object)
+    if (value is Condition) {
+      final condition = value as Condition;
+      return BuiltWhereClause('$column $operator ${condition.column}', []);
+    }
+    
     return BuiltWhereClause('$column $operator ?', [value]);
   }
 }
