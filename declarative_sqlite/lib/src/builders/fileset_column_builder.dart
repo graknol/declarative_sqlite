@@ -1,5 +1,5 @@
-import 'package:declarative_sqlite/src/builders/column_builder.dart';
-import 'package:declarative_sqlite/src/schema/column.dart';
+import 'column_builder.dart';
+import '../schema/column.dart';
 
 class FilesetColumnBuilder extends ColumnBuilder {
   FilesetColumnBuilder(String name) : super(name, 'fileset', 'TEXT');
