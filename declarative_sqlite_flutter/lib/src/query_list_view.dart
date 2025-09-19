@@ -23,14 +23,18 @@ class _MockWorkOrder implements IWorkOrder {
 }
 
 class QueryListView<T> extends StatelessWidget {
+  final DeclarativeDatabase? database;
   final void Function(QueryBuilder query) query;
+  final T Function(Map<String, Object?>) mapper;
   final Widget Function(BuildContext context) loadingBuilder;
   final Widget Function(BuildContext context, Object error) errorBuilder;
   final Widget Function(BuildContext context, T record) itemBuilder;
 
   const QueryListView({
     super.key,
+    this.database,
     required this.query,
+    required this.mapper,
     required this.loadingBuilder,
     required this.errorBuilder,
     required this.itemBuilder,
@@ -38,19 +42,40 @@ class QueryListView<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // For now, returning a placeholder.
-    // In the future, this will execute the query and build the list.
-    if (T == IWorkOrder) {
-      final items = [
-        _MockWorkOrder('1', 'customer-1'),
-        _MockWorkOrder('2', 'customer-2'),
-      ];
-      return ListView.builder(
-        itemCount: items.length,
-        itemBuilder: (context, index) =>
-            itemBuilder(context, items[index] as T),
-      );
+    // If no database is provided, fall back to mock data for backward compatibility
+    if (database == null) {
+      if (T == IWorkOrder) {
+        final items = [
+          _MockWorkOrder('1', 'customer-1'),
+          _MockWorkOrder('2', 'customer-2'),
+        ];
+        return ListView.builder(
+          itemCount: items.length,
+          itemBuilder: (context, index) =>
+              itemBuilder(context, items[index] as T),
+        );
+      }
+      return loadingBuilder(context);
     }
-    return loadingBuilder(context);
+
+    // Use streaming query functionality
+    return StreamBuilder<List<T>>(
+      stream: database!.stream<T>(query, mapper),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return errorBuilder(context, snapshot.error!);
+        }
+
+        if (!snapshot.hasData) {
+          return loadingBuilder(context);
+        }
+
+        final items = snapshot.data!;
+        return ListView.builder(
+          itemCount: items.length,
+          itemBuilder: (context, index) => itemBuilder(context, items[index]),
+        );
+      },
+    );
   }
 }
