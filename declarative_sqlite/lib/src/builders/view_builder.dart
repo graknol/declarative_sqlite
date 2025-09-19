@@ -67,27 +67,31 @@ class ViewBuilder {
     return this;
   }
 
-  ViewBuilder innerJoin(String table, String onCondition, [String? alias]) {
+  ViewBuilder innerJoin(String table, dynamic onCondition, [String? alias]) {
     final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    _definition.write(' INNER JOIN $tableWithAlias ON $onCondition');
+    final conditionSql = _buildJoinCondition(onCondition);
+    _definition.write(' INNER JOIN $tableWithAlias ON $conditionSql');
     return this;
   }
 
-  ViewBuilder leftJoin(String table, String onCondition, [String? alias]) {
+  ViewBuilder leftJoin(String table, dynamic onCondition, [String? alias]) {
     final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    _definition.write(' LEFT JOIN $tableWithAlias ON $onCondition');
+    final conditionSql = _buildJoinCondition(onCondition);
+    _definition.write(' LEFT JOIN $tableWithAlias ON $conditionSql');
     return this;
   }
 
-  ViewBuilder rightJoin(String table, String onCondition, [String? alias]) {
+  ViewBuilder rightJoin(String table, dynamic onCondition, [String? alias]) {
     final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    _definition.write(' RIGHT JOIN $tableWithAlias ON $onCondition');
+    final conditionSql = _buildJoinCondition(onCondition);
+    _definition.write(' RIGHT JOIN $tableWithAlias ON $conditionSql');
     return this;
   }
 
-  ViewBuilder fullOuterJoin(String table, String onCondition, [String? alias]) {
+  ViewBuilder fullOuterJoin(String table, dynamic onCondition, [String? alias]) {
     final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    _definition.write(' FULL OUTER JOIN $tableWithAlias ON $onCondition');
+    final conditionSql = _buildJoinCondition(onCondition);
+    _definition.write(' FULL OUTER JOIN $tableWithAlias ON $conditionSql');
     return this;
   }
 
@@ -116,6 +120,18 @@ class ViewBuilder {
   ViewBuilder orderBy(List<String> columns) {
     _definition.write(' ORDER BY ${columns.join(', ')}');
     return this;
+  }
+
+  /// Helper method to build join conditions
+  String _buildJoinCondition(dynamic onCondition) {
+    if (onCondition is String) {
+      return onCondition;
+    } else if (onCondition is WhereClause) {
+      final built = onCondition.build();
+      return built.sql;
+    } else {
+      throw ArgumentError('Join condition must be either a String or WhereClause');
+    }
   }
 
   View build() {

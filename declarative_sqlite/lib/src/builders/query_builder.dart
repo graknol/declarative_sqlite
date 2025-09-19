@@ -7,6 +7,7 @@ class QueryBuilder {
   final List<String> _orderBy = [];
   final List<String> _groupBy = [];
   final List<String> _joins = [];
+  final List<Object?> _joinParameters = [];
   String? _having;
 
   QueryBuilder select(String column, [String? alias]) {
@@ -52,27 +53,31 @@ class QueryBuilder {
     return this;
   }
 
-  QueryBuilder innerJoin(String table, String onCondition, [String? alias]) {
+  QueryBuilder innerJoin(String table, dynamic onCondition, [String? alias]) {
     final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    _joins.add('INNER JOIN $tableWithAlias ON $onCondition');
+    final conditionSql = _buildJoinCondition(onCondition);
+    _joins.add('INNER JOIN $tableWithAlias ON $conditionSql');
     return this;
   }
 
-  QueryBuilder leftJoin(String table, String onCondition, [String? alias]) {
+  QueryBuilder leftJoin(String table, dynamic onCondition, [String? alias]) {
     final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    _joins.add('LEFT JOIN $tableWithAlias ON $onCondition');
+    final conditionSql = _buildJoinCondition(onCondition);
+    _joins.add('LEFT JOIN $tableWithAlias ON $conditionSql');
     return this;
   }
 
-  QueryBuilder rightJoin(String table, String onCondition, [String? alias]) {
+  QueryBuilder rightJoin(String table, dynamic onCondition, [String? alias]) {
     final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    _joins.add('RIGHT JOIN $tableWithAlias ON $onCondition');
+    final conditionSql = _buildJoinCondition(onCondition);
+    _joins.add('RIGHT JOIN $tableWithAlias ON $conditionSql');
     return this;
   }
 
-  QueryBuilder fullOuterJoin(String table, String onCondition, [String? alias]) {
+  QueryBuilder fullOuterJoin(String table, dynamic onCondition, [String? alias]) {
     final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    _joins.add('FULL OUTER JOIN $tableWithAlias ON $onCondition');
+    final conditionSql = _buildJoinCondition(onCondition);
+    _joins.add('FULL OUTER JOIN $tableWithAlias ON $conditionSql');
     return this;
   }
 
@@ -92,6 +97,19 @@ class QueryBuilder {
     return this;
   }
 
+  /// Helper method to build join conditions
+  String _buildJoinCondition(dynamic onCondition) {
+    if (onCondition is String) {
+      return onCondition;
+    } else if (onCondition is WhereClause) {
+      final built = onCondition.build();
+      _joinParameters.addAll(built.parameters);
+      return built.sql;
+    } else {
+      throw ArgumentError('Join condition must be either a String or WhereClause');
+    }
+  }
+
   (String, List<Object?>) build() {
     if (_from == null) {
       throw StateError('A "from" clause is required to build a query.');
@@ -105,6 +123,7 @@ class QueryBuilder {
     // Add JOINs
     if (_joins.isNotEmpty) {
       sql += ' ${_joins.join(' ')}';
+      parameters.addAll(_joinParameters);
     }
 
     if (_where != null) {

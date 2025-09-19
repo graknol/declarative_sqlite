@@ -112,6 +112,40 @@ void main() {
       expect(view.definition, contains('LEFT JOIN posts AS p ON u.id = p.user_id'));
       expect(view.definition, contains('RIGHT JOIN comments AS c ON p.id = c.post_id'));
     });
+
+    test('can build a view with complex JOIN conditions using WhereClause', () {
+      final viewBuilder = ViewBuilder('complex_join_view');
+      viewBuilder
+          .select('u.name')
+          .select('p.title')
+          .from('users', 'u')
+          .leftJoin('posts', and([
+            col('u.id').eq(col('p.user_id')),
+            col('p.published').eq(1),
+            col('p.created_at').gt('2024-01-01')
+          ]), 'p')
+          .where(col('u.active').eq(1));
+
+      final view = viewBuilder.build();
+      expect(view.definition, contains('LEFT JOIN posts AS p ON (u.id = p.user_id AND p.published = ? AND p.created_at > ?)'));
+      expect(view.definition, contains('WHERE u.active = ?'));
+    });
+
+    test('can build a view with OR conditions in JOIN', () {
+      final viewBuilder = ViewBuilder('flexible_join_view');
+      viewBuilder
+          .select('u.name')
+          .select('p.title')
+          .from('users', 'u')
+          .innerJoin('posts', or([
+            col('u.id').eq(col('p.user_id')),
+            col('u.id').eq(col('p.author_id'))
+          ]), 'p')
+          .where(col('u.active').eq(1));
+
+      final view = viewBuilder.build();
+      expect(view.definition, contains('INNER JOIN posts AS p ON (u.id = p.user_id OR u.id = p.author_id)'));
+    });
   });
 
   group('QueryBuilder enhancements', () {
@@ -157,6 +191,45 @@ void main() {
           .build();
 
       expect(sql, contains('(SELECT COUNT(*) FROM posts WHERE posts.user_id = users.id) AS post_count'));
+    });
+
+    test('can build query with complex JOIN conditions using WhereClause', () {
+      final builder = QueryBuilder();
+      final (sql, params) = builder
+          .select('u.name')
+          .select('p.title')
+          .from('users', 'u')
+          .leftJoin('posts', and([
+            col('u.id').eq(col('p.user_id')),
+            col('p.published').eq(1),
+            col('p.created_at').gt('2024-01-01')
+          ]), 'p')
+          .where(col('u.active').eq(1))
+          .build();
+
+      expect(sql, contains('LEFT JOIN posts AS p ON (u.id = p.user_id AND p.published = ? AND p.created_at > ?)'));
+      expect(sql, contains('WHERE u.active = ?'));
+      expect(params, equals([1, '2024-01-01', 1]));
+    });
+
+    test('can build query with mixed join condition types', () {
+      final builder = QueryBuilder();
+      final (sql, params) = builder
+          .select('u.name')
+          .select('p.title')
+          .select('c.content')
+          .from('users', 'u')
+          .leftJoin('posts', 'u.id = p.user_id', 'p')  // String condition
+          .innerJoin('comments', and([                  // WhereClause condition
+            col('p.id').eq(col('c.post_id')),
+            col('c.approved').eq(1)
+          ]), 'c')
+          .where(col('u.active').eq(1))
+          .build();
+
+      expect(sql, contains('LEFT JOIN posts AS p ON u.id = p.user_id'));
+      expect(sql, contains('INNER JOIN comments AS c ON (p.id = c.post_id AND c.approved = ?)'));
+      expect(params, equals([1, 1]));
     });
   });
 }
