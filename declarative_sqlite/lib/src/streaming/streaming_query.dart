@@ -39,7 +39,9 @@ class StreamingQuery<T> {
     required DeclarativeDatabase database,
     required T Function(Map<String, Object?>) mapper,
   }) {
-    final dependencies = QueryDependencyAnalyzer.analyze(builder);
+    // Use schema-aware dependency analysis
+    final analyzer = QueryDependencyAnalyzer(database.schema);
+    final dependencies = analyzer.analyze(builder);
     return StreamingQuery._(
       id: id,
       builder: builder,

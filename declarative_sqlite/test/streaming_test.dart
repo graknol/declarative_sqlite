@@ -42,20 +42,22 @@ void main() {
   });
 
   group('QueryDependencyAnalyzer', () {
-    test('analyzes simple SELECT query dependencies', () {
+    test('analyzes simple SELECT query dependencies using schema', () {
+      final analyzer = QueryDependencyAnalyzer(getSchema());
       final builder = QueryBuilder().from('users');
-      final dependencies = QueryDependencyAnalyzer.analyze(builder);
+      final dependencies = analyzer.analyze(builder);
       
       expect(dependencies.tables, contains('users'));
       expect(dependencies.usesWildcard, isTrue);
     });
 
-    test('analyzes query with specific columns', () {
+    test('analyzes query with specific columns using schema validation', () {
+      final analyzer = QueryDependencyAnalyzer(getSchema());
       final builder = QueryBuilder()
           .select('id')
           .select('name')
           .from('users');
-      final dependencies = QueryDependencyAnalyzer.analyze(builder);
+      final dependencies = analyzer.analyze(builder);
       
       expect(dependencies.tables, contains('users'));
       expect(dependencies.columns, contains('users.id'));
@@ -63,28 +65,69 @@ void main() {
       expect(dependencies.usesWildcard, isFalse);
     });
 
-    test('analyzes query with JOINs', () {
+    test('analyzes query with JOINs using schema metadata', () {
+      final analyzer = QueryDependencyAnalyzer(getSchema());
       final builder = QueryBuilder()
           .select('u.name')
           .select('p.title')
           .from('users', 'u')
           .leftJoin('posts', 'u.id = p.user_id', 'p');
-      final dependencies = QueryDependencyAnalyzer.analyze(builder);
+      final dependencies = analyzer.analyze(builder);
       
       expect(dependencies.tables, containsAll(['users', 'posts']));
       expect(dependencies.columns, contains('u.name'));
       expect(dependencies.columns, contains('p.title'));
     });
 
-    test('analyzes query with WHERE clause', () {
+    test('validates columns against schema', () {
+      final analyzer = QueryDependencyAnalyzer(getSchema());
       final builder = QueryBuilder()
-          .from('users')
-          .where(col('age').gt(18));
-      final dependencies = QueryDependencyAnalyzer.analyze(builder);
+          .select('id')
+          .select('invalid_column')  // This column doesn't exist in schema
+          .from('users');
+      final dependencies = analyzer.analyze(builder);
       
       expect(dependencies.tables, contains('users'));
-      expect(dependencies.usesWildcard, isTrue);
-      // Note: WHERE clause dependency extraction is basic in our implementation
+      expect(dependencies.columns, contains('users.id'));
+      // Invalid column should not be included in dependencies
+      expect(dependencies.columns, isNot(contains('users.invalid_column')));
+    });
+
+    test('handles system columns correctly', () {
+      final analyzer = QueryDependencyAnalyzer(getSchema());
+      final builder = QueryBuilder()
+          .select('system_id')
+          .select('system_version')
+          .from('users');
+      final dependencies = analyzer.analyze(builder);
+      
+      expect(dependencies.tables, contains('users'));
+      // System columns should be recognized as valid
+      expect(dependencies.columns, contains('users.system_id'));
+      expect(dependencies.columns, contains('users.system_version'));
+    });
+
+    test('analyzes view dependencies recursively', () {
+      // Create a schema with a view that depends on users table
+      final schemaBuilder = SchemaBuilder();
+      schemaBuilder.table('users', (table) {
+        table.integer('id').notNull(0);
+        table.text('name').notNull('');
+        table.text('status').notNull('active');
+        table.key(['id']).primary();
+      });
+      schemaBuilder.view('active_users', (view) {
+        view.select('*').from('users');
+      });
+      final schema = schemaBuilder.build();
+      
+      final analyzer = QueryDependencyAnalyzer(schema);
+      final builder = QueryBuilder().from('active_users');
+      final dependencies = analyzer.analyze(builder);
+      
+      expect(dependencies.tables, contains('active_users'));
+      // Should also detect the underlying users table dependency  
+      expect(dependencies.tables, contains('users'));
     });
   });
 
