@@ -48,61 +48,76 @@ class QueryDependencyAnalyzer {
     final columns = <String>{};
     bool usesWildcard = false;
 
-    // Normalize SQL for parsing (convert to lowercase, remove extra whitespace)
-    final normalizedSQL = sql.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+    try {
+      // Normalize SQL for parsing (convert to lowercase, remove extra whitespace)
+      final normalizedSQL = sql.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
 
-    // Extract tables from FROM clauses
-    final fromMatches = RegExp(r'from\s+(\w+)(?:\s+as\s+\w+)?').allMatches(normalizedSQL);
-    for (final match in fromMatches) {
-      tables.add(match.group(1)!);
-    }
-
-    // Extract tables from JOIN clauses
-    final joinMatches = RegExp(r'(?:inner\s+|left\s+|right\s+|cross\s+)?join\s+(\w+)(?:\s+as\s+\w+)?').allMatches(normalizedSQL);
-    for (final match in joinMatches) {
-      tables.add(match.group(1)!);
-    }
-
-    // Check for wildcard select
-    if (normalizedSQL.contains('select *')) {
-      usesWildcard = true;
-    } else {
-      // Extract specific columns from SELECT clause
-      final selectMatch = RegExp(r'select\s+(.*?)\s+from').firstMatch(normalizedSQL);
-      if (selectMatch != null) {
-        final selectClause = selectMatch.group(1)!;
-        final columnMatches = RegExp(r'(\w+)\.(\w+)').allMatches(selectClause);
-        for (final match in columnMatches) {
-          final table = match.group(1)!;
-          final column = match.group(2)!;
-          tables.add(table);
-          columns.add('$table.$column');
+      // Extract tables from FROM clauses
+      final fromMatches = RegExp(r'from\s+(\w+)(?:\s+as\s+\w+)?').allMatches(normalizedSQL);
+      for (final match in fromMatches) {
+        final tableName = match.group(1)!;
+        if (tableName.isNotEmpty && !_isSQLKeyword(tableName)) {
+          tables.add(tableName);
         }
+      }
 
-        // Also extract unqualified column names and assume they belong to the main table
-        final unqualifiedMatches = RegExp(r'\b(\w+)(?!\s*\()').allMatches(selectClause);
-        final mainTable = tables.isNotEmpty ? tables.first : '';
-        for (final match in unqualifiedMatches) {
-          final column = match.group(1)!;
-          // Skip SQL keywords and aliases
-          if (!_isSQLKeyword(column) && mainTable.isNotEmpty) {
-            columns.add('$mainTable.$column');
+      // Extract tables from JOIN clauses
+      final joinMatches = RegExp(r'(?:inner\s+|left\s+|right\s+|cross\s+)?join\s+(\w+)(?:\s+as\s+\w+)?').allMatches(normalizedSQL);
+      for (final match in joinMatches) {
+        final tableName = match.group(1)!;
+        if (tableName.isNotEmpty && !_isSQLKeyword(tableName)) {
+          tables.add(tableName);
+        }
+      }
+
+      // Check for wildcard select
+      if (normalizedSQL.contains('select *')) {
+        usesWildcard = true;
+      } else {
+        // Extract specific columns from SELECT clause
+        final selectMatch = RegExp(r'select\s+(.*?)\s+from').firstMatch(normalizedSQL);
+        if (selectMatch != null) {
+          final selectClause = selectMatch.group(1)!;
+          final columnMatches = RegExp(r'(\w+)\.(\w+)').allMatches(selectClause);
+          for (final match in columnMatches) {
+            final table = match.group(1)!;
+            final column = match.group(2)!;
+            if (!_isSQLKeyword(table) && !_isSQLKeyword(column)) {
+              tables.add(table);
+              columns.add('$table.$column');
+            }
+          }
+
+          // Also extract unqualified column names and assume they belong to the main table
+          final unqualifiedMatches = RegExp(r'\b(\w+)(?!\s*\()').allMatches(selectClause);
+          final mainTable = tables.isNotEmpty ? tables.first : '';
+          for (final match in unqualifiedMatches) {
+            final column = match.group(1)!;
+            // Skip SQL keywords, function names, and aliases
+            if (!_isSQLKeyword(column) && mainTable.isNotEmpty && !column.contains('.')) {
+              columns.add('$mainTable.$column');
+            }
           }
         }
       }
-    }
 
-    // Extract tables and columns from WHERE clauses
-    final whereMatch = RegExp(r'where\s+(.*?)(?:\s+(?:group\s+by|order\s+by|limit)|$)').firstMatch(normalizedSQL);
-    if (whereMatch != null) {
-      final whereClause = whereMatch.group(1)!;
-      final whereColumnMatches = RegExp(r'(\w+)\.(\w+)').allMatches(whereClause);
-      for (final match in whereColumnMatches) {
-        final table = match.group(1)!;
-        final column = match.group(2)!;
-        tables.add(table);
-        columns.add('$table.$column');
+      // Extract tables and columns from WHERE clauses
+      final whereMatch = RegExp(r'where\s+(.*?)(?:\s+(?:group\s+by|order\s+by|limit)|$)').firstMatch(normalizedSQL);
+      if (whereMatch != null) {
+        final whereClause = whereMatch.group(1)!;
+        final whereColumnMatches = RegExp(r'(\w+)\.(\w+)').allMatches(whereClause);
+        for (final match in whereColumnMatches) {
+          final table = match.group(1)!;
+          final column = match.group(2)!;
+          if (!_isSQLKeyword(table) && !_isSQLKeyword(column)) {
+            tables.add(table);
+            columns.add('$table.$column');
+          }
+        }
       }
+    } catch (e) {
+      // If parsing fails, return safe defaults
+      // This ensures the system continues to work even with complex/malformed SQL
     }
 
     return QueryDependencies(
