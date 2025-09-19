@@ -5,6 +5,8 @@
 library declarative_sqlite;
 
 export 'src/builders/column_builder.dart';
+export 'src/builders/date_column_builder.dart';
+export 'src/builders/fileset_column_builder.dart';
 export 'src/builders/guid_column_builder.dart';
 export 'src/builders/integer_column_builder.dart';
 export 'src/builders/key_builder.dart';
