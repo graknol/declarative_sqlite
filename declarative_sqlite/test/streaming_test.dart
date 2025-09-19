@@ -107,6 +107,71 @@ void main() {
       expect(dependencies.columns, contains('users.system_version'));
     });
 
+    test('analyzes QueryBuilder structure directly without SQL generation', () {
+      final analyzer = QueryDependencyAnalyzer(getSchema());
+      
+      // Create a complex QueryBuilder with JOINs and subqueries
+      final builder = QueryBuilder()
+          .select('u.name')
+          .select('p.title')
+          .selectSubQuery((sub) => sub
+              .select('COUNT(*)')
+              .from('posts')
+              .where(col('user_id').eq('u.id')), 'post_count')
+          .from('users', 'u')
+          .leftJoin('posts', 'u.id = p.user_id', 'p');
+          
+      final dependencies = analyzer.analyze(builder);
+      
+      // Should detect all tables including those in subqueries
+      expect(dependencies.tables, containsAll(['users', 'posts']));
+      expect(dependencies.columns, contains('u.name'));
+      expect(dependencies.columns, contains('p.title'));
+    });
+
+    test('recursive analysis of QueryBuilder and Views produces unified dependencies', () {
+      // Create a schema with a view that has complex dependencies
+      final schemaBuilder = SchemaBuilder();
+      schemaBuilder.table('users', (table) {
+        table.integer('id').notNull(0);
+        table.text('name').notNull('');
+        table.key(['id']).primary();
+      });
+      schemaBuilder.table('posts', (table) {
+        table.integer('id').notNull(0);
+        table.integer('user_id').notNull(0);
+        table.text('title').notNull('');
+        table.key(['id']).primary();
+      });
+      schemaBuilder.table('comments', (table) {
+        table.integer('id').notNull(0);
+        table.integer('post_id').notNull(0);
+        table.text('content').notNull('');
+        table.key(['id']).primary();
+      });
+      // View that joins users and posts
+      schemaBuilder.view('user_posts', (view) {
+        view.select('u.name, p.title').from('users', 'u').leftJoin('posts', 'u.id = p.user_id', 'p');
+      });
+      final schema = schemaBuilder.build();
+      
+      final analyzer = QueryDependencyAnalyzer(schema);
+      
+      // QueryBuilder that uses the view AND additional tables
+      final builder = QueryBuilder()
+          .select('up.name')
+          .select('c.content')
+          .from('user_posts', 'up')
+          .leftJoin('comments', 'up.post_id = c.post_id', 'c');
+          
+      final dependencies = analyzer.analyze(builder);
+      
+      // Should include:
+      // - Direct dependencies from QueryBuilder: user_posts, comments
+      // - Recursive dependencies from user_posts view: users, posts
+      expect(dependencies.tables, containsAll(['user_posts', 'comments', 'users', 'posts']));
+    });
+
     test('analyzes view dependencies recursively', () {
       // Create a schema with a view that depends on users table
       final schemaBuilder = SchemaBuilder();

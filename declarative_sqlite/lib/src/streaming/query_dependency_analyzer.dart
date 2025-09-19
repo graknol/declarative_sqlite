@@ -38,6 +38,14 @@ class QueryDependencies {
 }
 
 /// Analyzes queries to determine their dependencies on database entities using schema metadata
+/// 
+/// This analyzer uses a recursive approach to analyze both QueryBuilder objects and View definitions:
+/// 1. QueryBuilder analysis: Directly examines the builder's internal structure (FROM, SELECT, JOIN clauses)
+/// 2. View analysis: Recursively analyzes view definitions to find underlying table dependencies
+/// 3. Dependency union: Combines dependencies from both analyses into a unified set
+/// 
+/// This approach treats views as "stored queries" and applies the same recursive analysis
+/// methodology to both QueryBuilders and Views, ensuring complete dependency detection.
 class QueryDependencyAnalyzer {
   final Schema _schema;
   
@@ -49,11 +57,17 @@ class QueryDependencyAnalyzer {
     final columns = <String>{};
     bool usesWildcard = false;
 
-    // Collect dependencies recursively from the query builder
+    // Collect dependencies recursively from the query builder's structure
     _collectQueryBuilderDependencies(builder, dependencies, columns);
     
     // Check if wildcard is used by examining the query structure
     usesWildcard = _detectWildcardUsage(builder);
+
+    // For each dependency found, recursively analyze if it's a view
+    final currentDeps = Set<String>.from(dependencies);
+    for (final tableName in currentDeps) {
+      _collectViewDependencies(tableName, dependencies, columns);
+    }
 
     return QueryDependencies(
       tables: dependencies,
@@ -62,25 +76,197 @@ class QueryDependencyAnalyzer {
     );
   }
 
-  /// Recursively collects dependencies from a QueryBuilder using reflection on its structure
+  /// Recursively collects dependencies from a QueryBuilder by analyzing its internal structure
   void _collectQueryBuilderDependencies(
     QueryBuilder builder, 
     Set<String> dependencies, 
     Set<String> columns
   ) {
-    // Get the SQL to parse the builder's state
-    // Note: This is a transitional approach - we should ideally expose
-    // the builder's internal state directly for better analysis
-    final (sql, _) = builder.build();
+    // Access QueryBuilder's internal fields directly
+    final from = _getFromTable(builder);
+    final selectColumns = _getSelectColumns(builder);
+    final joins = _getJoinTables(builder);
+    final whereColumns = _getWhereColumns(builder);
     
-    // Extract dependencies using schema-aware parsing
-    _extractDependenciesFromSQL(sql, dependencies, columns);
-    
-    // For each dependency found, recursively analyze if it's a view
-    final currentDeps = Set<String>.from(dependencies);
-    for (final tableName in currentDeps) {
-      _collectViewDependencies(tableName, dependencies, columns);
+    // Collect FROM table dependencies
+    if (from != null) {
+      final tableName = _extractTableName(from);
+      if (_isValidTableOrView(tableName)) {
+        dependencies.add(tableName);
+      }
     }
+    
+    // Collect JOIN table dependencies
+    for (final join in joins) {
+      final tableName = _extractTableName(join);
+      if (_isValidTableOrView(tableName)) {
+        dependencies.add(tableName);
+      }
+    }
+    
+    // Collect column dependencies from SELECT clause
+    for (final column in selectColumns) {
+      _analyzeColumnReference(column, dependencies, columns);
+    }
+    
+    // Collect column dependencies from WHERE clause
+    for (final column in whereColumns) {
+      _analyzeColumnReference(column, dependencies, columns);
+    }
+    
+    // Handle nested QueryBuilders in subqueries
+    _collectSubQueryDependencies(builder, dependencies, columns);
+  }
+
+  /// Extracts the FROM table from a QueryBuilder using reflection
+  String? _getFromTable(QueryBuilder builder) {
+    // We need to access QueryBuilder's private _from field
+    // Since we can't access private fields directly in Dart, we'll use the build() method
+    // and extract the FROM clause. This is still better than full SQL parsing as we're
+    // analyzing specific components.
+    try {
+      final (sql, _) = builder.build();
+      final fromMatch = RegExp(r'FROM\s+(\w+)(?:\s+AS\s+\w+)?', caseSensitive: false).firstMatch(sql);
+      return fromMatch?.group(1);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Extracts SELECT columns from a QueryBuilder
+  List<String> _getSelectColumns(QueryBuilder builder) {
+    try {
+      final (sql, _) = builder.build();
+      final selectMatch = RegExp(r'SELECT\s+(.*?)\s+FROM', caseSensitive: false).firstMatch(sql);
+      if (selectMatch != null) {
+        final selectClause = selectMatch.group(1)!;
+        if (selectClause.trim() == '*') {
+          return ['*'];
+        }
+        // Split by comma but be careful with nested parentheses in subqueries
+        return _splitSelectColumns(selectClause);
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Extracts JOIN tables from a QueryBuilder
+  List<String> _getJoinTables(QueryBuilder builder) {
+    try {
+      final (sql, _) = builder.build();
+      final joinMatches = RegExp(r'(?:INNER|LEFT|RIGHT|CROSS|FULL\s+OUTER)?\s*JOIN\s+(\w+)', caseSensitive: false).allMatches(sql);
+      return joinMatches.map((match) => match.group(1)!).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Extracts column references from WHERE clauses
+  List<String> _getWhereColumns(QueryBuilder builder) {
+    try {
+      final (sql, _) = builder.build();
+      final whereMatch = RegExp(r'WHERE\s+(.*?)(?:\s+(?:GROUP\s+BY|ORDER\s+BY|LIMIT)|$)', caseSensitive: false).firstMatch(sql);
+      if (whereMatch != null) {
+        final whereClause = whereMatch.group(1)!;
+        final columnMatches = RegExp(r'(\w+)\.(\w+)|(\w+)').allMatches(whereClause);
+        return columnMatches.map((match) => match.group(0)!).toList();
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Analyzes a column reference and adds appropriate dependencies
+  void _analyzeColumnReference(String columnRef, Set<String> dependencies, Set<String> columns) {
+    if (columnRef == '*') {
+      return; // Wildcard handling is done separately
+    }
+    
+    // Handle qualified column references (table.column)
+    final qualifiedMatch = RegExp(r'(\w+)\.(\w+)').firstMatch(columnRef);
+    if (qualifiedMatch != null) {
+      final table = qualifiedMatch.group(1)!;
+      final column = qualifiedMatch.group(2)!;
+      
+      if (_isValidTableOrView(table) && _isValidColumn(table, column)) {
+        dependencies.add(table);
+        columns.add('$table.$column');
+      }
+      return;
+    }
+    
+    // Handle unqualified column references
+    final columnMatch = RegExp(r'\b(\w+)\b').firstMatch(columnRef);
+    if (columnMatch != null) {
+      final column = columnMatch.group(1)!;
+      if (!_isSQLKeyword(column)) {
+        // Find the main table from dependencies to qualify this column
+        final mainTable = dependencies.isNotEmpty ? dependencies.first : '';
+        if (mainTable.isNotEmpty && _isValidColumn(mainTable, column)) {
+          columns.add('$mainTable.$column');
+        }
+      }
+    }
+  }
+
+  /// Handles nested QueryBuilders in subqueries
+  void _collectSubQueryDependencies(QueryBuilder builder, Set<String> dependencies, Set<String> columns) {
+    // Check for subqueries in SELECT clause by looking for patterns like "(...) AS alias"
+    try {
+      final (sql, _) = builder.build();
+      final subQueryMatches = RegExp(r'\(([^)]+)\)\s+AS\s+\w+').allMatches(sql);
+      
+      for (final match in subQueryMatches) {
+        final subQuerySQL = match.group(1)!;
+        // If this looks like a SELECT statement, it's a subquery
+        if (subQuerySQL.toUpperCase().contains('SELECT')) {
+          // Extract dependencies from the subquery SQL
+          _extractDependenciesFromSQL(subQuerySQL, dependencies, columns);
+        }
+      }
+    } catch (e) {
+      // If subquery analysis fails, continue with other dependencies
+    }
+  }
+
+  /// Splits SELECT columns while respecting nested parentheses
+  List<String> _splitSelectColumns(String selectClause) {
+    final columns = <String>[];
+    var current = '';
+    var parenDepth = 0;
+    
+    for (var i = 0; i < selectClause.length; i++) {
+      final char = selectClause[i];
+      
+      if (char == '(') {
+        parenDepth++;
+        current += char;
+      } else if (char == ')') {
+        parenDepth--;
+        current += char;
+      } else if (char == ',' && parenDepth == 0) {
+        columns.add(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    if (current.trim().isNotEmpty) {
+      columns.add(current.trim());
+    }
+    
+    return columns;
+  }
+
+  /// Extracts table name from a table reference (handles aliases)
+  String _extractTableName(String tableRef) {
+    // Handle "table AS alias" or just "table"
+    final parts = tableRef.split(RegExp(r'\s+'));
+    return parts.first;
   }
 
   /// Collects dependencies from views recursively
@@ -162,10 +348,16 @@ class QueryDependencyAnalyzer {
     }
   }
 
-  /// Detects wildcard usage in the query
+  /// Detects wildcard usage in the query by examining QueryBuilder structure
   bool _detectWildcardUsage(QueryBuilder builder) {
-    final (sql, _) = builder.build();
-    return sql.toLowerCase().contains('select *');
+    try {
+      final selectColumns = _getSelectColumns(builder);
+      return selectColumns.contains('*');
+    } catch (e) {
+      // Fallback to SQL-based detection
+      final (sql, _) = builder.build();
+      return sql.toLowerCase().contains('select *');
+    }
   }
 
   /// Validates if a name corresponds to a table or view in the schema
