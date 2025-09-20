@@ -1,647 +1,566 @@
----
-sidebar_position: 3
----
-
 # Database Operations
 
-Master the core database operations in Declarative SQLite, from basic CRUD operations to advanced querying and streaming.
+Learn how to perform CRUD operations, queries, and transactions with Declarative SQLite.
 
-## Database Initialization
+## Database Instance
 
-### Basic Initialization
+The `DeclarativeDatabase` class is your main interface for database operations:
 
 ```dart
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
-final database = await DeclarativeDatabase.init(
+final database = DeclarativeDatabase(
+  schema: buildSchema,
   path: 'my_app.db',
-  schema: mySchema,
 );
 ```
 
-### Advanced Configuration
+## Basic CRUD Operations
 
-```dart
-final database = await DeclarativeDatabase.init(
-  path: 'my_app.db',
-  schema: mySchema,
-  options: DatabaseOptions(
-    logQueries: true,              // Log all SQL queries
-    logMigrations: true,           // Log migration steps
-    enableForeignKeys: true,       // Enable foreign key constraints
-    busyTimeout: Duration(seconds: 30),
-    pageSize: 4096,               // SQLite page size
-  ),
-  migrationOptions: MigrationOptions(
-    validateSchema: true,          // Validate before applying
-    dryRun: false,                // Set true to preview changes
-    onMigrationStart: (from, to) => print('Migrating from v$from to v$to'),
-    onMigrationComplete: (from, to) => print('Migration complete'),
-  ),
-);
-```
-
-## CRUD Operations
-
-### Insert Operations
-
-#### Single Insert
+### Insert Data
 
 ```dart
 // Insert a single record
-final userId = await database.insert('users', {
-  'username': 'johndoe',
+await database.insert('users', {
+  'id': 'user-1',
+  'name': 'John Doe',
   'email': 'john@example.com',
-  'full_name': 'John Doe',
-  'created_at': DateTime.now(),
+  'age': 30,
+  'created_at': DateTime.now().toIso8601String(),
 });
 
-print('Created user with ID: $userId');
-```
-
-#### Batch Insert
-
-```dart
 // Insert multiple records efficiently
-final users = [
-  {'username': 'alice', 'email': 'alice@example.com'},
-  {'username': 'bob', 'email': 'bob@example.com'},
-  {'username': 'charlie', 'email': 'charlie@example.com'},
-];
-
-await database.batch((batch) {
-  for (final user in users) {
-    batch.insert('users', user);
-  }
-});
+await database.insertAll('users', [
+  {
+    'id': 'user-2',
+    'name': 'Jane Smith',
+    'email': 'jane@example.com',
+    'age': 25,
+    'created_at': DateTime.now().toIso8601String(),
+  },
+  {
+    'id': 'user-3',
+    'name': 'Bob Johnson',
+    'email': 'bob@example.com',
+    'age': 35,
+    'created_at': DateTime.now().toIso8601String(),
+  },
+]);
 ```
 
-#### Insert with Generated Data Classes
+### Query Data
 
 ```dart
-// When using code generation
-final user = UsersData(
-  username: 'johndoe',
-  email: 'john@example.com',
-  fullName: 'John Doe',
-  createdAt: DateTime.now(),
-);
-
-final userId = await database.insertData(user);
-```
-
-### Query Operations
-
-#### Basic Queries
-
-```dart
-// Get all records
+// Query all records
 final allUsers = await database.query('users');
 
-// Query with conditions
-final activeUsers = await database.query(
+// Query with WHERE clause
+final adultUsers = await database.query(
   'users',
-  where: 'is_active = ?',
-  whereArgs: [true],
+  where: 'age >= ?',
+  whereArgs: [18],
+);
+
+// Query with ordering
+final usersByName = await database.query(
+  'users',
+  orderBy: 'name ASC',
+);
+
+// Query with limits
+final recentUsers = await database.query(
+  'users',
   orderBy: 'created_at DESC',
   limit: 10,
 );
 
-// Query single record
-final user = await database.queryFirst(
+// Query specific columns
+final userNames = await database.query(
   'users',
+  columns: ['id', 'name'],
+);
+
+// Complex query with multiple conditions
+final filteredUsers = await database.query(
+  'users',
+  where: 'age BETWEEN ? AND ? AND email LIKE ?',
+  whereArgs: [25, 40, '%@example.com'],
+  orderBy: 'name ASC',
+  limit: 5,
+  offset: 10,
+);
+```
+
+### Update Data
+
+```dart
+// Update single record
+await database.update(
+  'users',
+  {'age': 31},
   where: 'id = ?',
-  whereArgs: [userId],
+  whereArgs: ['user-1'],
 );
-```
 
-#### Advanced Queries
-
-```dart
-// Complex WHERE conditions
-final recentActiveUsers = await database.query(
+// Update multiple records
+await database.update(
   'users',
-  where: 'is_active = ? AND created_at > ? AND last_login IS NOT NULL',
-  whereArgs: [true, DateTime.now().subtract(Duration(days: 30))],
-  orderBy: 'last_login DESC',
+  {'updated_at': DateTime.now().toIso8601String()},
+  where: 'age < ?',
+  whereArgs: [18],
 );
 
-// Query with joins
-final postsWithAuthors = await database.rawQuery('''
-  SELECT 
-    p.id,
-    p.title,
-    p.content,
-    p.created_at,
-    u.username,
-    u.full_name
-  FROM posts p
-  INNER JOIN users u ON p.user_id = u.id
-  WHERE p.published = 1
-  ORDER BY p.created_at DESC
-  LIMIT 20
-''');
-```
-
-#### Query Builder Pattern
-
-```dart
-// Using the fluent query builder
-final posts = await database
-  .from('posts')
-  .select(['id', 'title', 'created_at'])
-  .where('published', equals: true)
-  .where('user_id', equals: userId)
-  .orderBy('created_at', descending: true)
-  .limit(10)
-  .get();
-
-// With joins
-final postsWithCommentCount = await database
-  .from('posts')
-  .select(['posts.*'])
-  .selectCount('comments.id', as: 'comment_count')
-  .leftJoin('comments', 'posts.id = comments.post_id')
-  .where('posts.published', equals: true)
-  .groupBy(['posts.id'])
-  .orderBy('posts.created_at', descending: true)
-  .get();
-```
-
-### Update Operations
-
-#### Simple Updates
-
-```dart
-// Update records with WHERE clause
+// Conditional update
 final updatedCount = await database.update(
   'users',
-  {'last_login': DateTime.now()},
+  {'status': 'verified'},
+  where: 'email IS NOT NULL AND status = ?',
+  whereArgs: ['pending'],
+);
+print('Updated $updatedCount users');
+```
+
+### Delete Data
+
+```dart
+// Delete single record
+await database.delete(
+  'users',
   where: 'id = ?',
-  whereArgs: [userId],
+  whereArgs: ['user-1'],
 );
 
-print('Updated $updatedCount records');
-```
-
-#### Conditional Updates
-
-```dart
-// Update multiple fields with complex conditions
-await database.update(
-  'posts',
-  {
-    'updated_at': DateTime.now(),
-    'view_count': 'view_count + 1',  // Use raw SQL for calculations
-  },
-  where: 'id = ? AND published = ?',
-  whereArgs: [postId, true],
+// Delete multiple records
+await database.delete(
+  'users',
+  where: 'age < ?',
+  whereArgs: [13],
 );
-```
 
-#### Batch Updates
+// Delete all records (use with caution!)
+await database.delete('users');
 
-```dart
-await database.batch((batch) {
-  // Update multiple posts
-  for (final postId in postIds) {
-    batch.update(
-      'posts',
-      {'updated_at': DateTime.now()},
-      where: 'id = ?',
-      whereArgs: [postId],
-    );
-  }
-});
-```
-
-### Delete Operations
-
-#### Simple Deletes
-
-```dart
-// Delete specific records
+// Get count of deleted records
 final deletedCount = await database.delete(
-  'posts',
-  where: 'id = ?',
-  whereArgs: [postId],
+  'users',
+  where: 'last_login < ?',
+  whereArgs: [DateTime.now().subtract(Duration(days: 365)).toIso8601String()],
 );
+print('Deleted $deletedCount inactive users');
 ```
 
-#### Soft Delete
+## Advanced Queries
+
+### Joins and Complex Queries
+
+For complex queries, use raw SQL with proper parameter binding:
 
 ```dart
-// Soft delete (mark as deleted instead of removing)
-await database.update(
-  'posts',
-  {'deleted_at': DateTime.now()},
-  where: 'id = ?',
-  whereArgs: [postId],
-);
+// Join queries
+final userPosts = await database.rawQuery('''
+  SELECT users.name, posts.title, posts.created_at
+  FROM users
+  JOIN posts ON users.id = posts.user_id
+  WHERE users.id = ?
+  ORDER BY posts.created_at DESC
+''', ['user-1']);
 
-// Query excluding soft-deleted records
-final activePosts = await database.query(
-  'posts',
-  where: 'deleted_at IS NULL',
-);
-```
-
-#### Cascade Deletes
-
-```dart
-// Delete with related records
-await database.transaction((txn) async {
-  // Delete comments first (to maintain referential integrity)
-  await txn.delete('comments', where: 'post_id = ?', whereArgs: [postId]);
-  
-  // Then delete the post
-  await txn.delete('posts', where: 'id = ?', whereArgs: [postId]);
-});
-```
-
-## Advanced Querying
-
-### Transactions
-
-```dart
-// Simple transaction
-await database.transaction((txn) async {
-  final userId = await txn.insert('users', userData);
-  await txn.insert('user_profiles', {'user_id': userId, ...profileData});
-});
-
-// Transaction with rollback handling
-try {
-  await database.transaction((txn) async {
-    await txn.delete('posts', where: 'user_id = ?', whereArgs: [userId]);
-    await txn.delete('users', where: 'id = ?', whereArgs: [userId]);
-  });
-} catch (e) {
-  print('Transaction failed: $e');
-  // Transaction is automatically rolled back
-}
-```
-
-### Raw SQL Queries
-
-```dart
-// Complex analytical queries
-final monthlyStats = await database.rawQuery('''
+// Aggregate queries
+final userStats = await database.rawQuery('''
   SELECT 
-    strftime('%Y-%m', created_at) as month,
-    COUNT(*) as post_count,
-    COUNT(DISTINCT user_id) as active_authors,
-    AVG(view_count) as avg_views
-  FROM posts 
-  WHERE published = 1 
-    AND created_at >= date('now', '-12 months')
-  GROUP BY strftime('%Y-%m', created_at)
-  ORDER BY month DESC
-''');
+    users.id,
+    users.name,
+    COUNT(posts.id) as post_count,
+    MAX(posts.created_at) as latest_post
+  FROM users
+  LEFT JOIN posts ON users.id = posts.user_id
+  GROUP BY users.id, users.name
+  HAVING post_count > ?
+''', [0]);
 
-// Full-text search (if FTS is enabled)
-final searchResults = await database.rawQuery('''
-  SELECT p.*, snippet(posts_fts) as snippet
-  FROM posts_fts
-  JOIN posts p ON posts_fts.rowid = p.id
-  WHERE posts_fts MATCH ?
-  ORDER BY rank
-''', ['flutter OR dart']);
+// Subqueries
+final activeUsers = await database.rawQuery('''
+  SELECT * FROM users
+  WHERE id IN (
+    SELECT DISTINCT user_id 
+    FROM posts 
+    WHERE created_at > ?
+  )
+''', [DateTime.now().subtract(Duration(days: 30)).toIso8601String()]);
 ```
 
-### Views and Complex Queries
+### Working with Views
+
+Query views just like tables:
 
 ```dart
-// Query views (defined in schema)
+// Assuming you have defined a view in your schema
 final publishedPosts = await database.query('published_posts');
 
-// Parameterized view queries
-final userPosts = await database.query(
-  'published_posts',
-  where: 'author_id = ?',
-  whereArgs: [userId],
+final postSummaries = await database.query(
+  'post_summaries',
+  where: 'author_name LIKE ?',
+  whereArgs: ['%John%'],
 );
 ```
 
-### Aggregations
+## Transactions
+
+Use transactions for atomic operations:
+
+### Basic Transactions
 
 ```dart
-// Count queries
-final userCount = await database.count('users');
-final activeUserCount = await database.count(
-  'users',
-  where: 'is_active = ?',
-  whereArgs: [true],
-);
+await database.transaction((txn) async {
+  // All operations in this block are atomic
+  await txn.insert('users', {
+    'id': 'user-4',
+    'name': 'Alice Brown',
+    'email': 'alice@example.com',
+    'age': 28,
+    'created_at': DateTime.now().toIso8601String(),
+  });
 
-// Sum, average, min, max
-final stats = await database.rawQuery('''
-  SELECT 
-    COUNT(*) as total_posts,
-    SUM(view_count) as total_views,
-    AVG(view_count) as avg_views,
-    MIN(created_at) as first_post,
-    MAX(created_at) as latest_post
-  FROM posts
-  WHERE published = 1
-''');
-```
+  await txn.insert('posts', {
+    'id': 'post-1',
+    'user_id': 'user-4',
+    'title': 'My First Post',
+    'content': 'Hello, world!',
+    'created_at': DateTime.now().toIso8601String(),
+  });
 
-## Streaming Queries
-
-### Real-time Data Streams
-
-```dart
-// Create a stream that updates when data changes
-final usersStream = database
-  .from('users')
-  .where('is_active', equals: true)
-  .stream();
-
-// Listen to changes
-usersStream.listen((users) {
-  print('Active users updated: ${users.length}');
-  // Update UI automatically
+  // If any operation fails, all changes are rolled back
 });
 ```
 
-### Filtered Streams
-
-```dart
-// Stream with complex filtering
-final recentPostsStream = database
-  .from('posts')
-  .where('published', equals: true)
-  .where('created_at', greaterThan: DateTime.now().subtract(Duration(days: 7)))
-  .orderBy('created_at', descending: true)
-  .stream();
-
-// Stream with joins
-final postsWithAuthorsStream = database
-  .fromView('published_posts')  // Use pre-defined view
-  .stream();
-```
-
-### Stream Subscriptions
-
-```dart
-late StreamSubscription subscription;
-
-void startListening() {
-  subscription = database
-    .from('notifications')
-    .where('user_id', equals: currentUserId)
-    .where('read', equals: false)
-    .stream()
-    .listen((notifications) {
-      updateNotificationBadge(notifications.length);
-    });
-}
-
-void stopListening() {
-  subscription.cancel();
-}
-```
-
-## Error Handling
-
-### Common Error Patterns
+### Error Handling in Transactions
 
 ```dart
 try {
-  await database.insert('users', userData);
-} on DatabaseException catch (e) {
-  if (e.isConstraintError()) {
-    // Handle constraint violations (unique, foreign key, etc.)
-    print('Constraint error: ${e.message}');
-  } else if (e.isNoSuchTableError()) {
-    // Handle missing table errors
-    print('Table does not exist: ${e.message}');
-  } else {
-    // Handle other database errors
-    print('Database error: ${e.message}');
-  }
-} catch (e) {
-  // Handle other errors
-  print('Unexpected error: $e');
-}
-```
-
-### Validation Errors
-
-```dart
-try {
-  await database.insert('users', {
-    'username': 'a',  // Too short
-    'email': 'invalid-email',  // Invalid format
-    'age': -5,  // Below minimum
+  await database.transaction((txn) async {
+    await txn.insert('orders', orderData);
+    
+    for (final item in orderItems) {
+      await txn.insert('order_items', item);
+      
+      // Update inventory
+      final product = await txn.query(
+        'products', 
+        where: 'id = ?', 
+        whereArgs: [item['product_id']],
+      );
+      
+      if (product.isEmpty) {
+        throw Exception('Product not found: ${item['product_id']}');
+      }
+      
+      final currentStock = product.first['stock_quantity'] as int;
+      final newStock = currentStock - (item['quantity'] as int);
+      
+      if (newStock < 0) {
+        throw Exception('Insufficient stock for product: ${item['product_id']}');
+      }
+      
+      await txn.update(
+        'products',
+        {'stock_quantity': newStock},
+        where: 'id = ?',
+        whereArgs: [item['product_id']],
+      );
+    }
   });
-} on ValidationException catch (e) {
-  // Handle validation errors
-  for (final error in e.errors) {
-    print('${error.field}: ${error.message}');
-  }
+  
+  print('Order processed successfully');
+} catch (e) {
+  print('Order failed: $e');
+  // Transaction was automatically rolled back
+}
+```
+
+## Batch Operations
+
+For better performance with multiple operations:
+
+```dart
+// Batch insert
+final batch = database.batch();
+
+for (int i = 0; i < 1000; i++) {
+  batch.insert('users', {
+    'id': 'user-$i',
+    'name': 'User $i',
+    'email': 'user$i@example.com',
+    'age': 20 + (i % 50),
+    'created_at': DateTime.now().toIso8601String(),
+  });
+}
+
+// Execute all operations at once
+await batch.commit();
+
+// Batch with mixed operations
+final mixedBatch = database.batch();
+
+mixedBatch.insert('users', userData);
+mixedBatch.update('posts', postUpdate, where: 'user_id = ?', whereArgs: [userId]);
+mixedBatch.delete('comments', where: 'post_id = ?', whereArgs: [postId]);
+
+await mixedBatch.commit();
+```
+
+## Data Type Handling
+
+### DateTime Handling
+
+```dart
+// Insert with DateTime
+await database.insert('events', {
+  'id': 'event-1',
+  'name': 'Meeting',
+  'start_time': DateTime.now().toIso8601String(),
+  'end_time': DateTime.now().add(Duration(hours: 1)).toIso8601String(),
+});
+
+// Query and parse DateTime
+final events = await database.query('events');
+for (final event in events) {
+  final startTime = DateTime.parse(event['start_time'] as String);
+  final endTime = DateTime.parse(event['end_time'] as String);
+  print('Event: ${event['name']} from $startTime to $endTime');
+}
+
+// Query with date comparisons
+final upcomingEvents = await database.query(
+  'events',
+  where: 'start_time > ?',
+  whereArgs: [DateTime.now().toIso8601String()],
+);
+```
+
+### Null Handling
+
+```dart
+// Insert with null values
+await database.insert('users', {
+  'id': 'user-5',
+  'name': 'John',
+  'email': 'john@example.com',
+  'phone': null, // Optional field
+});
+
+// Query with null checks
+final usersWithoutPhone = await database.query(
+  'users',
+  where: 'phone IS NULL',
+);
+
+final usersWithPhone = await database.query(
+  'users',
+  where: 'phone IS NOT NULL',
+);
+```
+
+### JSON Data
+
+While SQLite doesn't have native JSON support, you can store JSON as text:
+
+```dart
+import 'dart:convert';
+
+// Store JSON data
+final userData = {
+  'id': 'user-6',
+  'name': 'Jane',
+  'preferences': jsonEncode({
+    'theme': 'dark',
+    'notifications': true,
+    'language': 'en',
+  }),
+};
+
+await database.insert('users', userData);
+
+// Retrieve and parse JSON
+final users = await database.query('users', where: 'id = ?', whereArgs: ['user-6']);
+if (users.isNotEmpty) {
+  final user = users.first;
+  final preferences = jsonDecode(user['preferences'] as String);
+  print('User theme: ${preferences['theme']}');
 }
 ```
 
 ## Performance Optimization
 
-### Batch Operations
+### Indexing
+
+While Declarative SQLite doesn't currently provide explicit index definition in the schema builder, you can create indexes manually:
 
 ```dart
-// Efficient bulk operations
-await database.batch((batch) {
-  for (final item in largeDataSet) {
-    batch.insert('items', item);
-  }
-});
-
-// Instead of:
-// for (final item in largeDataSet) {
-//   await database.insert('items', item);  // Inefficient!
-// }
+// Create indexes for better query performance
+await database.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
+await database.execute('CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)');
+await database.execute('CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at)');
 ```
 
-### Connection Pooling
+### Query Optimization Tips
 
 ```dart
-// Reuse database connections
+// Use specific columns instead of SELECT *
+final userEmails = await database.query('users', columns: ['email']);
+
+// Use LIMIT for pagination
+final pagedUsers = await database.query(
+  'users',
+  orderBy: 'created_at DESC',
+  limit: 20,
+  offset: page * 20,
+);
+
+// Use WHERE clauses to reduce result sets
+final recentPosts = await database.query(
+  'posts',
+  where: 'created_at > ?',
+  whereArgs: [DateTime.now().subtract(Duration(days: 7)).toIso8601String()],
+);
+```
+
+### Memory Management
+
+```dart
+// For large result sets, consider streaming
+final Stream<Map<String, Object?>> userStream = database.streamQuery('users');
+await for (final users in userStream) {
+  // Process users in chunks as they arrive
+  for (final user in users) {
+    await processUser(user);
+  }
+}
+
+// Close database when done
+await database.close();
+```
+
+## Error Handling
+
+```dart
+try {
+  await database.insert('users', userData);
+} on DatabaseException catch (e) {
+  if (e.isUniqueConstraintError()) {
+    print('User already exists');
+  } else if (e.isNotNullConstraintError()) {
+    print('Required field is missing');
+  } else {
+    print('Database error: ${e.message}');
+  }
+} catch (e) {
+  print('Unexpected error: $e');
+}
+
+// Graceful error handling for queries
+Future<List<Map<String, Object?>>> safeQuery(String table) async {
+  try {
+    return await database.query(table);
+  } catch (e) {
+    print('Query failed for table $table: $e');
+    return [];
+  }
+}
+```
+
+## Database Lifecycle
+
+```dart
 class DatabaseManager {
+  DeclarativeDatabase? _database;
+
+  Future<DeclarativeDatabase> get database async {
+    if (_database == null) {
+      _database = DeclarativeDatabase(
+        schema: buildSchema,
+        path: 'app.db',
+      );
+    }
+    return _database!;
+  }
+
+  Future<void> close() async {
+    await _database?.close();
+    _database = null;
+  }
+}
+
+// Use in your app
+final dbManager = DatabaseManager();
+final db = await dbManager.database;
+
+// Perform operations
+await db.insert('users', userData);
+
+// Clean up when app closes
+await dbManager.close();
+```
+
+## Best Practices
+
+### Parameter Binding
+
+Always use parameter binding to prevent SQL injection:
+
+```dart
+// ✅ Good - Uses parameter binding
+final users = await database.query(
+  'users',
+  where: 'name = ? AND age > ?',
+  whereArgs: [userName, minAge],
+);
+
+// ❌ Bad - Vulnerable to SQL injection
+final users = await database.rawQuery(
+  "SELECT * FROM users WHERE name = '$userName' AND age > $minAge"
+);
+```
+
+### Data Validation
+
+```dart
+Future<void> insertUser(Map<String, Object?> userData) async {
+  // Validate data before insertion
+  if (userData['email'] == null || (userData['email'] as String).isEmpty) {
+    throw ArgumentError('Email is required');
+  }
+  
+  if (userData['age'] != null && (userData['age'] as int) < 0) {
+    throw ArgumentError('Age must be positive');
+  }
+  
+  await database.insert('users', userData);
+}
+```
+
+### Connection Management
+
+```dart
+// Use a singleton pattern for database access
+class DatabaseService {
   static DeclarativeDatabase? _instance;
   
   static Future<DeclarativeDatabase> get instance async {
-    _instance ??= await DeclarativeDatabase.init(
+    _instance ??= DeclarativeDatabase(
+      schema: buildSchema,
       path: 'app.db',
-      schema: schema,
     );
     return _instance!;
   }
-  
-  static Future<void> close() async {
-    await _instance?.close();
-    _instance = null;
-  }
 }
-```
 
-### Query Optimization
-
-```dart
-// Use indices effectively
-final posts = await database.query(
-  'posts',
-  where: 'user_id = ? AND published = ?',  // Uses composite index
-  whereArgs: [userId, true],
-  orderBy: 'created_at DESC',  // Uses index on created_at
-);
-
-// Limit result sets
-final recentPosts = await database.query(
-  'posts',
-  where: 'published = ?',
-  whereArgs: [true],
-  orderBy: 'created_at DESC',
-  limit: 20,  // Only fetch what you need
-);
-```
-
-## Complete Example
-
-Here's a comprehensive example showing various database operations:
-
-```dart
-class BlogRepository {
-  final DeclarativeDatabase database;
-  
-  BlogRepository(this.database);
-  
-  // Create operations
-  Future<int> createUser(Map<String, dynamic> userData) async {
-    return await database.insert('users', {
-      ...userData,
-      'created_at': DateTime.now(),
-    });
-  }
-  
-  Future<int> createPost(Map<String, dynamic> postData) async {
-    return await database.transaction((txn) async {
-      final postId = await txn.insert('posts', {
-        ...postData,
-        'created_at': DateTime.now(),
-        'updated_at': DateTime.now(),
-      });
-      
-      // Update user's post count
-      await txn.rawUpdate('''
-        UPDATE users 
-        SET post_count = post_count + 1 
-        WHERE id = ?
-      ''', [postData['user_id']]);
-      
-      return postId;
-    });
-  }
-  
-  // Read operations
-  Future<List<Map<String, dynamic>>> getPublishedPosts({
-    int? userId,
-    int limit = 20,
-    int offset = 0,
-  }) async {
-    final whereConditions = ['published = ?'];
-    final whereArgs = [true];
-    
-    if (userId != null) {
-      whereConditions.add('user_id = ?');
-      whereArgs.add(userId);
-    }
-    
-    return await database.query(
-      'posts',
-      where: whereConditions.join(' AND '),
-      whereArgs: whereArgs,
-      orderBy: 'created_at DESC',
-      limit: limit,
-      offset: offset,
-    );
-  }
-  
-  Stream<List<Map<String, dynamic>>> getPostsStream(int userId) {
-    return database
-      .from('posts')
-      .where('user_id', equals: userId)
-      .orderBy('created_at', descending: true)
-      .stream();
-  }
-  
-  // Update operations
-  Future<void> updatePost(int postId, Map<String, dynamic> updates) async {
-    await database.update(
-      'posts',
-      {
-        ...updates,
-        'updated_at': DateTime.now(),
-      },
-      where: 'id = ?',
-      whereArgs: [postId],
-    );
-  }
-  
-  Future<void> incrementViewCount(int postId) async {
-    await database.rawUpdate('''
-      UPDATE posts 
-      SET view_count = view_count + 1,
-          updated_at = ?
-      WHERE id = ?
-    ''', [DateTime.now().toIso8601String(), postId]);
-  }
-  
-  // Delete operations
-  Future<void> deletePost(int postId) async {
-    await database.transaction((txn) async {
-      // Get user_id before deleting
-      final post = await txn.queryFirst(
-        'posts',
-        columns: ['user_id'],
-        where: 'id = ?',
-        whereArgs: [postId],
-      );
-      
-      if (post != null) {
-        // Delete the post
-        await txn.delete('posts', where: 'id = ?', whereArgs: [postId]);
-        
-        // Update user's post count
-        await txn.rawUpdate('''
-          UPDATE users 
-          SET post_count = post_count - 1 
-          WHERE id = ?
-        ''', [post['user_id']]);
-      }
-    });
-  }
-  
-  // Analytics
-  Future<Map<String, dynamic>> getUserStats(int userId) async {
-    final result = await database.rawQuery('''
-      SELECT 
-        COUNT(*) as total_posts,
-        COUNT(CASE WHEN published = 1 THEN 1 END) as published_posts,
-        SUM(view_count) as total_views,
-        AVG(view_count) as avg_views,
-        MAX(created_at) as latest_post
-      FROM posts 
-      WHERE user_id = ?
-    ''', [userId]);
-    
-    return result.first;
-  }
-}
+// Usage
+final db = await DatabaseService.instance;
+await db.insert('users', userData);
 ```
 
 ## Next Steps
 
-- Learn about [Streaming Queries](./streaming-queries) for real-time applications
-- Explore [Sync Management](#sync-management) (coming soon) for offline-first apps
-- Understand [Fileset Fields](#fileset-fields) (coming soon) for file handling
-- See [Migration](#migration) (coming soon) for schema evolution
+Now that you understand database operations, explore:
+
+- [Streaming Queries](streaming-queries) - Real-time data updates

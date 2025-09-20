@@ -1,193 +1,361 @@
----
-sidebar_position: 4
----
-
 # Streaming Queries
 
-Build reactive applications with real-time data updates using Declarative SQLite's powerful streaming query system.
+Learn how to use real-time streaming queries to build reactive applications that automatically update when data changes.
 
 ## Overview
 
-Streaming queries allow your application to automatically receive updates when underlying data changes. Instead of manually polling the database or managing complex refresh logic, you simply subscribe to a stream and your UI updates automatically.
+Streaming queries are one of the most powerful features of Declarative SQLite. They provide real-time updates whenever the underlying data changes, enabling reactive user interfaces and responsive applications.
 
 ## Basic Streaming
 
-### Creating a Stream
+### Simple Table Streams
 
 ```dart
-// Create a stream of all users
-final usersStream = database
-  .from('users')
-  .stream();
+import 'package:declarative_sqlite/declarative_sqlite.dart';
 
-// Listen to changes
-usersStream.listen((users) {
-  print('Users updated: ${users.length}');
-  // Update your UI here
+// Stream all users
+final userStream = database.streamQuery('users');
+userStream.listen((users) {
+  print('Users updated: ${users.length} total users');
+  for (final user in users) {
+    print('- ${user['name']} (${user['email']})');
+  }
+});
+
+// Stream with WHERE clause
+final adultUserStream = database.streamQuery(
+  'users',
+  where: 'age >= ?',
+  whereArgs: [18],
+);
+
+adultUserStream.listen((adultUsers) {
+  print('Adult users: ${adultUsers.length}');
 });
 ```
 
-### Filtered Streams
+### Stream with Ordering and Limits
 
 ```dart
-// Stream only active users
-final activeUsersStream = database
-  .from('users')
-  .where('is_active', equals: true)
-  .stream();
-
 // Stream recent posts
-final recentPostsStream = database
-  .from('posts')
-  .where('created_at', greaterThan: DateTime.now().subtract(Duration(days: 7)))
-  .where('published', equals: true)
-  .orderBy('created_at', descending: true)
-  .stream();
+final recentPostsStream = database.streamQuery(
+  'posts',
+  orderBy: 'created_at DESC',
+  limit: 10,
+);
+
+recentPostsStream.listen((posts) {
+  print('Latest 10 posts updated');
+  // UI will automatically update when new posts are added
+});
+
+// Stream top users by post count
+final topUsersStream = database.streamQuery(
+  'user_post_counts', // This could be a view
+  orderBy: 'post_count DESC',
+  limit: 5,
+);
 ```
 
-## Query Builder Streaming
+## Advanced Streaming Queries
 
-### Simple Queries
+### Multiple Table Dependencies
 
-```dart
-// Stream all posts by a specific user
-final userPostsStream = database
-  .from('posts')
-  .where('user_id', equals: userId)
-  .orderBy('created_at', descending: true)
-  .stream();
-
-// Stream with multiple conditions
-final featuredPostsStream = database
-  .from('posts')
-  .where('published', equals: true)
-  .where('featured', equals: true)
-  .where('view_count', greaterThan: 1000)
-  .stream();
-```
-
-### Complex Filtering
+Advanced streaming queries can depend on multiple tables and automatically update when any dependency changes:
 
 ```dart
-// Stream with date ranges
-final thisWeekPostsStream = database
-  .from('posts')
-  .where('created_at', between: [
-    DateTime.now().subtract(Duration(days: 7)),
-    DateTime.now()
-  ])
-  .stream();
+import 'package:declarative_sqlite/declarative_sqlite.dart';
 
-// Stream with text search
-final searchResultsStream = database
-  .from('posts')
-  .where('title', contains: searchTerm)
-  .or('content', contains: searchTerm)
-  .where('published', equals: true)
-  .stream();
-
-// Stream with ordering and limits
-final topPostsStream = database
-  .from('posts')
-  .where('published', equals: true)
-  .orderBy('view_count', descending: true)
-  .limit(10)
-  .stream();
-```
-
-## Advanced Streaming
-
-### Joined Streams
-
-```dart
-// Stream posts with author information using views
-final postsWithAuthorsStream = database
-  .fromView('posts_with_authors')  // Pre-defined view in schema
-  .where('published', equals: true)
-  .stream();
-
-// Stream with manual joins (using raw SQL)
-final postsWithCommentsStream = database
-  .rawStreamQuery('''
+// Create an advanced streaming query that depends on multiple tables
+final advancedQuery = AdvancedStreamingQuery(
+  database: database,
+  query: '''
     SELECT 
-      p.*,
-      u.username as author,
-      COUNT(c.id) as comment_count
-    FROM posts p
-    LEFT JOIN users u ON p.user_id = u.id
-    LEFT JOIN comments c ON p.id = c.post_id
-    WHERE p.published = 1
-    GROUP BY p.id, u.username
-    ORDER BY p.created_at DESC
-  ''')
-  .stream();
-```
-
-### Aggregated Streams
-
-```dart
-// Stream user statistics
-final userStatsStream = database
-  .rawStreamQuery('''
-    SELECT 
-      user_id,
-      COUNT(*) as post_count,
-      SUM(view_count) as total_views,
-      AVG(view_count) as avg_views,
-      MAX(created_at) as latest_post
+      posts.id,
+      posts.title,
+      posts.content,
+      users.name as author_name,
+      COUNT(comments.id) as comment_count
     FROM posts
-    WHERE published = 1
-    GROUP BY user_id
-    ORDER BY total_views DESC
-  ''')
-  .stream();
+    JOIN users ON posts.user_id = users.id
+    LEFT JOIN comments ON posts.id = comments.post_id
+    WHERE posts.published = 1
+    GROUP BY posts.id, posts.title, posts.content, users.name
+    ORDER BY posts.created_at DESC
+  ''',
+  dependencies: ['posts', 'users', 'comments'],
+);
 
-// Stream real-time dashboard data
-final dashboardStream = database
-  .rawStreamQuery('''
-    SELECT 
-      (SELECT COUNT(*) FROM users WHERE is_active = 1) as active_users,
-      (SELECT COUNT(*) FROM posts WHERE published = 1) as published_posts,
-      (SELECT COUNT(*) FROM comments WHERE created_at > datetime('now', '-24 hours')) as recent_comments
-  ''')
-  .stream();
+final stream = advancedQuery.stream();
+stream.listen((results) {
+  print('Post data updated: ${results.length} posts');
+  // This will update when:
+  // - New posts are added/modified
+  // - User names change
+  // - Comments are added/removed
+});
 ```
 
-## Stream Management
+### Custom Query Dependencies
 
-### Subscription Handling
+You can manually specify which tables should trigger updates:
 
 ```dart
-class PostListController {
-  StreamSubscription<List<Map<String, dynamic>>>? _subscription;
-  final List<Map<String, dynamic>> _posts = [];
-  final StreamController<List<Map<String, dynamic>>> _controller = 
-      StreamController<List<Map<String, dynamic>>>.broadcast();
+final customQuery = AdvancedStreamingQuery(
+  database: database,
+  query: '''
+    SELECT products.*, categories.name as category_name
+    FROM products
+    JOIN categories ON products.category_id = categories.id
+    WHERE products.active = 1
+  ''',
+  dependencies: ['products', 'categories'],
+);
+
+// Stream will update when products or categories change
+final productStream = customQuery.stream();
+```
+
+## Practical Examples
+
+### User Profile with Posts
+
+```dart
+class UserProfileStream {
+  final DeclarativeDatabase database;
+  final String userId;
   
-  Stream<List<Map<String, dynamic>>> get posts => _controller.stream;
+  UserProfileStream(this.database, this.userId);
   
-  void startListening(DeclarativeDatabase database, int userId) {
-    _subscription = database
-      .from('posts')
-      .where('user_id', equals: userId)
-      .where('published', equals: true)
-      .orderBy('created_at', descending: true)
-      .stream()
-      .listen((posts) {
-        _posts.clear();
-        _posts.addAll(posts);
-        _controller.add(List.from(_posts));
+  // Stream user profile data
+  Stream<Map<String, Object?>> get userStream {
+    return database.streamQuery(
+      'users',
+      where: 'id = ?',
+      whereArgs: [userId],
+    ).map((users) => users.isNotEmpty ? users.first : {});
+  }
+  
+  // Stream user's posts
+  Stream<List<Map<String, Object?>>> get postsStream {
+    return database.streamQuery(
+      'posts',
+      where: 'user_id = ? AND published = 1',
+      whereArgs: [userId],
+      orderBy: 'created_at DESC',
+    );
+  }
+  
+  // Stream user statistics
+  Stream<Map<String, Object?>> get statsStream {
+    final query = AdvancedStreamingQuery(
+      database: database,
+      query: '''
+        SELECT 
+          COUNT(posts.id) as post_count,
+          COUNT(CASE WHEN posts.created_at > ? THEN 1 END) as recent_posts,
+          MAX(posts.created_at) as latest_post_date
+        FROM posts
+        WHERE posts.user_id = ?
+      ''',
+      dependencies: ['posts'],
+      parameters: [
+        DateTime.now().subtract(Duration(days: 30)).toIso8601String(),
+        userId,
+      ],
+    );
+    
+    return query.stream().map((results) => 
+      results.isNotEmpty ? results.first : {});
+  }
+}
+
+// Usage
+final userProfile = UserProfileStream(database, 'user-123');
+
+userProfile.userStream.listen((user) {
+  print('User profile updated: ${user['name']}');
+});
+
+userProfile.postsStream.listen((posts) {
+  print('User posts updated: ${posts.length} posts');
+});
+
+userProfile.statsStream.listen((stats) {
+  print('User stats: ${stats['post_count']} total posts, ${stats['recent_posts']} recent');
+});
+```
+
+### Shopping Cart with Live Totals
+
+```dart
+class ShoppingCartStream {
+  final DeclarativeDatabase database;
+  final String cartId;
+  
+  ShoppingCartStream(this.database, this.cartId);
+  
+  // Stream cart items with product details
+  Stream<List<Map<String, Object?>>> get itemsStream {
+    final query = AdvancedStreamingQuery(
+      database: database,
+      query: '''
+        SELECT 
+          cart_items.id,
+          cart_items.quantity,
+          products.name,
+          products.price,
+          (cart_items.quantity * products.price) as line_total
+        FROM cart_items
+        JOIN products ON cart_items.product_id = products.id
+        WHERE cart_items.cart_id = ?
+        ORDER BY cart_items.added_at DESC
+      ''',
+      dependencies: ['cart_items', 'products'],
+      parameters: [cartId],
+    );
+    
+    return query.stream();
+  }
+  
+  // Stream cart totals
+  Stream<Map<String, Object?>> get totalsStream {
+    final query = AdvancedStreamingQuery(
+      database: database,
+      query: '''
+        SELECT 
+          COUNT(cart_items.id) as item_count,
+          SUM(cart_items.quantity) as total_quantity,
+          SUM(cart_items.quantity * products.price) as total_amount
+        FROM cart_items
+        JOIN products ON cart_items.product_id = products.id
+        WHERE cart_items.cart_id = ?
+      ''',
+      dependencies: ['cart_items', 'products'],
+      parameters: [cartId],
+    );
+    
+    return query.stream().map((results) => 
+      results.isNotEmpty ? results.first : {
+        'item_count': 0,
+        'total_quantity': 0,
+        'total_amount': 0.0,
       });
+  }
+}
+
+// Usage
+final cart = ShoppingCartStream(database, 'cart-456');
+
+cart.itemsStream.listen((items) {
+  print('Cart items updated: ${items.length} different products');
+  for (final item in items) {
+    print('- ${item['name']}: ${item['quantity']} × \$${item['price']} = \$${item['line_total']}');
+  }
+});
+
+cart.totalsStream.listen((totals) {
+  print('Cart total: \$${totals['total_amount']} (${totals['total_quantity']} items)');
+});
+```
+
+## Stream Performance Optimization
+
+### Debouncing Updates
+
+When multiple rapid changes occur, you may want to debounce the stream:
+
+```dart
+import 'dart:async';
+
+extension StreamDebounce<T> on Stream<T> {
+  Stream<T> debounce(Duration duration) {
+    Timer? timer;
+    T? lastValue;
+    late StreamController<T> controller;
+    
+    controller = StreamController<T>(
+      onListen: () {
+        listen((value) {
+          lastValue = value;
+          timer?.cancel();
+          timer = Timer(duration, () {
+            controller.add(lastValue as T);
+          });
+        });
+      },
+      onCancel: () {
+        timer?.cancel();
+      },
+    );
+    
+    return controller.stream;
+  }
+}
+
+// Usage
+final debouncedUserStream = database
+  .streamQuery('users')
+  .debounce(Duration(milliseconds: 300));
+
+debouncedUserStream.listen((users) {
+  // Only updates every 300ms maximum, even if data changes more frequently
+  print('Debounced user update: ${users.length} users');
+});
+```
+
+### Filtering Duplicate Updates
+
+```dart
+// Only emit when the actual data changes, not just query execution
+final distinctUserStream = database
+  .streamQuery('users')
+  .distinct((previous, current) {
+    // Compare the actual data, not just reference
+    return previous.length == current.length &&
+           previous.every((prevUser) => 
+             current.any((currUser) => 
+               currUser['id'] == prevUser['id'] && 
+               currUser['name'] == prevUser['name']));
+  });
+```
+
+## Stream Lifecycle Management
+
+### Proper Subscription Management
+
+```dart
+class UserListManager {
+  DeclarativeDatabase database;
+  StreamSubscription<List<Map<String, Object?>>>? _userSubscription;
+  
+  UserListManager(this.database);
+  
+  void startListening() {
+    _userSubscription = database.streamQuery('users').listen(
+      (users) {
+        // Handle user updates
+        _updateUI(users);
+      },
+      onError: (error) {
+        print('Stream error: $error');
+        // Handle error - maybe retry or show error message
+      },
+    );
   }
   
   void stopListening() {
-    _subscription?.cancel();
-    _subscription = null;
+    _userSubscription?.cancel();
+    _userSubscription = null;
+  }
+  
+  void _updateUI(List<Map<String, Object?>> users) {
+    // Update your UI with new user data
+    print('UI updated with ${users.length} users');
   }
   
   void dispose() {
     stopListening();
-    _controller.close();
   }
 }
 ```
@@ -195,186 +363,41 @@ class PostListController {
 ### Multiple Stream Coordination
 
 ```dart
-class AppDataManager {
+class DashboardManager {
   final DeclarativeDatabase database;
-  late final StreamSubscription _usersSubscription;
-  late final StreamSubscription _postsSubscription;
-  late final StreamSubscription _commentsSubscription;
+  final _subscriptions = <StreamSubscription>[];
   
-  final _dataController = StreamController<AppData>.broadcast();
-  Stream<AppData> get dataStream => _dataController.stream;
+  DashboardManager(this.database);
   
-  AppDataManager(this.database);
-  
-  void startListening() {
-    // Combine multiple streams
-    _usersSubscription = database
-      .from('users')
-      .where('is_active', equals: true)
-      .stream()
-      .listen(_onUsersChanged);
-      
-    _postsSubscription = database
-      .from('posts')
-      .where('published', equals: true)
-      .stream()
-      .listen(_onPostsChanged);
-      
-    _commentsSubscription = database
-      .from('comments')
-      .where('approved', equals: true)
-      .stream()
-      .listen(_onCommentsChanged);
-  }
-  
-  void _onUsersChanged(List<Map<String, dynamic>> users) {
-    // Update combined state and emit
-    _emitCombinedData();
-  }
-  
-  void _onPostsChanged(List<Map<String, dynamic>> posts) {
-    _emitCombinedData();
-  }
-  
-  void _onCommentsChanged(List<Map<String, dynamic>> comments) {
-    _emitCombinedData();
-  }
-  
-  void _emitCombinedData() {
-    // Combine all data and emit to listeners
-    final combinedData = AppData(
-      users: _currentUsers,
-      posts: _currentPosts,
-      comments: _currentComments,
+  void initialize() {
+    // Listen to multiple streams
+    _subscriptions.add(
+      database.streamQuery('users').listen(_updateUserCount)
     );
-    _dataController.add(combinedData);
+    
+    _subscriptions.add(
+      database.streamQuery('posts', where: 'published = 1').listen(_updatePostCount)
+    );
+    
+    _subscriptions.add(
+      database.streamQuery('comments', where: 'approved = 1').listen(_updateCommentCount)
+    );
+  }
+  
+  void _updateUserCount(List<Map<String, Object?>> users) {
+    print('Users: ${users.length}');
+  }
+  
+  void _updatePostCount(List<Map<String, Object?>> posts) {
+    print('Published posts: ${posts.length}');
+  }
+  
+  void _updateCommentCount(List<Map<String, Object?>> comments) {
+    print('Approved comments: ${comments.length}');
   }
   
   void dispose() {
-    _usersSubscription.cancel();
-    _postsSubscription.cancel();
-    _commentsSubscription.cancel();
-    _dataController.close();
-  }
-}
-```
-
-## Stream Transformations
-
-### Data Transformation
-
-```dart
-// Transform raw data into typed objects
-final userModelsStream = database
-  .from('users')
-  .stream()
-  .map((rawUsers) => rawUsers
-      .map((userData) => UserModel.fromMap(userData))
-      .toList());
-
-// Filter and transform
-final recentUserPostsStream = database
-  .from('posts')
-  .where('user_id', equals: userId)
-  .stream()
-  .map((posts) => posts
-      .where((post) => DateTime.parse(post['created_at'])
-          .isAfter(DateTime.now().subtract(Duration(days: 30))))
-      .map((post) => PostModel.fromMap(post))
-      .toList());
-```
-
-### Stream Combination
-
-```dart
-// Combine multiple streams using StreamZip or combineLatest
-import 'package:rxdart/rxdart.dart';
-
-final combinedStream = Rx.combineLatest2(
-  database.from('users').stream(),
-  database.from('posts').stream(),
-  (List<Map<String, dynamic>> users, List<Map<String, dynamic>> posts) {
-    return CombinedData(users: users, posts: posts);
-  },
-);
-```
-
-### Debouncing and Throttling
-
-```dart
-// Debounce rapid changes
-final debouncedStream = database
-  .from('search_results')
-  .stream()
-  .debounceTime(Duration(milliseconds: 300));
-
-// Throttle updates
-final throttledStream = database
-  .from('realtime_data')
-  .stream()
-  .throttleTime(Duration(seconds: 1));
-```
-
-## Performance Optimization
-
-### Stream Caching
-
-```dart
-class StreamCache {
-  final Map<String, Stream> _cache = {};
-  
-  Stream<List<Map<String, dynamic>>> getCachedStream(
-    String key,
-    Stream<List<Map<String, dynamic>>> Function() createStream,
-  ) {
-    return _cache.putIfAbsent(key, () => createStream().asBroadcastStream());
-  }
-  
-  void clearCache() {
-    _cache.clear();
-  }
-}
-
-// Usage
-final cache = StreamCache();
-
-final usersStream = cache.getCachedStream(
-  'active_users',
-  () => database.from('users').where('is_active', equals: true).stream(),
-);
-```
-
-### Selective Updates
-
-```dart
-// Only emit when specific fields change
-final importantFieldsStream = database
-  .from('users')
-  .select(['id', 'username', 'email', 'is_active'])  // Only watch these fields
-  .stream()
-  .distinct((a, b) => 
-    const ListEquality().equals(a, b));  // Only emit on actual changes
-```
-
-### Memory Management
-
-```dart
-class MemoryEfficientStreamManager {
-  final Map<String, StreamSubscription> _subscriptions = {};
-  
-  void addSubscription(String key, StreamSubscription subscription) {
-    // Cancel existing subscription if any
-    _subscriptions[key]?.cancel();
-    _subscriptions[key] = subscription;
-  }
-  
-  void removeSubscription(String key) {
-    _subscriptions[key]?.cancel();
-    _subscriptions.remove(key);
-  }
-  
-  void dispose() {
-    for (final subscription in _subscriptions.values) {
+    for (final subscription in _subscriptions) {
       subscription.cancel();
     }
     _subscriptions.clear();
@@ -382,48 +405,47 @@ class MemoryEfficientStreamManager {
 }
 ```
 
-## Flutter Integration
+## Integration with State Management
 
-### StreamBuilder Usage
+### With Flutter setState
 
 ```dart
-class PostsList extends StatelessWidget {
-  final int userId;
+class UserListWidget extends StatefulWidget {
+  @override
+  _UserListWidgetState createState() => _UserListWidgetState();
+}
+
+class _UserListWidgetState extends State<UserListWidget> {
+  List<Map<String, Object?>> users = [];
+  StreamSubscription<List<Map<String, Object?>>>? _subscription;
   
-  const PostsList({Key? key, required this.userId}) : super(key: key);
+  @override
+  void initState() {
+    super.initState();
+    final database = DatabaseProvider.of(context);
+    
+    _subscription = database.streamQuery('users').listen((newUsers) {
+      setState(() {
+        users = newUsers;
+      });
+    });
+  }
+  
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
   
   @override
   Widget build(BuildContext context) {
-    final database = DatabaseProvider.of(context);
-    
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: database
-        .from('posts')
-        .where('user_id', equals: userId)
-        .where('published', equals: true)
-        .orderBy('created_at', descending: true)
-        .stream(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return ErrorWidget(snapshot.error!);
-        }
-        
-        if (!snapshot.hasData) {
-          return const CircularProgressIndicator();
-        }
-        
-        final posts = snapshot.data!;
-        
-        if (posts.isEmpty) {
-          return const Text('No posts found');
-        }
-        
-        return ListView.builder(
-          itemCount: posts.length,
-          itemBuilder: (context, index) {
-            final post = posts[index];
-            return PostCard(post: post);
-          },
+    return ListView.builder(
+      itemCount: users.length,
+      itemBuilder: (context, index) {
+        final user = users[index];
+        return ListTile(
+          title: Text(user['name'] as String),
+          subtitle: Text(user['email'] as String),
         );
       },
     );
@@ -431,212 +453,166 @@ class PostsList extends StatelessWidget {
 }
 ```
 
-### Custom Stream Widgets
+### With Provider/Riverpod
 
 ```dart
-class QueryStreamBuilder<T> extends StatelessWidget {
-  final Stream<List<Map<String, dynamic>>> stream;
-  final T Function(Map<String, dynamic>) mapper;
-  final Widget Function(BuildContext, List<T>) builder;
-  final Widget? loading;
-  final Widget Function(Object error)? errorBuilder;
+// Using Provider
+class UserNotifier extends ChangeNotifier {
+  List<Map<String, Object?>> _users = [];
+  StreamSubscription<List<Map<String, Object?>>>? _subscription;
   
-  const QueryStreamBuilder({
-    Key? key,
-    required this.stream,
-    required this.mapper,
-    required this.builder,
-    this.loading,
-    this.errorBuilder,
-  }) : super(key: key);
+  List<Map<String, Object?>> get users => _users;
+  
+  void initialize(DeclarativeDatabase database) {
+    _subscription = database.streamQuery('users').listen((users) {
+      _users = users;
+      notifyListeners();
+    });
+  }
   
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: stream,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return errorBuilder?.call(snapshot.error!) ?? 
-            ErrorWidget(snapshot.error!);
-        }
-        
-        if (!snapshot.hasData) {
-          return loading ?? const CircularProgressIndicator();
-        }
-        
-        final mappedData = snapshot.data!.map(mapper).toList();
-        return builder(context, mappedData);
-      },
-    );
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
   }
 }
 
-// Usage
-QueryStreamBuilder<PostModel>(
-  stream: database.from('posts').stream(),
-  mapper: (data) => PostModel.fromMap(data),
-  builder: (context, posts) {
-    return ListView(
-      children: posts.map((post) => PostCard(post: post)).toList(),
-    );
-  },
-)
+// Using Riverpod
+final userStreamProvider = StreamProvider<List<Map<String, Object?>>>((ref) {
+  final database = ref.read(databaseProvider);
+  return database.streamQuery('users');
+});
 ```
 
-## Testing Streams
+## Error Handling
 
-### Stream Testing
+### Stream Error Recovery
 
 ```dart
-// Test file: test/streaming_test.dart
-import 'package:test/test.dart';
+Stream<List<Map<String, Object?>>> createResilientUserStream(DeclarativeDatabase database) {
+  return database.streamQuery('users').handleError((error) {
+    print('Stream error: $error');
+    // Log error or notify error reporting service
+  }).onErrorResumeNext(
+    // Retry with exponential backoff
+    Stream.fromFuture(
+      Future.delayed(Duration(seconds: 2)).then((_) => 
+        createResilientUserStream(database)
+      )
+    ).asyncExpand((stream) => stream),
+  );
+}
+```
 
-void main() {
-  group('Streaming Tests', () {
-    late DeclarativeDatabase database;
+### Graceful Degradation
+
+```dart
+class RobustUserStream {
+  final DeclarativeDatabase database;
+  StreamSubscription<List<Map<String, Object?>>>? _subscription;
+  List<Map<String, Object?>> _lastKnownUsers = [];
+  
+  RobustUserStream(this.database);
+  
+  Stream<List<Map<String, Object?>>> get stream {
+    return Stream.fromFuture(_getInitialData())
+      .asyncExpand((_) => _createStream());
+  }
+  
+  Future<void> _getInitialData() async {
+    try {
+      _lastKnownUsers = await database.query('users');
+    } catch (e) {
+      print('Failed to get initial data: $e');
+      // Use empty list or cached data
+    }
+  }
+  
+  Stream<List<Map<String, Object?>>> _createStream() async* {
+    yield _lastKnownUsers; // Emit initial data
     
-    setUp(() async {
-      database = await DeclarativeDatabase.init(
-        path: ':memory:',
-        schema: testSchema,
-      );
+    yield* database.streamQuery('users').map((users) {
+      _lastKnownUsers = users; // Cache successful results
+      return users;
+    }).handleError((error) {
+      print('Stream error, using cached data: $error');
+      return _lastKnownUsers; // Return last known good data
     });
-    
-    tearDown(() async {
-      await database.close();
-    });
-    
-    test('should stream user updates', () async {
-      final stream = database.from('users').stream();
-      final streamTest = expectLater(
-        stream,
-        emitsInOrder([
-          isEmpty,  // Initial empty state
-          hasLength(1),  // After first insert
-          hasLength(2),  // After second insert
-        ]),
-      );
-      
-      // Insert test data
-      await database.insert('users', {'username': 'user1'});
-      await database.insert('users', {'username': 'user2'});
-      
-      await streamTest;
-    });
-    
-    test('should filter streams correctly', () async {
-      // Insert test data
-      await database.insert('users', {'username': 'active', 'is_active': true});
-      await database.insert('users', {'username': 'inactive', 'is_active': false});
-      
-      final activeUsersStream = database
-        .from('users')
-        .where('is_active', equals: true)
-        .stream();
-      
-      await expectLater(
-        activeUsersStream,
-        emits(hasLength(1)),
-      );
-    });
+  }
+}
+```
+
+## Best Practices
+
+### Memory Management
+
+```dart
+// ✅ Good - Cancel subscriptions
+class DataManager {
+  final _subscriptions = <StreamSubscription>[];
+  
+  void addSubscription(StreamSubscription subscription) {
+    _subscriptions.add(subscription);
+  }
+  
+  void dispose() {
+    for (final sub in _subscriptions) {
+      sub.cancel();
+    }
+    _subscriptions.clear();
+  }
+}
+
+// ❌ Bad - Memory leak
+void badExample(DeclarativeDatabase database) {
+  database.streamQuery('users').listen((users) {
+    // This subscription is never cancelled!
   });
 }
 ```
 
-## Complete Example
-
-Here's a comprehensive example of using streaming queries in a real application:
+### Efficient Queries
 
 ```dart
-class BlogStreamManager {
-  final DeclarativeDatabase database;
-  final Map<String, StreamSubscription> _subscriptions = {};
+// ✅ Good - Specific columns and conditions
+final efficientStream = database.streamQuery(
+  'users',
+  columns: ['id', 'name', 'email'], // Only needed columns
+  where: 'active = 1', // Filter at database level
+  limit: 100, // Limit result size
+);
+
+// ❌ Bad - Unnecessary data
+final inefficientStream = database.streamQuery('users'); // All columns, all rows
+```
+
+### Reactive Architecture
+
+```dart
+class ReactiveUserService {
+  final DeclarativeDatabase _database;
   
-  // Stream controllers for different data types
-  final _postsController = StreamController<List<PostModel>>.broadcast();
-  final _usersController = StreamController<List<UserModel>>.broadcast();
-  final _statsController = StreamController<BlogStats>.broadcast();
+  ReactiveUserService(this._database);
   
-  // Public streams
-  Stream<List<PostModel>> get posts => _postsController.stream;
-  Stream<List<UserModel>> get users => _usersController.stream;
-  Stream<BlogStats> get stats => _statsController.stream;
-  
-  BlogStreamManager(this.database);
-  
-  void startStreaming() {
-    // Stream published posts
-    _subscriptions['posts'] = database
-      .from('posts')
-      .where('published', equals: true)
-      .orderBy('created_at', descending: true)
-      .stream()
-      .map((data) => data.map((item) => PostModel.fromMap(item)).toList())
-      .listen(_postsController.add);
+  // Expose specific streams for different UI components
+  Stream<List<Map<String, Object?>>> get activeUsers => 
+    _database.streamQuery('users', where: 'active = 1');
     
-    // Stream active users
-    _subscriptions['users'] = database
-      .from('users')
-      .where('is_active', equals: true)
-      .stream()
-      .map((data) => data.map((item) => UserModel.fromMap(item)).toList())
-      .listen(_usersController.add);
+  Stream<List<Map<String, Object?>>> get recentUsers =>
+    _database.streamQuery(
+      'users',
+      where: 'created_at > ?',
+      whereArgs: [DateTime.now().subtract(Duration(days: 7)).toIso8601String()],
+      orderBy: 'created_at DESC',
+    );
     
-    // Stream blog statistics
-    _subscriptions['stats'] = database
-      .rawStreamQuery('''
-        SELECT 
-          (SELECT COUNT(*) FROM posts WHERE published = 1) as published_posts,
-          (SELECT COUNT(*) FROM users WHERE is_active = 1) as active_users,
-          (SELECT SUM(view_count) FROM posts WHERE published = 1) as total_views,
-          (SELECT COUNT(*) FROM comments WHERE created_at > datetime('now', '-24 hours')) as recent_comments
-      ''')
-      .stream()
-      .map((data) => BlogStats.fromMap(data.first))
-      .listen(_statsController.add);
-  }
-  
-  void stopStreaming() {
-    for (final subscription in _subscriptions.values) {
-      subscription.cancel();
-    }
-    _subscriptions.clear();
-  }
-  
-  void dispose() {
-    stopStreaming();
-    _postsController.close();
-    _usersController.close();
-    _statsController.close();
-  }
-  
-  // Utility methods for specific queries
-  Stream<List<PostModel>> getPostsByUser(int userId) {
-    return database
-      .from('posts')
-      .where('user_id', equals: userId)
-      .where('published', equals: true)
-      .stream()
-      .map((data) => data.map((item) => PostModel.fromMap(item)).toList());
-  }
-  
-  Stream<List<PostModel>> searchPosts(String searchTerm) {
-    return database
-      .rawStreamQuery('''
-        SELECT * FROM posts 
-        WHERE published = 1 
-        AND (title LIKE ? OR content LIKE ?)
-        ORDER BY created_at DESC
-      ''', ['%$searchTerm%', '%$searchTerm%'])
-      .stream()
-      .map((data) => data.map((item) => PostModel.fromMap(item)).toList());
-  }
+  Stream<int> get userCount =>
+    _database.streamQuery('users').map((users) => users.length);
 }
 ```
 
 ## Next Steps
 
-- Learn about [Sync Management](#sync-management) (coming soon) for offline-first applications
-- Explore [Fileset Fields](#fileset-fields) (coming soon) for file handling
-- See [Flutter Integration](../flutter/installation) for UI components
-- Check out [Performance Tips](#performance) (coming soon) for optimization
+Now that you understand streaming queries, explore:
+
+- [Flutter Integration](../flutter-integration/widgets) - Using streams with Flutter widgets

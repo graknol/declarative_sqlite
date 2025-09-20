@@ -1,138 +1,157 @@
----
-sidebar_position: 1
----
-
 # Installation
 
-This guide will help you install and set up the Declarative SQLite packages in your Dart or Flutter project.
-
-## Prerequisites
-
-- **Dart SDK**: 3.5.3 or later
-- **Flutter SDK**: 3.10.0 or later (for Flutter package)
+Get started with Declarative SQLite by adding the packages to your project.
 
 ## Package Selection
 
 Choose the packages you need based on your project type:
 
-### For Dart Projects
+### For Flutter Applications
+
 ```yaml
 dependencies:
-  declarative_sqlite: ^1.0.1
-
-dev_dependencies:
-  declarative_sqlite_generator: ^1.0.0
-  build_runner: ^2.4.7
+  flutter:
+    sdk: flutter
+  
+  # Core database functionality
+  declarative_sqlite:
+    path: declarative_sqlite
+    
+  # Flutter-specific widgets and utilities
+  declarative_sqlite_flutter:
+    path: declarative_sqlite_flutter
+    
+  # SQLite driver for Flutter
+  sqflite: ^2.3.0
 ```
 
-### For Flutter Projects
+### For Standalone Dart Applications
+
 ```yaml
 dependencies:
-  declarative_sqlite: ^1.0.1
-  declarative_sqlite_flutter: ^1.0.0
-
-dev_dependencies:
-  declarative_sqlite_generator: ^1.0.0
-  build_runner: ^2.4.7
+  # Core database functionality
+  declarative_sqlite:
+    path: declarative_sqlite
+    
+  # SQLite driver for Dart (non-Flutter)
+  sqflite_common_ffi: ^2.3.0
 ```
 
-## Installation Steps
+## Platform Setup
 
-### 1. Add Dependencies
+### Android
 
-Add the packages to your `pubspec.yaml` file based on your project type above.
+No additional setup required. SQLite is available by default.
 
-### 2. Install Packages
+### iOS
 
-Run the following command to install the packages:
+No additional setup required. SQLite is available by default.
+
+### macOS
+
+For Flutter desktop apps, you may need to enable network entitlements if using synchronization features:
+
+```xml
+<!-- macos/Runner/DebugProfile.entitlements -->
+<key>com.apple.security.network.client</key>
+<true/>
+```
+
+### Linux
+
+For standalone Dart applications using `sqflite_common_ffi`, you may need to install SQLite:
 
 ```bash
-# For Dart projects
-dart pub get
+# Ubuntu/Debian
+sudo apt-get install sqlite3 libsqlite3-dev
 
-# For Flutter projects
-flutter pub get
+# CentOS/RHEL
+sudo yum install sqlite sqlite-devel
 ```
 
-### 3. Import the Library
+### Windows
 
-In your Dart files, import the packages:
+For standalone Dart applications, SQLite should work out of the box with `sqflite_common_ffi`.
+
+## Verification
+
+Create a simple test to verify your installation:
+
+### Flutter Test
 
 ```dart
-// Core library (always needed)
+// test_installation.dart
+import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
-
-// Flutter widgets (Flutter projects only)
 import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
+
+void main() {
+  runApp(
+    DatabaseProvider(
+      schema: (builder) {
+        builder.table('test', (table) {
+          table.guid('id').notNull();
+          table.text('name').notNull();
+          table.key(['id']).primary();
+        });
+      },
+      databaseName: 'test.db',
+      child: MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Text('Declarative SQLite is working!'),
+          ),
+        ),
+      ),
+    ),
+  );
+}
 ```
 
-## Platform-Specific Setup
-
-### Flutter Projects
-
-For Flutter projects, no additional setup is required. The package automatically handles platform-specific database implementations.
-
-### Dart Console/Server Projects
-
-For pure Dart projects, you'll need to initialize the SQLite implementation:
+### Dart Test
 
 ```dart
+// test_installation.dart
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() async {
-  // Initialize SQLite FFI for desktop/server
+  // Initialize SQLite FFI for standalone Dart apps
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
-  
-  // Your application code here
-}
-```
 
-## Verify Installation
-
-Create a simple test to verify your installation:
-
-```dart
-import 'package:declarative_sqlite/declarative_sqlite.dart';
-
-void main() async {
-  // Create a simple schema
-  final schema = SchemaBuilder()
-    .table('test', (table) => table
-      .autoIncrementPrimaryKey('id')
-      .text('name', (col) => col.notNull()));
-  
-  // Initialize database
-  final database = await DeclarativeDatabase.init(
-    path: ':memory:',
-    schema: schema,
+  final database = DeclarativeDatabase(
+    schema: (builder) {
+      builder.table('test', (table) {
+        table.guid('id').notNull();
+        table.text('name').notNull();
+        table.key(['id']).primary();
+      });
+    },
+    path: 'test.db',
   );
+
+  // Test basic operations
+  await database.insert('test', {
+    'id': 'test-1',
+    'name': 'Test Item',
+  });
+
+  final results = await database.query('test');
+  print('Installation successful! Found ${results.length} test records.');
   
-  print('✅ Declarative SQLite installed successfully!');
   await database.close();
 }
 ```
 
+Run the test:
+
+```bash
+dart test_installation.dart
+```
+
+If you see "Installation successful!" then everything is working correctly.
+
 ## Next Steps
 
-Now that you have Declarative SQLite installed, you can:
-
-- Follow the [Quick Start Guide](./quick-start) to build your first database
-- Learn about [Schema Definition](../core-library/schema-definition)
-- Explore [Flutter Integration](../flutter/installation) for mobile apps
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue**: `dart pub get` fails with dependency conflicts
-**Solution**: Ensure you're using compatible versions. Check the [compatibility matrix](./project-structure#version-compatibility).
-
-**Issue**: SQLite errors on desktop platforms
-**Solution**: Make sure you've initialized SQLite FFI as shown in the Dart console setup section.
-
-**Issue**: Flutter build fails on specific platforms
-**Solution**: Check platform-specific requirements in the [Flutter setup guide](../flutter/installation).
-
-For more troubleshooting tips, see our [Troubleshooting Guide](#troubleshooting) (coming soon).
+Now that you have Declarative SQLite installed, continue with the [Quick Start Guide](quick-start) to learn the basics, or dive into [Schema Definition](../core-library/schema-definition) to understand how to design your database structure.

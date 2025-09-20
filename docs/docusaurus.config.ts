@@ -47,21 +47,6 @@ const config: Config = {
           editUrl:
             'https://github.com/graknol/declarative_sqlite/tree/main/docs/',
         },
-        blog: {
-          showReadingTime: true,
-          feedOptions: {
-            type: ['rss', 'atom'],
-            xslt: true,
-          },
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/graknol/declarative_sqlite/tree/main/docs/',
-          // Useful options to enforce blogging best practices
-          onInlineTags: 'warn',
-          onInlineAuthors: 'warn',
-          onUntruncatedBlogPosts: 'warn',
-        },
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -85,7 +70,6 @@ const config: Config = {
           position: 'left',
           label: 'Documentation',
         },
-        {to: '/blog', label: 'Blog', position: 'left'},
         {
           href: 'https://github.com/graknol/declarative_sqlite',
           label: 'GitHub',
@@ -105,15 +89,11 @@ const config: Config = {
             },
             {
               label: 'Core Library',
-              to: '/docs/core-library/installation',
+              to: '/docs/core-library/schema-definition',
             },
             {
               label: 'Flutter Integration',
-              href: 'https://pub.dev/packages/declarative_sqlite_flutter',
-            },
-            {
-              label: 'Code Generation',
-              href: 'https://pub.dev/packages/declarative_sqlite_generator',
+              to: '/docs/flutter-integration/widgets',
             },
           ],
         },

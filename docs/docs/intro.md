@@ -1,89 +1,86 @@
----
-sidebar_position: 1
----
+# Welcome to Declarative SQLite
 
-# Introduction
-
-Welcome to **Declarative SQLite** - a comprehensive Dart and Flutter library ecosystem for declarative SQLite schema management and database operations.
+A comprehensive Dart and Flutter library ecosystem for declarative SQLite schema management and database operations with real-time synchronization capabilities.
 
 ## What is Declarative SQLite?
 
-Declarative SQLite is a modern approach to database development that lets you define your database schema declaratively using a fluent builder pattern. Instead of writing SQL migrations, you describe your desired schema structure and let the library handle the rest.
+Declarative SQLite transforms how you work with SQLite databases in Dart and Flutter applications. Instead of writing SQL migration scripts and managing database versions manually, you simply declare your desired schema using a fluent, type-safe API.
 
-### Key Benefits
+## Key Benefits
 
-- **🏗️ Declarative Schema Definition** - Define tables, columns, and relationships using type-safe builders
-- **🔄 Automatic Migration** - No more manual migration scripts - changes are applied automatically
-- **⚡ Real-time Streaming** - Built-in reactive streams for live data updates
-- **🔗 LWW Conflict Resolution** - Last-Write-Wins strategy for offline-first applications
-- **📱 Flutter Integration** - Seamless integration with Flutter widgets and forms
-- **🔧 Code Generation** - Automatically generate type-safe data classes
-- **🌊 Reactive UI** - Build reactive user interfaces that update automatically
-
-## Package Ecosystem
-
-This library consists of three main packages:
-
-### 📦 [declarative_sqlite](./core-library/installation)
-The core Dart package providing:
-- Declarative schema definition
-- Database operations and querying
-- Streaming query support
-- Sync management
-- Fileset field support
-
-### 📱 [declarative_sqlite_flutter](./flutter/installation)
-Flutter-specific integration providing:
-- Reactive ListView widgets
-- Form integration components
-- Master-detail patterns
-- Input field widgets
-- Stream-based UI updates
-
-### 🔧 [declarative_sqlite_generator](https://pub.dev/packages/declarative_sqlite_generator)
-Code generation tools providing:
-- Automatic data class generation
-- Type-safe database operations
-- Build system integration
+🚀 **No Migration Scripts** - Define your schema once, automatic migrations handle the rest  
+🔄 **Real-time Updates** - Streaming queries automatically update your UI when data changes  
+🔗 **Seamless Sync** - Built-in conflict-free synchronization with remote servers  
+📁 **File Management** - Integrated file attachments with automatic lifecycle management  
+🎯 **Type Safety** - Full type safety from schema definition to data access  
+🧩 **Flutter Ready** - Reactive widgets that integrate perfectly with Flutter's architecture
 
 ## Quick Example
 
-Here's a taste of what Declarative SQLite looks like:
+Define your schema declaratively:
 
 ```dart
-// Define your schema
-final schema = SchemaBuilder()
-  .table('users', (table) => table
-    .autoIncrementPrimaryKey('id')
-    .text('username', (col) => col.notNull().unique())
-    .text('email', (col) => col.notNull())
-    .integer('age')
-    .date('created_at', (col) => col.notNull().defaultValue(DateTime.now())))
-  .table('posts', (table) => table
-    .autoIncrementPrimaryKey('id')
-    .text('title', (col) => col.notNull())
-    .text('content')
-    .integer('user_id', (col) => col.notNull())
-    .foreignKey('user_id').references('users', 'id'));
-
-// Initialize your database
-final database = await DeclarativeDatabase.init(
-  path: 'my_app.db',
-  schema: schema,
-);
-
-// Query with real-time updates
-final usersStream = database.users().stream();
-usersStream.listen((users) {
-  print('Found ${users.length} users');
-});
+void buildSchema(SchemaBuilder builder) {
+  builder.table('users', (table) {
+    table.guid('id').notNull();
+    table.text('name').notNull();
+    table.text('email').notNull();
+    table.date('created_at').notNull();
+    table.key(['id']).primary();
+  });
+}
 ```
 
-## Ready to Get Started?
+Use reactive widgets in Flutter:
 
-Choose your path:
+```dart
+QueryListView<User>(
+  database: DatabaseProvider.of(context),
+  query: (q) => q.from('users'),
+  mapper: User.fromMap,
+  itemBuilder: (context, user) => UserCard(user: user),
+)
+```
 
-- **New to Declarative SQLite?** Start with our [Quick Start Guide](./getting-started/quick-start)
-- **Migrating from traditional SQLite?** Check out our [Migration Guide](#migration-guide) (coming soon)
-- **Want to see examples?** Browse our [code examples](./getting-started/examples)
-- **Looking for specific features?** Jump to the [API Reference](#api-reference) (coming soon)
+## Architecture Overview
+
+The ecosystem consists of two complementary packages:
+
+- **`declarative_sqlite`** - Core database operations, schema management, and synchronization
+- **`declarative_sqlite_flutter`** - Flutter widgets and utilities for reactive UI development
+
+## Getting Started
+
+Ready to get started? Follow our [Installation Guide](getting-started/installation) to add Declarative SQLite to your project, or jump straight into the [Quick Start Guide](getting-started/quick-start) to see it in action.
+
+## Features at a Glance
+
+### Schema Definition
+- Fluent API for table and column definitions
+- Built-in validation and constraints
+- Automatic migration handling
+- Support for views and indexes
+
+### Database Operations
+- Type-safe query builder
+- Streaming queries for real-time updates
+- Transaction support
+- Efficient bulk operations
+
+### Flutter Integration
+- `DatabaseProvider` for dependency injection
+- `QueryListView` for reactive lists
+- `ServerSyncManagerWidget` for background sync
+- Seamless integration with Flutter's widget system
+
+### Synchronization
+- Last-Writer-Wins conflict resolution
+- Automatic dirty tracking
+- Configurable sync intervals
+- Robust error handling and retry logic
+
+### File Management
+- `FilesetField` for file attachments
+- Automatic file lifecycle management
+- Support for multiple files per field
+- Integration with database transactions

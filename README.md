@@ -1,147 +1,292 @@
 # Declarative SQLite
 
-A comprehensive Dart and Flutter library ecosystem for declarative SQLite schema management and database operations.
+A comprehensive Dart and Flutter library ecosystem for declarative SQLite schema management and database operations with real-time synchronization capabilities.
 
-## Repository Structure
+## Overview
 
-This repository contains two packages:
+Declarative SQLite provides a fluent, type-safe API for defining database schemas and managing data with automatic migrations, streaming queries, and built-in synchronization features. The ecosystem consists of two main packages that work together seamlessly.
 
-### 📦 [declarative_sqlite/](declarative_sqlite/)
-The core Dart package for declarative SQLite schema management and data access.
+## Packages
 
-- **Declarative Schema Definition**: Fluent builder pattern for database schemas
-- **Automatic Migration**: Create missing tables, views, and indices automatically  
-- **LWW Conflict Resolution**: Last-Write-Wins for offline-first applications
-- **Reactive Streams**: Real-time data updates
-- **Relationship Management**: One-to-many and many-to-many relationships
-- **SQL Views**: Complex queries with joins and aggregations
-- **Bulk Operations**: Efficient data loading with validation
+### 📦 Core Library (`declarative_sqlite`)
 
-### 📱 [declarative_sqlite_flutter/](declarative_sqlite_flutter/)
+The foundation package providing declarative schema definition and database operations.
+
+**Key Features:**
+- **Declarative Schema Definition**: Define tables, columns, and relationships using a fluent builder API
+- **Automatic Migration**: Schema changes are automatically applied to the database
+- **Streaming Queries**: Real-time reactive queries that automatically update when data changes
+- **File Management**: Built-in support for file attachments with FilesetField
+- **Synchronization**: Conflict-free synchronization with remote servers using Last-Writer-Wins (LWW)
+- **Type Safety**: Full type safety with proper column type definitions
+
+### 📱 Flutter Integration (`declarative_sqlite_flutter`)
+
 Flutter-specific widgets and utilities that integrate seamlessly with the core library.
 
-- **Reactive ListView Widgets**: Auto-updating lists when database changes
-- **LWW Form Integration**: Form widgets with automatic column binding
-- **Master-Detail Patterns**: Built-in navigation patterns
-- **Input Field Widgets**: Text fields, sliders, dropdowns with database sync
-- **Stream-based UI Updates**: Reactive widgets for real-time UI
-- **Helper Utilities**: Validators, formatters, responsive layouts
+**Key Features:**
+- **DatabaseProvider**: InheritedWidget for managing database lifecycle
+- **QueryListView**: Reactive ListView that automatically updates when database changes
+- **ServerSyncManagerWidget**: Widget for managing background synchronization
+- **Seamless Integration**: Works with any Flutter app architecture
 
 ## Quick Start
 
 ### Core Library (Dart)
 
-```yaml
-dependencies:
-  declarative_sqlite:
-    path: declarative_sqlite
-  # Platform-specific SQLite implementation:
-  sqflite: ^2.3.4                    # For Flutter/mobile platforms
-  # OR
-  sqflite_common_ffi: ^2.3.4+4       # For desktop platforms (Windows, macOS, Linux)
-```
-
 ```dart
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
-// Platform initialization (choose one):
+// Define your schema
+void buildSchema(SchemaBuilder builder) {
+  builder.table('users', (table) {
+    table.guid('id').notNull();
+    table.text('name').notNull();
+    table.text('email').notNull();
+    table.date('created_at').notNull();
+    table.key(['id']).primary();
+  });
+}
 
-// For Flutter/mobile platforms:
-import 'package:sqflite/sqflite.dart';
-// Database factory is automatically set
-
-// For desktop platforms (Windows, macOS, Linux):
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-// Initialize FFI
-sqfliteFfiInit();
-databaseFactory = databaseFactoryFfi;
-
-// Define schema
-final schema = SchemaBuilder()
-  .table('users', (table) => table
-      .autoIncrementPrimaryKey('id')
-      .text('name', (col) => col.notNull())
-      .text('email', (col) => col.unique())
-      .integer('age'));
-
-// Apply to database
-final migrator = SchemaMigrator();
-await migrator.migrate(database, schema);
-
-// Use data access
-final dataAccess = await DataAccess.create(
-  database: database, 
-  schema: schema,
+// Initialize database
+final database = DeclarativeDatabase(
+  schema: buildSchema,
+  path: 'my_app.db',
 );
+
+// Perform operations
+await database.insert('users', {
+  'id': 'user-123',
+  'name': 'John Doe',
+  'email': 'john@example.com',
+  'created_at': DateTime.now().toIso8601String(),
+});
+
+// Query data
+final users = await database.query('users');
+
+// Stream live updates
+final userStream = database.streamQuery('users');
+userStream.listen((users) {
+  print('Users updated: ${users.length} total users');
+});
 ```
 
 ### Flutter Integration
 
-```yaml
-dependencies:
-  flutter:
-    sdk: flutter
-  declarative_sqlite_flutter:
-    path: declarative_sqlite_flutter
-```
-
 ```dart
+import 'package:flutter/material.dart';
 import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
 
-// Initialize database service
-DatabaseServiceProvider(
-  schema: schema,
-  databaseName: 'app.db',
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: DatabaseProvider(
+        schema: buildSchema,
+        databaseName: 'app.db',
+        child: UserListScreen(),
+      ),
+    );
+  }
+}
+
+class UserListScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Users')),
+      body: QueryListView<User>(
+        database: DatabaseProvider.of(context),
+        query: (q) => q.from('users').orderBy('name'),
+        mapper: User.fromMap,
+        itemBuilder: (context, user) => ListTile(
+          title: Text(user.name),
+          subtitle: Text(user.email),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _addUser(context),
+        child: Icon(Icons.add),
+      ),
+    );
+  }
+  
+  Future<void> _addUser(BuildContext context) async {
+    final db = DatabaseProvider.of(context);
+    await db.insert('users', {
+      'id': 'user-${DateTime.now().millisecondsSinceEpoch}',
+      'name': 'New User',
+      'email': 'user@example.com',
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  }
+}
+
+class User {
+  final String id;
+  final String name;
+  final String email;
+  final DateTime createdAt;
+
+  User({required this.id, required this.name, required this.email, required this.createdAt});
+
+  static User fromMap(Map<String, Object?> map) {
+    return User(
+      id: map['id'] as String,
+      name: map['name'] as String,
+      email: map['email'] as String,
+      createdAt: DateTime.parse(map['created_at'] as String),
+    );
+  }
+}
+```
+
+## Schema Definition
+
+The schema builder provides a fluent API for defining your database structure:
+
+```dart
+void buildSchema(SchemaBuilder builder) {
+  // Define a users table
+  builder.table('users', (table) {
+    table.guid('id').notNull();
+    table.text('name').notNull();
+    table.text('email').notNull();
+    table.integer('age').min(0);
+    table.date('created_at').notNull();
+    table.date('updated_at');
+    table.key(['id']).primary();
+  });
+
+  // Define a posts table with relationships
+  builder.table('posts', (table) {
+    table.guid('id').notNull();
+    table.guid('user_id').notNull();
+    table.text('title').notNull();
+    table.text('content');
+    table.date('created_at').notNull();
+    table.key(['id']).primary();
+    // Foreign key relationships are handled at the application level
+  });
+
+  // Define a view for post summaries
+  builder.view('post_summaries', (view) {
+    view.select('posts.id, posts.title, users.name as author')
+        .from('posts')
+        .join('users', 'posts.user_id = users.id');
+  });
+}
+```
+
+## Column Types
+
+The library supports various column types with built-in validation:
+
+- **`text(name)`**: Text/string columns with optional constraints
+- **`integer(name)`**: Integer columns with min/max validation
+- **`real(name)`**: Real number (double) columns with min/max validation
+- **`date(name)`**: DateTime columns (stored as ISO 8601 strings)
+- **`guid(name)`**: GUID/UUID columns for unique identifiers
+- **`fileset(name)`**: File attachment columns for managing file collections
+
+All columns support:
+- **`.notNull()`**: Make column required
+- **`.min(value)`** / **`.max(value)`**: Set validation constraints
+- **`.defaultValue(value)`**: Set default values
+
+## File Management
+
+FilesetField provides managed file attachments:
+
+```dart
+// Define a table with file attachments
+builder.table('documents', (table) {
+  table.guid('id').notNull();
+  table.text('title').notNull();
+  table.fileset('attachments').notNull(); // Required fileset
+  table.fileset('gallery'); // Optional fileset
+  table.key(['id']).primary();
+});
+
+// Work with files in your data models
+class Document {
+  final String id;
+  final String title;
+  final FilesetField attachments;
+  final FilesetField? gallery;
+
+  static Document fromMap(Map<String, Object?> map, DeclarativeDatabase db) {
+    return Document(
+      id: map['id'] as String,
+      title: map['title'] as String,
+      attachments: DataMappingUtils.filesetFieldFromValue(map['attachments'], db)!,
+      gallery: DataMappingUtils.filesetFieldFromValue(map['gallery'], db),
+    );
+  }
+}
+
+// Use FilesetField methods
+final document = documents.first;
+final fileId = await document.attachments.addFile('report.pdf', pdfBytes);
+final files = await document.attachments.getFiles();
+await document.attachments.deleteFile(fileId);
+```
+
+## Synchronization
+
+Built-in synchronization with conflict resolution:
+
+```dart
+// Setup sync in Flutter
+ServerSyncManagerWidget(
+  fetchInterval: Duration(minutes: 2),
+  onFetch: (database, table, lastSynced) async {
+    // Fetch updates from your server
+    final updates = await apiClient.fetchUpdates(table, lastSynced);
+    for (final update in updates) {
+      await database.insert(table, update);
+    }
+  },
+  onSend: (operations) async {
+    // Send local changes to server
+    return await apiClient.sendChanges(operations);
+  },
   child: MyApp(),
 )
 
-// Use reactive widgets
-ReactiveListView.builder(
-  dataAccess: dataAccess,
-  tableName: 'users',
-  itemBuilder: (context, user) => UserCard(user: user),
-)
+// Sync operations are automatically tracked
+await database.insert('users', userData); // Will be synced automatically
+await database.update('users', updates, where: 'id = ?', whereArgs: [userId]);
+await database.delete('users', where: 'id = ?', whereArgs: [userId]);
 ```
 
-## Features Overview
+## Installation
 
-### 🗄️ Schema Management
-- Fluent builder API for tables, columns, indices
-- Automatic migration between schema versions
-- Support for all SQLite data types and constraints
-- Composite primary keys and indices
+Add the packages to your `pubspec.yaml`:
 
-### 🔄 Reactive Data Access
-- Stream-based queries that update automatically
-- Change detection for tables, columns, and relationships
-- Bulk loading with batching and error handling
-- LWW conflict resolution for offline scenarios
-
-### 📱 Flutter Widgets
-- Database-backed ListView with automatic updates
-- Form widgets that sync with LWW columns
-- Master-detail navigation patterns
-- Status cards, progress indicators, data tables
-- Responsive layouts and validation helpers
-
-### 🔗 Relationship Management
-- One-to-many and many-to-many relationships
-- Cascading deletes following relationship trees
-- Proxy queries for navigating relationships
-- Junction table management
-
-### 📊 Views and Queries
-- SQL views with complex joins and aggregations
-- Query builder for dynamic SQL generation
-- Expression builder with functions and operators
-- Raw SQL support for complex cases
+```yaml
+dependencies:
+  # Core library (required)
+  declarative_sqlite:
+    path: declarative_sqlite
+    
+  # Flutter integration (for Flutter apps)
+  declarative_sqlite_flutter:
+    path: declarative_sqlite_flutter
+    
+  # SQLite driver (choose one)
+  sqflite: ^2.3.0  # For Flutter apps
+  # OR
+  sqflite_common_ffi: ^2.3.0  # For standalone Dart apps
+```
 
 ## Examples
 
-Both packages include comprehensive examples:
+Complete examples are available in each package:
 
-- **Core Library**: [Basic usage, relationships, LWW conflict resolution](declarative_sqlite/example/)
-- **Flutter Library**: [Complete demo app with forms, lists, master-detail](declarative_sqlite_flutter/example/)
+- **Core Library**: [Core usage examples](declarative_sqlite/example/)
+- **Flutter Integration**: [Flutter app examples](declarative_sqlite_flutter/example/)
 
 ## Architecture
 
@@ -150,14 +295,16 @@ Both packages include comprehensive examples:
 │        Flutter Application         │
 ├─────────────────────────────────────┤
 │    declarative_sqlite_flutter      │
-│  • Reactive Widgets                │
-│  • Form Integration                 │
-│  • UI Patterns                     │
+│  • DatabaseProvider                │
+│  • QueryListView                   │
+│  • ServerSyncManagerWidget         │
 ├─────────────────────────────────────┤
 │       declarative_sqlite           │
 │  • Schema Definition               │
-│  • Data Access Layer              │
-│  • Migration & LWW                │
+│  • DeclarativeDatabase             │
+│  • Streaming Queries               │
+│  • Sync Management                 │
+│  • File Management                 │
 ├─────────────────────────────────────┤
 │          SQLite Database           │
 └─────────────────────────────────────┘
@@ -181,15 +328,9 @@ dart analyze
 ```bash
 cd declarative_sqlite_flutter
 flutter pub get
+flutter test
 flutter analyze
 ```
-
-## Documentation
-
-- [Core Library Documentation](declarative_sqlite/README.md)
-- [Flutter Library Documentation](declarative_sqlite_flutter/README.md)
-- [API Reference](declarative_sqlite/lib/declarative_sqlite.dart)
-- [Examples](declarative_sqlite/example/)
 
 ## Contributing
 
@@ -203,478 +344,3 @@ flutter analyze
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Changelog
-
-See [CHANGELOG.md](declarative_sqlite/CHANGELOG.md) for release history and changes.
-
-## Features
-
-- **Declarative Schema Definition**: Use a fluent builder pattern to define your database schema
-- **SQL Views Support**: Create views with complex queries, joins, aggregations, and subqueries  
-- **Automatic Migration**: Create missing tables, views, and indices automatically
-- **Data Access Abstraction**: Type-safe CRUD operations with schema metadata integration
-- **Bulk Data Loading**: Efficiently load large datasets with flexible validation and error handling
-- **SQLite Data Types**: Full support for SQLite affinities (INTEGER, REAL, TEXT, BLOB)
-- **Constraints**: Support for Primary Key, Unique, and Not Null constraints
-- **Indices**: Single-column and composite indices with unique option
-- **Type Safe**: Built with null safety and immutable builders
-
-## Installation
-
-Add this package to your `pubspec.yaml`:
-
-```yaml
-dependencies:
-  declarative_sqlite: ^1.0.0
-  sqflite: ^2.3.0  # For Flutter apps
-  # OR
-  sqflite_common_ffi: ^2.3.0  # For standalone Dart apps
-```
-
-## Usage
-
-### Basic Schema Definition
-
-```dart
-import 'package:declarative_sqlite/declarative_sqlite.dart';
-
-final schema = SchemaBuilder()
-    .table('users', (table) => table
-        .autoIncrementPrimaryKey('id')
-        .text('name', (col) => col.notNull())
-        .text('email', (col) => col.unique())
-        .integer('age')
-        .real('balance', (col) => col.withDefaultValue(0.0))
-        .blob('avatar_data'))
-    .table('posts', (table) => table
-        .autoIncrementPrimaryKey('id')
-        .text('title', (col) => col.notNull())
-        .text('content')
-        .integer('user_id', (col) => col.notNull())
-        .index('idx_user_id', ['user_id'])
-        .index('idx_title_user', ['title', 'user_id'], unique: true));
-```
-
-### SQL Views
-
-Create powerful SQL views with the unified fluent API:
-
-```dart
-import 'package:declarative_sqlite/declarative_sqlite.dart';
-
-final schema = SchemaBuilder()
-    .table('users', (table) => table
-        .autoIncrementPrimaryKey('id')
-        .text('username', (col) => col.notNull())
-        .text('email', (col) => col.notNull())
-        .integer('active', (col) => col.withDefaultValue(1)))
-    .table('posts', (table) => table
-        .autoIncrementPrimaryKey('id')
-        .text('title', (col) => col.notNull())
-        .text('content')
-        .integer('user_id', (col) => col.notNull())
-        .integer('likes', (col) => col.withDefaultValue(0)))
-    
-    // Simple filtered view - unified API
-    .addView(ViewBuilder.create('active_users')
-        .fromTable('users', whereCondition: 'active = 1'))
-    
-    // View with expressions and aliases - unified API  
-    .addView(ViewBuilder.create('user_summary')
-        .fromTable('users', expressions: [
-          ExpressionBuilder.column('username').as('name'),
-          ExpressionBuilder.function('UPPER', ['email']).as('email_upper'),
-          ExpressionBuilder.literal('Member').as('user_type'),
-        ]))
-    
-    // Complex view with joins and aggregation - unified API
-    .addView(ViewBuilder.create('user_post_stats')
-        .fromQuery((query) => query
-          .select([
-            ExpressionBuilder.qualifiedColumn('u', 'username'),
-            Expressions.count.as('post_count'),
-            Expressions.sum('p.likes').as('total_likes'),
-          ])
-          .from('users', 'u')
-          .leftJoin('posts', 'u.id = p.user_id', 'p') 
-          .groupBy(['u.id', 'u.username'])
-          .having('COUNT(p.id) > 0')
-          .orderByColumn('total_likes', true)
-        ))
-    
-    // Raw SQL for complex cases - unified API
-    .addView(ViewBuilder.create('popular_posts')
-        .fromSql('''
-          SELECT p.title, p.likes, u.username as author
-          FROM posts p
-          INNER JOIN users u ON p.user_id = u.id
-          WHERE p.likes > (SELECT AVG(likes) FROM posts)
-          ORDER BY p.likes DESC
-        '''));
-```
-
-#### Single Entry Point API
-
-The `ViewBuilder.create(name)` method provides a unified entry point for creating any type of view:
-
-- **`fromTable(...)`** - For simple views based on a single table
-- **`fromQuery(...)`** - For complex views using QueryBuilder with joins, aggregation, etc.
-- **`fromSql(...)`** - For views requiring raw SQL (subqueries, window functions, etc.)
-
-#### View Features Supported
-
-- ✅ **Filtered Views**: Simple WHERE conditions to filter table data
-- ✅ **Column Selection**: Choose specific columns with optional aliases
-- ✅ **Expressions**: Functions, calculations, and transformations
-- ✅ **Joins**: INNER, LEFT, RIGHT, FULL OUTER, CROSS joins
-- ✅ **Aggregation**: COUNT, SUM, AVG, MIN, MAX functions
-- ✅ **Grouping**: GROUP BY and HAVING clauses
-- ✅ **Ordering**: ORDER BY with ASC/DESC
-- ✅ **Pagination**: LIMIT and OFFSET support
-- ✅ **Subqueries**: Raw SQL support for complex cases
-- ✅ **Qualified References**: table.column syntax for joins
-```
-
-### Applying Schema to Database
-
-```dart
-import 'package:sqflite/sqflite.dart';
-
-// Open database
-final database = await openDatabase('my_database.db');
-
-// Create migrator and apply schema
-final migrator = SchemaMigrator();
-await migrator.migrate(database, schema);
-
-// Your database now has the tables and indices defined in the schema
-```
-
-### Data Types
-
-The library supports all SQLite data type affinities:
-
-```dart
-final table = TableBuilder('data_types_example')
-    .integer('int_column')        // INTEGER affinity
-    .real('real_column')          // REAL affinity  
-    .text('text_column')          // TEXT affinity
-    .blob('blob_column');         // BLOB affinity
-```
-
-### Column Constraints
-
-```dart
-final table = TableBuilder('users')
-    .integer('id', (col) => col.primaryKey())
-    .text('email', (col) => col.unique().notNull())
-    .text('name', (col) => col.notNull())
-    .integer('age', (col) => col.withDefaultValue(0));
-```
-
-### Indices
-
-Create single-column or composite indices:
-
-```dart
-final table = TableBuilder('posts')
-    .autoIncrementPrimaryKey('id')
-    .text('title')
-    .text('category')
-    .integer('user_id')
-    // Single column index
-    .index('idx_user_id', ['user_id'])
-    // Composite unique index
-    .index('idx_title_category', ['title', 'category'], unique: true);
-```
-
-### Migration Planning
-
-Preview what changes will be made before applying them:
-
-```dart
-final migrator = SchemaMigrator();
-final plan = await migrator.planMigration(database, schema);
-
-if (plan.hasOperations) {
-    print('Tables to create: ${plan.tablesToCreate}');
-    print('Indices to create: ${plan.indicesToCreate}');
-    
-    // Apply the migration
-    await migrator.migrate(database, schema);
-}
-```
-
-### Schema Validation
-
-```dart
-final migrator = SchemaMigrator();
-final errors = migrator.validateSchema(schema);
-
-if (errors.isNotEmpty) {
-    print('Schema validation errors:');
-    for (final error in errors) {
-        print('- $error');
-    }
-} else {
-    await migrator.migrate(database, schema);
-}
-```
-
-## Data Access Layer
-
-The library includes a comprehensive data access abstraction layer that provides type-safe database operations using your schema metadata.
-
-### Basic CRUD Operations
-
-```dart
-// Create data access layer
-final dataAccess = DataAccess(database: database, schema: schema);
-
-// Insert a new record
-final userId = await dataAccess.insert('users', {
-  'name': 'Alice Smith',
-  'email': 'alice@example.com',
-  'age': 30,
-  'balance': 150.75,
-});
-
-// Get a record by primary key
-final user = await dataAccess.getByPrimaryKey('users', userId);
-print('User: ${user?['name']}');
-
-// Update specific columns by primary key
-await dataAccess.updateByPrimaryKey('users', userId, {
-  'age': 31,
-  'balance': 200.0,
-});
-
-// Delete a record by primary key
-await dataAccess.deleteByPrimaryKey('users', userId);
-```
-
-### Query Operations
-
-```dart
-// Get all records
-final allUsers = await dataAccess.getAll('users', orderBy: 'name');
-
-// Get records with conditions
-final youngUsers = await dataAccess.getAllWhere('users',
-    where: 'age < ?',
-    whereArgs: [25],
-    orderBy: 'name',
-    limit: 10);
-
-// Count records
-final userCount = await dataAccess.count('users');
-final activeCount = await dataAccess.count('users', 
-    where: 'balance > ?', 
-    whereArgs: [0]);
-
-// Check if record exists
-final exists = await dataAccess.existsByPrimaryKey('users', userId);
-```
-
-### Bulk Operations
-
-```dart
-// Update multiple records
-final updatedRows = await dataAccess.updateWhere('users',
-    {'status': 'active'},
-    where: 'balance > ?',
-    whereArgs: [0]);
-
-// Delete multiple records
-final deletedRows = await dataAccess.deleteWhere('users',
-    where: 'age < ?',
-    whereArgs: [18]);
-```
-
-### Bulk Data Loading
-
-Efficiently load large datasets with automatic column filtering and validation:
-
-```dart
-final dataset = [
-  {
-    'name': 'John Doe',
-    'email': 'john@example.com',
-    'age': 25,
-    'balance': 100.0,
-  },
-  {
-    'name': 'Jane Smith',
-    'email': 'jane@example.com',
-    'age': 30,
-    'extra_field': 'ignored', // Extra columns are automatically filtered
-  },
-  // ... thousands more records
-];
-
-final result = await dataAccess.bulkLoad('users', dataset, options: BulkLoadOptions(
-  batchSize: 1000,         // Process in batches of 1000 rows
-  allowPartialData: true,  // Skip invalid rows instead of failing
-  validateData: true,      // Validate against schema constraints
-  collectErrors: true,     // Collect error details for debugging
-));
-
-print('Bulk load result:');
-print('Processed: ${result.rowsProcessed}');
-print('Inserted: ${result.rowsInserted}');
-print('Skipped: ${result.rowsSkipped}');
-if (result.errors.isNotEmpty) {
-  print('Errors: ${result.errors}');
-}
-```
-
-The bulk loader automatically handles:
-- **Column Filtering**: Extra columns in the dataset are ignored
-- **Missing Columns**: Optional columns can be missing from individual rows
-- **Validation**: Schema constraints are enforced (can be disabled for performance)
-- **Error Handling**: Failed rows can be skipped with detailed error reporting
-- **Performance**: Transaction-based batch processing for large datasets
-
-### Schema Metadata
-
-Access table structure information programmatically:
-
-```dart
-final metadata = dataAccess.getTableMetadata('users');
-print('Primary key: ${metadata.primaryKeyColumn}');
-print('Required columns: ${metadata.requiredColumns}');
-print('Unique columns: ${metadata.uniqueColumns}');
-print('All columns: ${metadata.columns.keys}');
-
-// Check column properties
-print('Is email required? ${metadata.isColumnRequired('email')}');
-print('Is email unique? ${metadata.isColumnUnique('email')}');
-print('Email data type: ${metadata.getColumnType('email')}');
-```
-
-## API Reference
-
-### SchemaBuilder
-
-The main entry point for defining database schemas.
-
-- `table(String name, TableBuilder Function(TableBuilder) builder)` - Add a table to the schema
-- `addTable(TableBuilder table)` - Add a pre-built table
-- `view(String name, ViewBuilder Function(String) builder)` - Add a view to the schema
-- `addView(ViewBuilder view)` - Add a pre-built view
-- `toSqlScript()` - Generate complete SQL script for the schema
-- `tableNames` - Get list of table names in the schema
-- `viewNames` - Get list of view names in the schema
-- `hasTable(String name)` - Check if table exists
-- `hasView(String name)` - Check if view exists
-
-### TableBuilder
-
-Builder for defining table structure.
-
-- `integer(String name, [configure])` - Add INTEGER column
-- `real(String name, [configure])` - Add REAL column  
-- `text(String name, [configure])` - Add TEXT column
-- `blob(String name, [configure])` - Add BLOB column
-- `autoIncrementPrimaryKey(String name)` - Add auto-increment primary key
-- `index(String name, List<String> columns, {bool unique})` - Add single-column or composite index
-
-### ColumnBuilder
-
-Builder for defining column constraints.
-
-- `primaryKey()` - Add primary key constraint
-- `unique()` - Add unique constraint
-- `notNull()` - Add not null constraint
-- `withDefaultValue(dynamic value)` - Set default value
-
-### ViewBuilder
-
-Builder for defining SQL views.
-
-- `ViewBuilder.simple(name, tableName, [whereCondition])` - Create simple filtered view
-- `ViewBuilder.withColumns(name, tableName, columns, [whereCondition])` - View with specific columns
-- `ViewBuilder.withExpressions(name, tableName, expressions, [whereCondition])` - View with expressions and aliases
-- `ViewBuilder.withJoins(name, queryBuilder)` - Complex view with joins and conditions
-- `ViewBuilder.fromSql(name, sqlQuery)` - View from raw SQL
-- `toSql()` - Generate CREATE VIEW statement
-- `dropSql()` - Generate DROP VIEW statement
-
-### QueryBuilder
-
-Builder for constructing SELECT queries.
-
-- `select(expressions)` - Add SELECT expressions
-- `selectAll()` - Select all columns (*)
-- `selectColumns(columnNames)` - Select specific columns
-- `from(tableName, [alias])` - Set FROM table
-- `join(joinClause)` - Add JOIN clause
-- `innerJoin(table, onCondition, [alias])` - Add INNER JOIN
-- `leftJoin(table, onCondition, [alias])` - Add LEFT JOIN
-- `where(condition)` - Set WHERE condition
-- `andWhere(condition)` - Add AND condition
-- `orWhere(condition)` - Add OR condition
-- `groupBy(columnNames)` - Set GROUP BY columns
-- `having(condition)` - Set HAVING condition
-- `orderBy(columnSpecs)` - Set ORDER BY columns
-- `limit(count, [offset])` - Set LIMIT and OFFSET
-
-### ExpressionBuilder
-
-Builder for SQL expressions and aliases.
-
-- `ExpressionBuilder.column(name)` - Column reference
-- `ExpressionBuilder.qualifiedColumn(table, column)` - Qualified column (table.column)
-- `ExpressionBuilder.literal(value)` - Literal value
-- `ExpressionBuilder.function(name, [args])` - Function call
-- `ExpressionBuilder.raw(sql)` - Raw SQL expression
-- `as(alias)` - Add alias to expression
-
-### JoinBuilder
-
-Builder for JOIN clauses.
-
-- `JoinBuilder(joinType, tableName)` - Create JOIN clause
-- `as(alias)` - Add table alias
-- `on(condition)` - Set ON condition
-- `onEquals(leftColumn, rightColumn)` - Equi-join condition
-
-### Helper Classes
-
-- **Views**: `all()`, `filtered()`, `columns()`, `aggregated()`, `joined()`, `fromSql()`
-- **Expressions**: `count`, `sum()`, `avg()`, `min()`, `max()`, `distinct()`, `all`
-- `Joins`: `inner()`, `left()`, `right()`, `fullOuter()`, `cross()`
-
-### SchemaMigrator
-
-Handles database schema migration.
-
-- `migrate(Database db, SchemaBuilder schema)` - Apply schema to database
-- `planMigration(Database db, SchemaBuilder schema)` - Preview migration changes
-- `validateSchema(SchemaBuilder schema)` - Validate schema definition
-
-## Limitations
-
-- Column modifications (ALTER COLUMN) are not supported - SQLite has limited ALTER TABLE support
-- Foreign key constraints are not yet implemented
-- Only additive migrations (new tables/indices/views) are currently supported
-- View modifications require dropping and recreating the view
-
-## Best Practices
-
-1. **Use descriptive names**: Choose clear, consistent names for tables, columns, views, and indices
-2. **Define constraints**: Always specify NOT NULL, UNIQUE, and PRIMARY KEY constraints where appropriate
-3. **Index strategically**: Add indices on columns used in WHERE clauses and JOINs
-4. **Design views thoughtfully**: Use views to encapsulate complex queries and provide consistent data access patterns
-5. **Test migrations**: Use the migration planning feature to preview changes
-6. **Validate schemas**: Always validate schemas before applying to production databases
-7. **Consider performance**: Views with complex joins or aggregations may impact query performance
-
-## Contributing
-
-Contributions are welcome! Please read the contributing guidelines and submit pull requests to the GitHub repository.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
