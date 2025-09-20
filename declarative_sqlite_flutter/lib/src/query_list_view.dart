@@ -1,6 +1,7 @@
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:declarative_sqlite_flutter/src/work_order.dart';
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 class _MockWorkOrder implements IWorkOrder {
   @override
@@ -22,7 +23,7 @@ class _MockWorkOrder implements IWorkOrder {
   }
 }
 
-class QueryListView<T> extends StatelessWidget {
+class QueryListView<T> extends StatefulWidget {
   final DeclarativeDatabase? database;
   final void Function(QueryBuilder query) query;
   final T Function(Map<String, Object?>) mapper;
@@ -41,9 +42,110 @@ class QueryListView<T> extends StatelessWidget {
   });
 
   @override
+  State<QueryListView<T>> createState() => _QueryListViewState<T>();
+}
+
+class _QueryListViewState<T> extends State<QueryListView<T>> {
+  AdvancedStreamingQuery<T>? _streamingQuery;
+  StreamSubscription<List<T>>? _subscription;
+  List<T>? _currentData;
+  Object? _currentError;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeStream();
+  }
+
+  @override
+  void didUpdateWidget(QueryListView<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Check if database changed
+    if (widget.database != oldWidget.database) {
+      _disposeStream();
+      _initializeStream();
+      return;
+    }
+    
+    // If we have a streaming query, update it with new parameters
+    if (_streamingQuery != null && widget.database != null) {
+      // Build new query to check for changes
+      final newBuilder = QueryBuilder();
+      widget.query(newBuilder);
+      
+      // Update the streaming query (it will handle change detection internally)
+      _streamingQuery!.updateQuery(
+        newBuilder: newBuilder,
+        newMapper: widget.mapper,
+      );
+    }
+  }
+
+  void _initializeStream() {
+    if (widget.database == null) {
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
+
+    // Create new query builder
+    final builder = QueryBuilder();
+    widget.query(builder);
+
+    // Create advanced streaming query
+    _streamingQuery = AdvancedStreamingQuery.create(
+      id: 'query_list_view_${DateTime.now().millisecondsSinceEpoch}',
+      builder: builder,
+      database: widget.database!,
+      mapper: widget.mapper,
+    );
+
+    // Subscribe to the stream
+    _subscription = _streamingQuery!.stream.listen(
+      (data) {
+        if (mounted) {
+          setState(() {
+            _currentData = data;
+            _currentError = null;
+            _isLoading = false;
+          });
+        }
+      },
+      onError: (error) {
+        if (mounted) {
+          setState(() {
+            _currentData = null;
+            _currentError = error;
+            _isLoading = false;
+          });
+        }
+      },
+    );
+  }
+
+  void _disposeStream() {
+    _subscription?.cancel();
+    _subscription = null;
+    _streamingQuery?.dispose();
+    _streamingQuery = null;
+    _currentData = null;
+    _currentError = null;
+    _isLoading = true;
+  }
+
+  @override
+  void dispose() {
+    _disposeStream();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     // If no database is provided, fall back to mock data for backward compatibility
-    if (database == null) {
+    if (widget.database == null) {
       if (T == IWorkOrder) {
         final items = [
           _MockWorkOrder('1', 'customer-1'),
@@ -52,30 +154,27 @@ class QueryListView<T> extends StatelessWidget {
         return ListView.builder(
           itemCount: items.length,
           itemBuilder: (context, index) =>
-              itemBuilder(context, items[index] as T),
+              widget.itemBuilder(context, items[index] as T),
         );
       }
-      return loadingBuilder(context);
+      return widget.loadingBuilder(context);
     }
 
-    // Use streaming query functionality
-    return StreamBuilder<List<T>>(
-      stream: database!.stream<T>(query, mapper),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return errorBuilder(context, snapshot.error!);
-        }
+    // Handle error state
+    if (_currentError != null) {
+      return widget.errorBuilder(context, _currentError!);
+    }
 
-        if (!snapshot.hasData) {
-          return loadingBuilder(context);
-        }
+    // Handle loading state
+    if (_isLoading || _currentData == null) {
+      return widget.loadingBuilder(context);
+    }
 
-        final items = snapshot.data!;
-        return ListView.builder(
-          itemCount: items.length,
-          itemBuilder: (context, index) => itemBuilder(context, items[index]),
-        );
-      },
+    // Build the list with current data
+    final items = _currentData!;
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (context, index) => widget.itemBuilder(context, items[index]),
     );
   }
 }

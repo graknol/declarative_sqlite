@@ -1,6 +1,7 @@
+import 'package:equatable/equatable.dart';
 import 'where_clause.dart';
 
-class QueryBuilder {
+class QueryBuilder extends Equatable {
   String? _from;
   final List<String> _columns = [];
   WhereClause? _where;
@@ -146,4 +147,16 @@ class QueryBuilder {
 
     return (sql, parameters);
   }
+
+  @override
+  List<Object?> get props => [
+        _from,
+        _columns,
+        _where,
+        _orderBy,
+        _groupBy,
+        _joins,
+        _joinParameters,
+        _having,
+      ];
 }

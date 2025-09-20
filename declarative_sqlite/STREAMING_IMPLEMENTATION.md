@@ -25,6 +25,16 @@ This implementation adds comprehensive streaming query support to declarative_sq
   - Generic type support with custom mappers
   - Proper memory management and disposal
 
+### 2.1. AdvancedStreamingQuery (`lib/src/streaming/advanced_streaming_query.dart`)
+- **Purpose**: Enhanced streaming query with smart lifecycle management
+- **Features**:
+  - **Value-based equality** checking for QueryBuilder changes using Equatable
+  - **Reference equality** checking for mapper function changes
+  - **Cache invalidation** when mapper changes, preservation when mapper stays same
+  - **Query updates** without stream recreation - execute new query through existing stream
+  - **Bounded cache** that prevents infinite growth by cleaning unused entries
+  - All performance optimizations from base StreamingQuery
+
 ### 3. QueryStreamManager (`lib/src/streaming/query_stream_manager.dart`)
 - **Purpose**: Coordinates multiple streaming queries
 - **Features**:
@@ -43,9 +53,13 @@ This implementation adds comprehensive streaming query support to declarative_sq
   - Backward compatibility with existing query methods
 
 ### 5. Flutter Widget Integration (`declarative_sqlite_flutter/lib/src/query_list_view.dart`)
-- **Purpose**: Reactive UI components
+- **Purpose**: Reactive UI components with advanced lifecycle management
 - **Features**:
-  - Enhanced QueryListView with streaming support
+  - Enhanced QueryListView with streaming support and smart updates
+  - **Smart lifecycle management** - detects query and mapper changes
+  - **Value-based equality** for QueryBuilder changes (no unnecessary recreations)
+  - **Reference equality** for mapper function changes (cache invalidation when needed)
+  - **Stream preservation** - updates query through existing stream instead of recreation
   - Backward compatibility with mock data fallback
   - StreamBuilder integration for automatic UI updates
   - Generic type support with custom mappers
@@ -105,6 +119,38 @@ final usersStream = db.stream<User>(
 - **Cache Size**: Bounded by current result set size
 - **Cleanup**: Automatic removal of unused cache entries
 - **Lifecycle**: Cache cleared on stream disposal or cancellation
+
+## Smart Lifecycle Management
+
+### Query Change Detection
+The system uses `Equatable` for value-based equality checking of QueryBuilder objects:
+
+```dart
+// These queries are considered equal (same structure)
+final query1 = QueryBuilder().from('users').where(col('status').eq('active'));
+final query2 = QueryBuilder().from('users').where(col('status').eq('active'));
+
+// Query change detected - executes new query without stream recreation
+widget.updateQuery(newBuilder: query2); // Uses existing stream
+```
+
+### Mapper Function Handling
+Reference equality is used to detect mapper function changes:
+
+```dart
+// Same reference - cache preserved
+static User staticMapper(Map<String, Object?> row) => User.fromMap(row);
+widget.updateQuery(newMapper: staticMapper); // Cache preserved
+
+// Different reference - cache invalidated
+widget.updateQuery(newMapper: (row) => User.fromMap(row)); // Cache cleared
+```
+
+### Benefits
+- **Performance**: No unnecessary stream recreation for equivalent queries
+- **Cache Efficiency**: Mapper changes invalidate cache, same mapper preserves it
+- **Memory**: Bounded cache prevents infinite growth
+- **UI Stability**: Stream preservation maintains widget state
 
 ## Performance Characteristics
 

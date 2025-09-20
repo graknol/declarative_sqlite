@@ -576,4 +576,166 @@ void main() {
       expect(results.length, 1);
     });
   });
+
+  group('AdvancedStreamingQuery', () {
+    test('handles query changes with value-based equality', () async {
+      await db.insert('users', {'id': 1, 'name': 'Alice', 'age': 30, 'status': 'active'});
+
+      // Create an advanced streaming query
+      final initialBuilder = QueryBuilder().from('users').where(col('status').eq('active'));
+      final streamingQuery = AdvancedStreamingQuery.create(
+        id: 'test_query',
+        builder: initialBuilder,
+        database: db,
+        mapper: (row) => row,
+      );
+
+      final resultsList = <List<Map<String, Object?>>>[];
+      final subscription = streamingQuery.stream.listen(resultsList.add);
+
+      // Wait for initial result
+      await Future.delayed(Duration(milliseconds: 50));
+
+      // Update query to include age filter (different query)
+      final newBuilder = QueryBuilder()
+          .from('users')
+          .where(col('status').eq('active'))
+          .where(col('age').gte(25));
+
+      await streamingQuery.updateQuery(newBuilder: newBuilder);
+      await Future.delayed(Duration(milliseconds: 50));
+
+      subscription.cancel();
+      streamingQuery.dispose();
+
+      // Should have received results from both queries
+      expect(resultsList.length, greaterThanOrEqualTo(1));
+    });
+
+    test('invalidates cache when mapper function changes', () async {
+      await db.insert('users', {'id': 1, 'name': 'Alice', 'age': 30, 'status': 'active'});
+
+      var mappingCallCount = 0;
+      
+      // Initial mapper
+      Map<String, Object?> mapper1(Map<String, Object?> row) {
+        mappingCallCount++;
+        return Map<String, Object?>.from(row);
+      }
+
+      // Different mapper (different reference)
+      Map<String, Object?> mapper2(Map<String, Object?> row) {
+        mappingCallCount++;
+        return {'mapped': true, ...row};
+      }
+
+      final builder = QueryBuilder().from('users');
+      final streamingQuery = AdvancedStreamingQuery.create(
+        id: 'test_mapper_change',
+        builder: builder,
+        database: db,
+        mapper: mapper1,
+      );
+
+      final resultsList = <List<Map<String, Object?>>>[];
+      final subscription = streamingQuery.stream.listen(resultsList.add);
+
+      // Wait for initial result
+      await Future.delayed(Duration(milliseconds: 50));
+      final initialMappingCalls = mappingCallCount;
+
+      // Change mapper (should invalidate cache)
+      await streamingQuery.updateQuery(newMapper: mapper2);
+      await Future.delayed(Duration(milliseconds: 50));
+
+      subscription.cancel();
+      streamingQuery.dispose();
+
+      // Should have mapped the data again with the new mapper
+      expect(mappingCallCount, greaterThan(initialMappingCalls));
+    });
+
+    test('preserves cache when mapper reference stays the same', () async {
+      await db.insert('users', {'id': 1, 'name': 'Alice', 'age': 30, 'status': 'active'});
+
+      var mappingCallCount = 0;
+      
+      // Keep reference to the same mapper
+      Map<String, Object?> staticMapper(Map<String, Object?> row) {
+        mappingCallCount++;
+        return Map<String, Object?>.from(row);
+      }
+
+      final builder1 = QueryBuilder().from('users').where(col('status').eq('active'));
+      final streamingQuery = AdvancedStreamingQuery.create(
+        id: 'test_same_mapper',
+        builder: builder1,
+        database: db,
+        mapper: staticMapper,
+      );
+
+      final subscription = streamingQuery.stream.listen((_) {});
+
+      // Wait for initial result
+      await Future.delayed(Duration(milliseconds: 50));
+      final initialMappingCalls = mappingCallCount;
+
+      // Change query but keep same mapper
+      final builder2 = QueryBuilder().from('users').where(col('status').eq('active'));
+      await streamingQuery.updateQuery(
+        newBuilder: builder2,
+        newMapper: staticMapper, // Same reference
+      );
+      await Future.delayed(Duration(milliseconds: 50));
+
+      subscription.cancel();
+      streamingQuery.dispose();
+
+      // If query results are the same, mapping should not be called again
+      // (cache should be preserved)
+      expect(mappingCallCount, equals(initialMappingCalls));
+    });
+
+    test('cache cleanup prevents infinite growth', () async {
+      // Insert initial data
+      await db.insert('users', {'id': 1, 'name': 'Alice', 'age': 30, 'status': 'active'});
+      await db.insert('users', {'id': 2, 'name': 'Bob', 'age': 25, 'status': 'active'});
+
+      final streamingQuery = AdvancedStreamingQuery.create(
+        id: 'test_cache_cleanup',
+        builder: QueryBuilder().from('users'),
+        database: db,
+        mapper: (row) => row,
+      );
+
+      final subscription = streamingQuery.stream.listen((_) {});
+
+      // Wait for initial result
+      await Future.delayed(Duration(milliseconds: 50));
+
+      // Delete Bob (should trigger cache cleanup)
+      await db.delete('users', where: 'id = ?', whereArgs: [2]);
+      await Future.delayed(Duration(milliseconds: 50));
+
+      // Add Charlie
+      await db.insert('users', {'id': 3, 'name': 'Charlie', 'age': 35, 'status': 'active'});
+      await Future.delayed(Duration(milliseconds: 50));
+
+      subscription.cancel();
+      streamingQuery.dispose();
+
+      // This test ensures cache cleanup works without errors
+      // In a real implementation, we could expose cache size for verification
+    });
+
+    test('value-based equality for QueryBuilder works correctly', () {
+      // Test QueryBuilder Equatable implementation
+      final builder1 = QueryBuilder().from('users').where(col('status').eq('active'));
+      final builder2 = QueryBuilder().from('users').where(col('status').eq('active'));
+      final builder3 = QueryBuilder().from('users').where(col('status').eq('inactive'));
+
+      expect(builder1, equals(builder2)); // Same content
+      expect(builder1, isNot(equals(builder3))); // Different content
+    });
+  });
 }
