@@ -1,27 +1,6 @@
 import 'package:declarative_sqlite/declarative_sqlite.dart';
-import 'package:declarative_sqlite_flutter/src/work_order.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
-
-class _MockWorkOrder implements IWorkOrder {
-  @override
-  final String id;
-  @override
-  final String customerId;
-  double total = 0;
-
-  _MockWorkOrder(this.id, this.customerId);
-
-  @override
-  Future<void> setTotal(double Function(IWorkOrder r) reducer) async {
-    // Simulate async operation
-    await Future.delayed(const Duration(milliseconds: 50));
-    // In a real implementation, this would update the database
-    // and the change would be reflected in the query result.
-    // For this mock, we'll just update the local state.
-    // Note: this mock implementation detail won't be used in the final code.
-  }
-}
 
 class QueryListView<T> extends StatefulWidget {
   final DeclarativeDatabase? database;
@@ -30,6 +9,26 @@ class QueryListView<T> extends StatefulWidget {
   final Widget Function(BuildContext context) loadingBuilder;
   final Widget Function(BuildContext context, Object error) errorBuilder;
   final Widget Function(BuildContext context, T record) itemBuilder;
+  
+  // ListView properties for Flutter SDK compatibility
+  final Axis scrollDirection;
+  final bool reverse;
+  final ScrollController? controller;
+  final bool? primary;
+  final ScrollPhysics? physics;
+  final bool shrinkWrap;
+  final EdgeInsetsGeometry? padding;
+  final double? itemExtent;
+  final Widget? prototypeItem;
+  final bool addAutomaticKeepAlives;
+  final bool addRepaintBoundaries;
+  final bool addSemanticIndexes;
+  final double? cacheExtent;
+  final int? semanticChildCount;
+  final DragStartBehavior dragStartBehavior;
+  final ScrollViewKeyboardDismissBehavior keyboardDismissBehavior;
+  final String? restorationId;
+  final Clip clipBehavior;
 
   const QueryListView({
     super.key,
@@ -39,6 +38,25 @@ class QueryListView<T> extends StatefulWidget {
     required this.loadingBuilder,
     required this.errorBuilder,
     required this.itemBuilder,
+    // ListView properties with Flutter SDK defaults
+    this.scrollDirection = Axis.vertical,
+    this.reverse = false,
+    this.controller,
+    this.primary,
+    this.physics,
+    this.shrinkWrap = false,
+    this.padding,
+    this.itemExtent,
+    this.prototypeItem,
+    this.addAutomaticKeepAlives = true,
+    this.addRepaintBoundaries = true,
+    this.addSemanticIndexes = true,
+    this.cacheExtent,
+    this.semanticChildCount,
+    this.dragStartBehavior = DragStartBehavior.start,
+    this.keyboardDismissBehavior = ScrollViewKeyboardDismissBehavior.manual,
+    this.restorationId,
+    this.clipBehavior = Clip.hardEdge,
   });
 
   @override
@@ -144,19 +162,8 @@ class _QueryListViewState<T> extends State<QueryListView<T>> {
 
   @override
   Widget build(BuildContext context) {
-    // If no database is provided, fall back to mock data for backward compatibility
+    // If no database is provided, show loading state
     if (widget.database == null) {
-      if (T == IWorkOrder) {
-        final items = [
-          _MockWorkOrder('1', 'customer-1'),
-          _MockWorkOrder('2', 'customer-2'),
-        ];
-        return ListView.builder(
-          itemCount: items.length,
-          itemBuilder: (context, index) =>
-              widget.itemBuilder(context, items[index] as T),
-        );
-      }
       return widget.loadingBuilder(context);
     }
 
@@ -170,11 +177,32 @@ class _QueryListViewState<T> extends State<QueryListView<T>> {
       return widget.loadingBuilder(context);
     }
 
-    // Build the list with current data
+    // Build the list with current data, passing through all ListView properties
     final items = _currentData!;
     return ListView.builder(
+      // Core ListView.builder properties
       itemCount: items.length,
       itemBuilder: (context, index) => widget.itemBuilder(context, items[index]),
+      
+      // Pass through all ListView properties to maintain Flutter SDK compatibility
+      scrollDirection: widget.scrollDirection,
+      reverse: widget.reverse,
+      controller: widget.controller,
+      primary: widget.primary,
+      physics: widget.physics,
+      shrinkWrap: widget.shrinkWrap,
+      padding: widget.padding,
+      itemExtent: widget.itemExtent,
+      prototypeItem: widget.prototypeItem,
+      addAutomaticKeepAlives: widget.addAutomaticKeepAlives,
+      addRepaintBoundaries: widget.addRepaintBoundaries,
+      addSemanticIndexes: widget.addSemanticIndexes,
+      cacheExtent: widget.cacheExtent,
+      semanticChildCount: widget.semanticChildCount,
+      dragStartBehavior: widget.dragStartBehavior,
+      keyboardDismissBehavior: widget.keyboardDismissBehavior,
+      restorationId: widget.restorationId,
+      clipBehavior: widget.clipBehavior,
     );
   }
 }
