@@ -12,6 +12,8 @@ import 'migration/diff_schemas.dart';
 import 'migration/generate_migration_scripts.dart';
 import 'migration/introspect_schema.dart';
 import 'schema/schema.dart';
+import 'streaming/query_stream_manager.dart';
+import 'streaming/streaming_query.dart';
 import 'sync/hlc.dart';
 import 'sync/dirty_row_store.dart';
 
@@ -40,6 +42,9 @@ class DeclarativeDatabase {
   /// API for interacting with filesets.
   late final FileSet files;
 
+  /// Manager for streaming queries.
+  late final QueryStreamManager _streamManager;
+
   DeclarativeDatabase._internal(
     this._db,
     this.schema,
@@ -48,6 +53,7 @@ class DeclarativeDatabase {
     this.fileRepository,
   ) : transactionId = null {
     files = FileSet(this);
+    _streamManager = QueryStreamManager();
   }
 
   DeclarativeDatabase._inTransaction(
@@ -59,6 +65,7 @@ class DeclarativeDatabase {
     this.transactionId,
   ) {
     files = FileSet(this);
+    _streamManager = QueryStreamManager();
   }
 
   /// Opens the database at the given [path].
@@ -116,6 +123,7 @@ class DeclarativeDatabase {
 
   /// Closes the database.
   Future<void> close() async {
+    _streamManager.dispose();
     if (_db is sqflite.Database) {
       return _db.close();
     }
@@ -170,6 +178,61 @@ class DeclarativeDatabase {
     return rawQuery(sql, params);
   }
 
+  /// Creates a streaming query that emits new results whenever the underlying data changes.
+  /// 
+  /// The [onBuild] callback is used to configure the query using a [QueryBuilder].
+  /// The [mapper] function converts raw database rows to typed objects.
+  /// 
+  /// Returns a [Stream] that emits a list of results whenever the query result changes.
+  /// The stream will emit an initial result when subscribed to, and then emit new results
+  /// whenever insert, update, delete, or bulkLoad operations affect the query dependencies.
+  /// 
+  /// Example:
+  /// ```dart
+  /// final usersStream = db.stream<User>(
+  ///   (q) => q.from('users').where(col('age').gt(18)),
+  ///   (row) => User.fromMap(row),
+  /// );
+  /// 
+  /// usersStream.listen((users) {
+  ///   print('Users updated: ${users.length}');
+  /// });
+  /// ```
+  Stream<List<T>> stream<T>(
+    void Function(QueryBuilder) onBuild,
+    T Function(Map<String, Object?>) mapper,
+  ) {
+    final builder = QueryBuilder();
+    onBuild(builder);
+    return streamWith(builder, mapper);
+  }
+
+  /// Creates a streaming query using an existing [QueryBuilder].
+  /// 
+  /// See [stream] for more details.
+  Stream<List<T>> streamWith<T>(
+    QueryBuilder builder,
+    T Function(Map<String, Object?>) mapper,
+  ) {
+    final queryId = Uuid().v4();
+    final streamingQuery = StreamingQuery.create<T>(
+      id: queryId,
+      builder: builder,
+      database: this,
+      mapper: mapper,
+    );
+
+    _streamManager.register(streamingQuery);
+    
+    // Clean up when stream is disposed
+    streamingQuery.stream.listen(
+      null,
+      onDone: () => _streamManager.unregister(queryId),
+    );
+
+    return streamingQuery.stream;
+  }
+
   /// Creates a transaction and runs the given [action] in it.
   ///
   /// The [action] is provided with a new [DeclarativeDatabase] instance that
@@ -205,6 +268,10 @@ class DeclarativeDatabase {
     final now = hlcClock.now();
     final systemId = await _insert(tableName, values, now);
     await dirtyRowStore.add(tableName, systemId, now);
+    
+    // Notify streaming queries of the change
+    await _streamManager.notifyTableChanged(tableName);
+    
     return systemId;
   }
 
@@ -265,6 +332,9 @@ class DeclarativeDatabase {
     for (final row in rowsToUpdate) {
       await dirtyRowStore.add(tableName, row['system_id']! as String, now);
     }
+
+    // Notify streaming queries of the change
+    await _streamManager.notifyTableChanged(tableName);
 
     return result;
   }
@@ -369,6 +439,9 @@ class DeclarativeDatabase {
     for (final row in rowsToDelete) {
       await dirtyRowStore.add(tableName, row['system_id']! as String, now);
     }
+
+    // Notify streaming queries of the change
+    await _streamManager.notifyTableChanged(tableName);
 
     return result;
   }
@@ -486,6 +559,9 @@ class DeclarativeDatabase {
         }
       }
     });
+    
+    // Notify streaming queries of the change
+    await _streamManager.notifyTableChanged(tableName);
   }
 
   static Future<bool> _removeSetting(
