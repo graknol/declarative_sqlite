@@ -148,6 +148,14 @@ class QueryBuilder extends Equatable {
     return (sql, parameters);
   }
 
+  /// Gets the main table name being queried (without alias).
+  String? get tableName {
+    if (_from == null) return null;
+    // Handle "table AS alias" format
+    final parts = _from!.split(' ');
+    return parts.first;
+  }
+
   @override
   List<Object?> get props => [
         _from,

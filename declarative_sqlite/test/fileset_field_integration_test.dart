@@ -37,6 +37,126 @@ void main() {
       );
     });
 
+    test('Automatic fileset column mapping in direct queries', () async {
+      // 1. Insert a document with fileset data
+      await db.insert('documents', {
+        'title': 'Test Document',
+        'attachments': 'doc-attachments-123',
+        'gallery': 'doc-gallery-456',
+      });
+
+      // 2. Query the document directly (without using DataMappingUtils)
+      final rows = await db.queryTable('documents');
+      expect(rows.length, equals(1));
+      final row = rows.first;
+      
+      // 3. Verify that fileset columns are automatically converted to FilesetField
+      expect(row['attachments'], isA<FilesetField>());
+      expect(row['gallery'], isA<FilesetField>());
+      
+      final attachments = row['attachments'] as FilesetField;
+      final gallery = row['gallery'] as FilesetField;
+      
+      expect(attachments.filesetId, equals('doc-attachments-123'));
+      expect(attachments.hasValue, isTrue);
+      
+      expect(gallery.filesetId, equals('doc-gallery-456'));
+      expect(gallery.hasValue, isTrue);
+      
+      // 4. Test that FilesetField objects work immediately
+      final pdfContent = Uint8List.fromList([80, 68, 70, 45, 49]); // PDF header-like
+      final imageContent = Uint8List.fromList([255, 216, 255, 224]); // JPEG header-like
+      
+      // Add files directly through the FilesetField from query results
+      final pdfId = await attachments.addFile('document.pdf', pdfContent);
+      final imageId = await gallery.addFile('photo.jpg', imageContent);
+      
+      // 5. Verify files were added correctly
+      expect(await attachments.getFileCount(), equals(1));
+      expect(await gallery.getFileCount(), equals(1));
+      
+      final attachmentFiles = await attachments.getFiles();
+      expect(attachmentFiles.first['name'], equals('document.pdf'));
+      
+      final galleryFiles = await gallery.getFiles();
+      expect(galleryFiles.first['name'], equals('photo.jpg'));
+    });
+
+    test('Automatic fileset conversion works with QueryBuilder', () async {
+      // Insert test data
+      await db.insert('documents', {
+        'title': 'QueryBuilder Test',
+        'attachments': 'query-attachments-789',
+        'gallery': null,
+      });
+
+      // Query using QueryBuilder
+      final results = await db.query((q) => q
+        .select('title')
+        .select('attachments')
+        .select('gallery')
+        .from('documents')
+        .where(WhereClause.equals('title', 'QueryBuilder Test')));
+
+      expect(results.length, equals(1));
+      final row = results.first;
+      
+      // Verify automatic conversion
+      expect(row['attachments'], isA<FilesetField>());
+      expect(row['gallery'], isNull); // Should remain null
+      
+      final attachments = row['attachments'] as FilesetField;
+      expect(attachments.filesetId, equals('query-attachments-789'));
+      expect(attachments.hasValue, isTrue);
+      
+      // Test functionality
+      final content = Uint8List.fromList([1, 2, 3, 4]);
+      await attachments.addFile('query-test.txt', content);
+      expect(await attachments.getFileCount(), equals(1));
+    });
+
+    test('FilesetField values can be inserted and updated directly', () async {
+      // Create FilesetField objects
+      final attachments = FilesetField.fromDatabaseValue('direct-attachments', db);
+      final gallery = FilesetField.fromDatabaseValue('direct-gallery', db);
+      
+      // Insert using FilesetField objects directly
+      await db.insert('documents', {
+        'title': 'Direct FilesetField Test',
+        'attachments': attachments, // Pass FilesetField directly
+        'gallery': gallery,
+      });
+
+      // Query back and verify conversion happened correctly
+      final rows = await db.queryTable('documents', 
+        where: 'title = ?', 
+        whereArgs: ['Direct FilesetField Test']);
+      
+      expect(rows.length, equals(1));
+      final row = rows.first;
+      
+      final queriedAttachments = row['attachments'] as FilesetField;
+      final queriedGallery = row['gallery'] as FilesetField;
+      
+      expect(queriedAttachments.filesetId, equals('direct-attachments'));
+      expect(queriedGallery.filesetId, equals('direct-gallery'));
+      
+      // Update using FilesetField objects
+      final newAttachments = FilesetField.fromDatabaseValue('updated-attachments', db);
+      await db.update('documents', 
+        {'attachments': newAttachments},
+        where: 'title = ?',
+        whereArgs: ['Direct FilesetField Test']);
+      
+      // Verify update worked
+      final updatedRows = await db.queryTable('documents',
+        where: 'title = ?',
+        whereArgs: ['Direct FilesetField Test']);
+      
+      final updatedAttachments = updatedRows.first['attachments'] as FilesetField;
+      expect(updatedAttachments.filesetId, equals('updated-attachments'));
+    });
+
     test('End-to-end fileset column mapping workflow', () async {
       // 1. Insert a document with fileset data
       await db.insert('documents', {
