@@ -23,6 +23,7 @@ const sidebars: SidebarsConfig = {
         'getting-started/installation',
         'getting-started/quick-start',
         'getting-started/project-structure',
+        'getting-started/examples',
       ],
     },
     {
@@ -30,6 +31,16 @@ const sidebars: SidebarsConfig = {
       label: 'Core Library',
       items: [
         'core-library/installation',
+        'core-library/schema-definition',
+        'core-library/database-operations',
+        'core-library/streaming-queries',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Flutter Integration',
+      items: [
+        'flutter/installation',
       ],
     },
   ],
