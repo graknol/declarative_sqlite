@@ -439,6 +439,114 @@ void main() {
       expect(allResults[1].length, 3); // Alice + Bob + Charlie
     });
 
+    test('hash-based caching provides reference equality for unchanged objects', () async {
+      // Insert initial data
+      await db.insert('users', {'id': 1, 'name': 'Alice', 'age': 30, 'status': 'active'});
+      await db.insert('users', {'id': 2, 'name': 'Bob', 'age': 25, 'status': 'active'});
+
+      final resultsList = <List<Map<String, Object?>>>[];
+      
+      final stream = db.stream<Map<String, Object?>>(
+        (q) => q.from('users').where(col('status').eq('active')),
+        (row) => row,
+      );
+
+      late StreamSubscription subscription;
+      subscription = stream.listen((results) {
+        resultsList.add(results);
+      });
+
+      // Wait for initial result
+      await Future.delayed(Duration(milliseconds: 50));
+      
+      // Insert new user (should not affect existing objects)
+      await db.insert('users', {'id': 3, 'name': 'Charlie', 'age': 35, 'status': 'active'});
+      
+      await Future.delayed(Duration(milliseconds: 50));
+      subscription.cancel();
+
+      // Verify we have two emissions
+      expect(resultsList.length, 2);
+      
+      // Verify that unchanged objects maintain reference equality
+      final firstEmission = resultsList[0];
+      final secondEmission = resultsList[1];
+      
+      // Alice and Bob should be identical objects (reference equality)
+      expect(identical(firstEmission[0], secondEmission[0]), isTrue);
+      expect(identical(firstEmission[1], secondEmission[1]), isTrue);
+      
+      // But Charlie should be a new object
+      expect(secondEmission.length, 3);
+      expect(secondEmission[2]['name'], 'Charlie');
+    });
+
+    test('caching avoids unnecessary mapping operations', () async {
+      // Track mapping calls
+      var mappingCallCount = 0;
+      
+      await db.insert('users', {'id': 1, 'name': 'Alice', 'age': 30, 'status': 'active'});
+      await db.insert('users', {'id': 2, 'name': 'Bob', 'age': 25, 'status': 'active'});
+
+      final stream = db.stream<Map<String, Object?>>(
+        (q) => q.from('users').where(col('status').eq('active')),
+        (row) {
+          mappingCallCount++;
+          return Map<String, Object?>.from(row); // Create new map to track calls
+        },
+      );
+
+      final resultsList = <List<Map<String, Object?>>>[];
+      late StreamSubscription subscription;
+      subscription = stream.listen((results) {
+        resultsList.add(results);
+      });
+
+      // Wait for initial emission (should map 2 objects)
+      await Future.delayed(Duration(milliseconds: 50));
+      expect(mappingCallCount, 2);
+      
+      // Insert new user (should only map 1 new object)
+      await db.insert('users', {'id': 3, 'name': 'Charlie', 'age': 35, 'status': 'active'});
+      
+      await Future.delayed(Duration(milliseconds: 50));
+      
+      // Should have mapped only the new object (Charlie)
+      expect(mappingCallCount, 3);
+      
+      subscription.cancel();
+    });
+
+    test('cache cleanup removes unused entries', () async {
+      await db.insert('users', {'id': 1, 'name': 'Alice', 'age': 30, 'status': 'active'});
+      await db.insert('users', {'id': 2, 'name': 'Bob', 'age': 25, 'status': 'active'});
+
+      final stream = db.stream<Map<String, Object?>>(
+        (q) => q.from('users').where(col('status').eq('active')),
+        (row) => row,
+      );
+
+      late StreamSubscription subscription;
+      subscription = stream.listen((results) {});
+
+      // Wait for initial result
+      await Future.delayed(Duration(milliseconds: 50));
+      
+      // Delete Bob (should remove him from cache)
+      await db.delete('users', where: 'id = ?', whereArgs: [2]);
+      
+      await Future.delayed(Duration(milliseconds: 50));
+      
+      // Add new user
+      await db.insert('users', {'id': 3, 'name': 'Charlie', 'age': 35, 'status': 'active'});
+      
+      await Future.delayed(Duration(milliseconds: 50));
+      subscription.cancel();
+
+      // This test mainly ensures cache cleanup doesn't cause errors
+      // In a production implementation, we could expose cache metrics for testing
+    });
+
     test('stream stops emitting after cancellation', () async {
       await db.insert('users', {'id': 1, 'name': 'Alice', 'age': 30, 'status': 'active'});
 

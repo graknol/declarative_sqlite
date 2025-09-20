@@ -15,11 +15,13 @@ This implementation adds comprehensive streaming query support to declarative_sq
   - **Fallback parsing**: Maintains regex-based parsing for backward compatibility
 
 ### 2. StreamingQuery (`lib/src/streaming/streaming_query.dart`)
-- **Purpose**: Manages individual streaming query lifecycle
+- **Purpose**: Manages individual streaming query lifecycle with performance optimization
 - **Features**:
   - Broadcast stream controller for multiple listeners
   - Automatic query execution on first subscription
-  - Smart result comparison to avoid duplicate emissions
+  - **Hash-based result caching** for performance optimization
+  - **Reference equality preservation** for unchanged objects
+  - **Selective mapping** - only maps rows that have changed
   - Generic type support with custom mappers
   - Proper memory management and disposal
 
@@ -74,6 +76,36 @@ QueryListView<User>(
 )
 ```
 
+## Performance Optimizations
+
+### Hash-Based Result Caching
+The streaming system implements sophisticated caching to minimize expensive mapping operations:
+
+- **Row Hashing**: Each database row (Map) gets a computed hash code based on its contents
+- **Cache Lookup**: Before mapping, the system checks if a row with the same hash exists in cache
+- **Selective Mapping**: Only rows with new/changed hash codes are mapped to objects
+- **Reference Equality**: Unchanged objects maintain reference equality between emissions
+- **Cache Cleanup**: Automatically removes cached entries no longer in the result set
+
+### Performance Benefits
+```dart
+// Example: Large result set with minimal changes
+final usersStream = db.stream<User>(
+  (q) => q.from('users'),
+  User.fromMap,  // Expensive mapping operation
+);
+
+// When 1 user changes out of 1000:
+// - Old approach: Maps all 1000 users
+// - New approach: Maps only 1 user (99.9% savings)
+// - Reference equality: 999 users are identical objects
+```
+
+### Memory Management
+- **Cache Size**: Bounded by current result set size
+- **Cleanup**: Automatic removal of unused cache entries
+- **Lifecycle**: Cache cleared on stream disposal or cancellation
+
 ## Performance Characteristics
 
 ### Dependency Analysis
@@ -86,11 +118,13 @@ QueryListView<User>(
 - **Triggering**: Only affected queries are refreshed
 - **Concurrency**: Multiple queries refresh in parallel
 - **Overhead**: Minimal schema lookups and validation
+- **Performance**: Hash-based caching minimizes mapping operations
 
 ### Stream Management
-- **Memory**: Automatic cleanup of inactive streams
+- **Memory**: Automatic cleanup of inactive streams and result cache
 - **Scalability**: Efficient with hundreds of concurrent streams
 - **Lifecycle**: Automatic registration/deregistration
+- **Caching**: Hash-based result caching with reference equality preservation
 
 ## Testing
 
