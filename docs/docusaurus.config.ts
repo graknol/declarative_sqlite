@@ -109,11 +109,11 @@ const config: Config = {
             },
             {
               label: 'Flutter Integration',
-              to: '/docs/flutter/installation',
+              href: 'https://pub.dev/packages/declarative_sqlite_flutter',
             },
             {
               label: 'Code Generation',
-              to: '/docs/generator/setup',
+              href: 'https://pub.dev/packages/declarative_sqlite_generator',
             },
           ],
         },

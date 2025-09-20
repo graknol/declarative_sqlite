@@ -219,11 +219,11 @@ Now that you've created your first Declarative SQLite database, you can explore:
 - **[Schema Definition](../core-library/schema-definition)** - Learn about advanced schema features
 - **[Database Operations](../core-library/database-operations)** - Master CRUD operations and queries
 - **[Streaming Queries](../core-library/streaming-queries)** - Build reactive applications
-- **[Code Generation](../generator/setup)** - Generate type-safe data classes
-- **[Flutter Integration](../flutter/widgets)** - Build Flutter apps with reactive widgets
+- **[Code Generation](https://pub.dev/packages/declarative_sqlite_generator)** - Generate type-safe data classes
+- **[Flutter Integration](../flutter/installation)** - Build Flutter apps with reactive widgets
 
 ## Need Help?
 
 - Check out more [examples](./examples)
-- Read the [API Reference](../api/overview)
-- See the [troubleshooting guide](../advanced/troubleshooting)
+- Read the [API Reference](#api-reference) (coming soon)
+- See the [troubleshooting guide](#troubleshooting) (coming soon)

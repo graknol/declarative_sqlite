@@ -636,7 +636,7 @@ class BlogStreamManager {
 
 ## Next Steps
 
-- Learn about [Sync Management](./sync-management) for offline-first applications
-- Explore [Fileset Fields](./fileset-fields) for file handling
-- See [Flutter Integration](../flutter/widgets) for UI components
-- Check out [Performance Tips](../advanced/performance) for optimization
+- Learn about [Sync Management](#sync-management) (coming soon) for offline-first applications
+- Explore [Fileset Fields](#fileset-fields) (coming soon) for file handling
+- See [Flutter Integration](../flutter/installation) for UI components
+- Check out [Performance Tips](#performance) (coming soon) for optimization

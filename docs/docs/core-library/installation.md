@@ -186,7 +186,7 @@ Now that you have the core package installed:
 1. **[Define Your Schema](./schema-definition)** - Learn how to create database schemas
 2. **[Database Operations](./database-operations)** - Master CRUD operations
 3. **[Streaming Queries](./streaming-queries)** - Build reactive applications
-4. **[Code Generation](../generator/setup)** - Generate type-safe data classes
+4. **[Code Generation](https://pub.dev/packages/declarative_sqlite_generator)** - Generate type-safe data classes
 
 ## Troubleshooting
 
@@ -201,4 +201,4 @@ Now that you have the core package installed:
 **Error**: Platform not supported  
 **Solution**: Add platform-specific SQLite implementations as shown in the platform setup section.
 
-For more help, see the [Troubleshooting Guide](../advanced/troubleshooting).
+For more help, see the [Troubleshooting Guide](#troubleshooting) (coming soon).

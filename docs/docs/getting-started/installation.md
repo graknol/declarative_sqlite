@@ -135,4 +135,4 @@ Now that you have Declarative SQLite installed, you can:
 **Issue**: Flutter build fails on specific platforms
 **Solution**: Check platform-specific requirements in the [Flutter setup guide](../flutter/installation).
 
-For more troubleshooting tips, see our [Troubleshooting Guide](../advanced/troubleshooting).
+For more troubleshooting tips, see our [Troubleshooting Guide](#troubleshooting) (coming soon).

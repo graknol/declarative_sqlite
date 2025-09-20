@@ -912,6 +912,6 @@ These examples demonstrate:
 ## Next Steps
 
 - Explore the [complete example apps](https://github.com/graknol/declarative_sqlite/tree/main/examples) in the repository
-- Learn about [Performance Optimization](../advanced/performance) techniques
-- See [Testing Strategies](../advanced/testing) for your applications
-- Check out [Deployment](../advanced/deployment) for production apps
+- Learn about [Performance Optimization](#performance) (coming soon) techniques
+- See [Testing Strategies](#testing) (coming soon) for your applications
+- Check out [Deployment](#deployment) (coming soon) for production apps

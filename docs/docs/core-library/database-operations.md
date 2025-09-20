@@ -642,6 +642,6 @@ class BlogRepository {
 ## Next Steps
 
 - Learn about [Streaming Queries](./streaming-queries) for real-time applications
-- Explore [Sync Management](./sync-management) for offline-first apps
-- Understand [Fileset Fields](./fileset-fields) for file handling
-- See [Migration](./migration) for schema evolution
+- Explore [Sync Management](#sync-management) (coming soon) for offline-first apps
+- Understand [Fileset Fields](#fileset-fields) (coming soon) for file handling
+- See [Migration](#migration) (coming soon) for schema evolution

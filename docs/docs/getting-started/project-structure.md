@@ -258,5 +258,5 @@ class AppDatabase {
 
 - Learn about [Schema Definition](../core-library/schema-definition)
 - Explore [Database Operations](../core-library/database-operations)
-- Set up [Code Generation](../generator/setup)
-- Build [Flutter Widgets](../flutter/widgets)
+- Set up [Code Generation](https://pub.dev/packages/declarative_sqlite_generator)
+- Build [Flutter Widgets](../flutter/installation)

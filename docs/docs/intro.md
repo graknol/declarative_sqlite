@@ -40,7 +40,7 @@ Flutter-specific integration providing:
 - Input field widgets
 - Stream-based UI updates
 
-### 🔧 [declarative_sqlite_generator](./generator/setup)
+### 🔧 [declarative_sqlite_generator](https://pub.dev/packages/declarative_sqlite_generator)
 Code generation tools providing:
 - Automatic data class generation
 - Type-safe database operations
@@ -84,6 +84,6 @@ usersStream.listen((users) {
 Choose your path:
 
 - **New to Declarative SQLite?** Start with our [Quick Start Guide](./getting-started/quick-start)
-- **Migrating from traditional SQLite?** Check out our [Migration Guide](./advanced/migration-guide)
+- **Migrating from traditional SQLite?** Check out our [Migration Guide](#migration-guide) (coming soon)
 - **Want to see examples?** Browse our [code examples](./getting-started/examples)
-- **Looking for specific features?** Jump to the [API Reference](../api/overview)
+- **Looking for specific features?** Jump to the [API Reference](#api-reference) (coming soon)

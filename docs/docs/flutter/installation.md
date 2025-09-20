@@ -540,7 +540,7 @@ StreamBuilder(
 
 Now that you have Flutter integration set up:
 
-- Learn about [Reactive Widgets](./widgets) for building UIs
-- Explore [Form Integration](./forms) for data input
-- See [Examples](./examples) for complete app patterns
-- Check out [Performance Tips](../advanced/performance) for optimization
+- Learn about [Reactive Widgets](#widgets) (coming soon) for building UIs
+- Explore [Form Integration](#forms) (coming soon) for data input
+- See [Examples](../getting-started/examples) for complete app patterns
+- Check out [Performance Tips](#performance) (coming soon) for optimization

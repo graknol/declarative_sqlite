@@ -414,5 +414,5 @@ Now that you understand schema definition:
 
 - Learn about [Database Operations](./database-operations)
 - Explore [Streaming Queries](./streaming-queries)
-- Set up [Code Generation](../generator/setup) for type-safe data classes
-- See [Migration](./migration) for handling schema changes
+- Set up [Code Generation](https://pub.dev/packages/declarative_sqlite_generator) for type-safe data classes
+- See [Migration](#migration) (coming soon) for handling schema changes
