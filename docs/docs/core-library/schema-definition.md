@@ -1,418 +1,428 @@
----
-sidebar_position: 2
----
-
 # Schema Definition
 
-Learn how to define your database schema using Declarative SQLite's fluent builder pattern.
+Learn how to define your database schema using Declarative SQLite's fluent builder API.
 
 ## Overview
 
-Schema definition is the foundation of Declarative SQLite. Instead of writing SQL DDL statements, you use a type-safe builder pattern to describe your database structure. The library then automatically creates or migrates your database to match this schema.
+Schema definition in Declarative SQLite is declarative and type-safe. You describe what your database should look like, and the library handles creating tables, columns, indexes, and views automatically.
 
-## Basic Schema Creation
-
-### Creating a Schema Builder
+## Basic Schema Structure
 
 ```dart
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
-final schema = SchemaBuilder()
-  .table('users', (table) => {
-    // Table definition goes here
-  })
-  .table('posts', (table) => {
-    // Another table definition
+void buildSchema(SchemaBuilder builder) {
+  // Define tables using the table() method
+  builder.table('table_name', (table) {
+    // Define columns and constraints
   });
+  
+  // Define views using the view() method
+  builder.view('view_name', (view) {
+    // Define view query
+  });
+}
 ```
 
-### Table Definition
+## Defining Tables
+
+### Basic Table Definition
 
 ```dart
-final schema = SchemaBuilder()
-  .table('users', (table) => table
-    .autoIncrementPrimaryKey('id')
-    .text('username', (col) => col.notNull().unique())
-    .text('email', (col) => col.notNull())
-    .text('full_name')
-    .integer('age', (col) => col.min(0).max(150))
-    .date('created_at', (col) => col.notNull().defaultValue(DateTime.now()))
-    .date('last_login'));
+builder.table('users', (table) {
+  table.guid('id').notNull();
+  table.text('name').notNull();
+  table.text('email').notNull();
+  table.key(['id']).primary();
+});
 ```
+
+### Table Naming Rules
+
+- Table names must be valid SQL identifiers
+- Names starting with `__` (double underscore) are reserved for system tables
+- Use snake_case for consistency (e.g., `user_profiles`, `order_items`)
 
 ## Column Types
 
-Declarative SQLite supports all common SQLite column types with type-safe builders:
+Declarative SQLite supports several column types with built-in validation:
 
 ### Text Columns
 
 ```dart
-table
-  .text('username')                    // Basic text column
-  .text('email', (col) => col
-    .notNull()                         // NOT NULL constraint
-    .unique()                          // UNIQUE constraint
-    .maxLength(255))                   // Maximum length validation
-  .text('bio', (col) => col
-    .maxLength(1000)
-    .defaultValue(''))                 // Default value
+table.text('name').notNull();
+table.text('description'); // Optional text
+table.text('email').notNull(); // Required text
 ```
 
 ### Integer Columns
 
 ```dart
-table
-  .integer('age')                      // Basic integer column
-  .integer('score', (col) => col
-    .notNull()
-    .min(0)                           // Minimum value constraint
-    .max(100)                         // Maximum value constraint
-    .defaultValue(0))
-  .autoIncrementPrimaryKey('id')      // Auto-increment primary key
+table.integer('age').min(0).max(150);
+table.integer('count').notNull().min(0);
+table.integer('priority').defaultValue(1);
 ```
 
-### Real (Decimal) Columns
+### Real Columns (Floating Point)
 
 ```dart
-table
-  .real('price', (col) => col
-    .notNull()
-    .min(0.0)                         // Minimum value
-    .precision(2))                    // Decimal precision
-  .real('latitude')
-  .real('longitude')
+table.real('price').min(0.0);
+table.real('latitude').min(-90.0).max(90.0);
+table.real('percentage').min(0.0).max(100.0);
 ```
 
-### Boolean Columns
+### Date Columns
+
+Date columns store DateTime values as ISO 8601 strings:
 
 ```dart
-table
-  .boolean('is_active', (col) => col
-    .notNull()
-    .defaultValue(true))              // Default to true
-  .boolean('is_verified')
+table.date('created_at').notNull();
+table.date('updated_at'); // Optional
+table.date('birth_date').notNull();
 ```
 
-### Date/DateTime Columns
+### GUID Columns
+
+GUID columns are for UUID/GUID identifiers:
 
 ```dart
-table
-  .date('created_at', (col) => col
-    .notNull()
-    .defaultValue(DateTime.now()))    // Default to current time
-  .date('updated_at')
-  .date('deleted_at')                 // For soft deletes
-```
-
-### GUID/UUID Columns
-
-```dart
-table
-  .guid('id', (col) => col
-    .notNull()
-    .primary())                       // GUID primary key
-  .guid('external_id', (col) => col
-    .unique())                        // Unique GUID
-```
-
-### Blob (Binary) Columns
-
-```dart
-table
-  .blob('profile_picture')
-  .blob('document_data', (col) => col
-    .maxSize(10 * 1024 * 1024))      // 10MB max size
+table.guid('id').notNull();
+table.guid('user_id').notNull();
+table.guid('session_id'); // Optional
 ```
 
 ### Fileset Columns
 
-For file attachments and collections:
+For managing file attachments:
 
 ```dart
-table
-  .fileset('attachments', (col) => col
-    .notNull()                        // Required fileset
-    .maxFiles(16)                     // Maximum 16 files
-    .maxFileSize(8 * 1024 * 1024))   // 8MB per file
-  .fileset('gallery')                 // Optional fileset
+table.fileset('attachments').notNull(); // Required fileset
+table.fileset('gallery'); // Optional fileset
 ```
 
 ## Column Constraints
 
-### Primary Keys
+### Not Null Constraint
 
 ```dart
-// Single column primary key
-table.autoIncrementPrimaryKey('id')
-
-// Composite primary key
-table
-  .text('user_id', (col) => col.notNull())
-  .integer('sequence', (col) => col.notNull())
-  .key(['user_id', 'sequence']).primary()
+table.text('name').notNull(); // Column cannot be null
+table.integer('age').notNull().min(0); // Chain constraints
 ```
 
-### Foreign Keys
+### Min/Max Constraints
+
+For numeric columns:
 
 ```dart
-table
-  .integer('user_id', (col) => col.notNull())
-  .foreignKey('user_id').references('users', 'id')
-
-// Composite foreign key
-table
-  .text('user_id', (col) => col.notNull())
-  .integer('sequence', (col) => col.notNull())
-  .foreignKey(['user_id', 'sequence'])
-    .references('user_sequences', ['user_id', 'sequence'])
+table.integer('age').min(0).max(150);
+table.real('price').min(0.0);
+table.real('percentage').min(0.0).max(100.0);
 ```
 
-### Unique Constraints
+### Default Values
 
 ```dart
-// Single column unique
-table.text('email', (col) => col.unique())
-
-// Composite unique constraint
-table
-  .text('username')
-  .text('domain')
-  .unique(['username', 'domain'])
+table.text('status').notNull().defaultValue('pending');
+table.integer('priority').defaultValue(1);
+table.date('created_at').notNull(); // Will use current timestamp if not provided
 ```
 
-### Check Constraints
+## Primary Keys
+
+Define primary keys using the `key()` method:
+
+### Single Column Primary Key
 
 ```dart
-table
-  .integer('age', (col) => col
-    .min(0)                          // age >= 0
-    .max(150))                       // age <= 150
-  .real('price', (col) => col
-    .min(0.0))                       // price >= 0.0
+builder.table('users', (table) {
+  table.guid('id').notNull();
+  table.text('name').notNull();
+  table.key(['id']).primary(); // Single column primary key
+});
 ```
 
-## Indices
-
-### Simple Indices
+### Composite Primary Key
 
 ```dart
-schema
-  .table('posts', (table) => table
-    .autoIncrementPrimaryKey('id')
-    .text('title')
-    .text('content')
-    .integer('user_id')
-    .date('created_at'))
-  .index('posts', ['user_id'])        // Single column index
-  .index('posts', ['created_at'])     // Date index for sorting
+builder.table('user_roles', (table) {
+  table.guid('user_id').notNull();
+  table.guid('role_id').notNull();
+  table.date('assigned_at').notNull();
+  table.key(['user_id', 'role_id']).primary(); // Composite primary key
+});
 ```
 
-### Composite Indices
+## Views
+
+Define SQL views for complex queries:
 
 ```dart
-schema
-  .index('posts', ['user_id', 'created_at'])  // Composite index
-  .index('posts', ['title', 'user_id'])       // For search queries
+builder.view('user_post_counts', (view) {
+  view.select('users.id, users.name, COUNT(posts.id) as post_count')
+      .from('users')
+      .leftJoin('posts', 'users.id = posts.user_id')
+      .groupBy('users.id, users.name');
+});
 ```
 
-### Unique Indices
+### View Query Builder
+
+The view builder supports common SQL operations:
 
 ```dart
-schema
-  .uniqueIndex('users', ['email'])             // Unique email
-  .uniqueIndex('posts', ['user_id', 'slug'])   // Unique slug per user
+builder.view('active_users', (view) {
+  view.select('id, name, email')
+      .from('users')
+      .where('last_login > date("now", "-30 days")')
+      .orderBy('last_login DESC');
+});
+
+builder.view('post_summaries', (view) {
+  view.select('posts.id, posts.title, users.name as author, posts.created_at')
+      .from('posts')
+      .join('users', 'posts.user_id = users.id')
+      .where('posts.published = 1')
+      .orderBy('posts.created_at DESC');
+});
 ```
 
-### Partial Indices
+## Advanced Schema Examples
+
+### Blog Database Schema
 
 ```dart
-schema
-  .index('posts', ['published_at'])
-    .where('published_at IS NOT NULL')         // Only index published posts
-```
-
-## SQL Views
-
-Create computed views for complex queries:
-
-### Basic Views
-
-```dart
-schema
-  .view('user_stats', (view) => view
-    .select('u.id', 'user_id')
-    .select('u.username')
-    .selectSubQuery((sub) => sub
-      .count()
-      .from('posts', 'p')
-      .where('p.user_id = u.id'), 'post_count')
-    .from('users', 'u'))
-```
-
-### Views with Joins
-
-```dart
-schema
-  .view('post_details', (view) => view
-    .select('p.id')
-    .select('p.title')
-    .select('p.content')
-    .select('u.username', 'author')
-    .select('p.created_at')
-    .from('posts', 'p')
-    .innerJoin('users', 'u', 'p.user_id = u.id')
-    .where('p.published = 1'))
-```
-
-### Aggregated Views
-
-```dart
-schema
-  .view('monthly_stats', (view) => view
-    .select("strftime('%Y-%m', created_at)", 'month')
-    .selectCount('*', 'post_count')
-    .selectSum('view_count', 'total_views')
-    .from('posts')
-    .where('published = 1')
-    .groupBy("strftime('%Y-%m', created_at)"))
-```
-
-## Advanced Schema Features
-
-### Last-Write-Wins (LWW) Columns
-
-For conflict resolution in sync scenarios:
-
-```dart
-table
-  .text('title', (col) => col.lww())         // LWW enabled
-  .integer('score', (col) => col.lww())      // Automatic conflict resolution
-```
-
-### Soft Delete Support
-
-```dart
-table
-  .date('deleted_at')                        // Soft delete timestamp
-  
-// The library will automatically filter out soft-deleted records
-```
-
-### Timestamps
-
-```dart
-table
-  .timestamps()                              // Adds created_at and updated_at
-  
-// Equivalent to:
-// .date('created_at', (col) => col.notNull().defaultValue(DateTime.now()))
-// .date('updated_at', (col) => col.notNull().defaultValue(DateTime.now()))
-```
-
-## Schema Validation
-
-The library automatically validates your schema definition:
-
-```dart
-// This will throw a validation error:
-final invalidSchema = SchemaBuilder()
-  .table('users', (table) => table
-    .autoIncrementPrimaryKey('id')
-    .text('email', (col) => col.notNull().unique())
-    .foreignKey('email').references('nonexistent_table', 'id')) // Error!
-```
-
-## Complete Example
-
-Here's a comprehensive schema for a blog application:
-
-```dart
-final blogSchema = SchemaBuilder()
+void buildBlogSchema(SchemaBuilder builder) {
   // Users table
-  .table('users', (table) => table
-    .autoIncrementPrimaryKey('id')
-    .text('username', (col) => col.notNull().unique().maxLength(50))
-    .text('email', (col) => col.notNull().unique().maxLength(255))
-    .text('full_name', (col) => col.maxLength(100))
-    .text('bio', (col) => col.maxLength(500))
-    .text('avatar_url')
-    .boolean('is_active', (col) => col.notNull().defaultValue(true))
-    .date('created_at', (col) => col.notNull().defaultValue(DateTime.now()))
-    .date('last_login'))
-  
-  // Categories table
-  .table('categories', (table) => table
-    .autoIncrementPrimaryKey('id')
-    .text('name', (col) => col.notNull().unique().maxLength(100))
-    .text('slug', (col) => col.notNull().unique().maxLength(100))
-    .text('description')
-    .integer('sort_order', (col) => col.defaultValue(0)))
-  
+  builder.table('users', (table) {
+    table.guid('id').notNull();
+    table.text('username').notNull();
+    table.text('email').notNull();
+    table.text('password_hash').notNull();
+    table.text('display_name').notNull();
+    table.date('created_at').notNull();
+    table.date('last_login');
+    table.key(['id']).primary();
+  });
+
   // Posts table
-  .table('posts', (table) => table
-    .autoIncrementPrimaryKey('id')
-    .text('title', (col) => col.notNull().maxLength(200))
-    .text('slug', (col) => col.notNull().maxLength(200))
-    .text('content', (col) => col.notNull())
-    .text('excerpt', (col) => col.maxLength(500))
-    .integer('user_id', (col) => col.notNull())
-    .integer('category_id')
-    .boolean('published', (col) => col.notNull().defaultValue(false))
-    .integer('view_count', (col) => col.notNull().defaultValue(0))
-    .fileset('attachments')
-    .date('created_at', (col) => col.notNull().defaultValue(DateTime.now()))
-    .date('updated_at', (col) => col.notNull().defaultValue(DateTime.now()))
-    .date('published_at')
-    .foreignKey('user_id').references('users', 'id')
-    .foreignKey('category_id').references('categories', 'id'))
-  
+  builder.table('posts', (table) {
+    table.guid('id').notNull();
+    table.guid('author_id').notNull();
+    table.text('title').notNull();
+    table.text('content').notNull();
+    table.text('excerpt');
+    table.integer('published').notNull().defaultValue(0); // 0 = draft, 1 = published
+    table.date('created_at').notNull();
+    table.date('updated_at').notNull();
+    table.date('published_at');
+    table.key(['id']).primary();
+  });
+
   // Comments table
-  .table('comments', (table) => table
-    .autoIncrementPrimaryKey('id')
-    .text('content', (col) => col.notNull().maxLength(1000))
-    .integer('post_id', (col) => col.notNull())
-    .integer('user_id', (col) => col.notNull())
-    .integer('parent_id')  // For nested comments
-    .boolean('approved', (col) => col.notNull().defaultValue(false))
-    .date('created_at', (col) => col.notNull().defaultValue(DateTime.now()))
-    .foreignKey('post_id').references('posts', 'id')
-    .foreignKey('user_id').references('users', 'id')
-    .foreignKey('parent_id').references('comments', 'id'))
-  
-  // Indices for performance
-  .index('posts', ['user_id', 'published'])
-  .index('posts', ['category_id'])
-  .index('posts', ['published_at'])
-  .index('posts', ['slug'])
-  .index('comments', ['post_id', 'approved'])
-  .index('comments', ['user_id'])
-  .uniqueIndex('users', ['email'])
-  .uniqueIndex('posts', ['slug'])
-  
-  // Views for common queries
-  .view('published_posts', (view) => view
-    .select('p.*')
-    .select('u.username', 'author')
-    .select('c.name', 'category_name')
-    .from('posts', 'p')
-    .leftJoin('users', 'u', 'p.user_id = u.id')
-    .leftJoin('categories', 'c', 'p.category_id = c.id')
-    .where('p.published = 1'))
-    
-  .view('user_post_counts', (view) => view
-    .select('u.id', 'user_id')
-    .select('u.username')
-    .selectCount('p.id', 'post_count')
-    .from('users', 'u')
-    .leftJoin('posts', 'p', 'u.id = p.user_id AND p.published = 1')
-    .groupBy('u.id', 'u.username'));
+  builder.table('comments', (table) {
+    table.guid('id').notNull();
+    table.guid('post_id').notNull();
+    table.guid('author_id');
+    table.text('author_name').notNull();
+    table.text('author_email').notNull();
+    table.text('content').notNull();
+    table.integer('approved').notNull().defaultValue(0);
+    table.date('created_at').notNull();
+    table.key(['id']).primary();
+  });
+
+  // Tags table
+  builder.table('tags', (table) {
+    table.guid('id').notNull();
+    table.text('name').notNull();
+    table.text('slug').notNull();
+    table.key(['id']).primary();
+  });
+
+  // Post-Tag relationships (many-to-many)
+  builder.table('post_tags', (table) {
+    table.guid('post_id').notNull();
+    table.guid('tag_id').notNull();
+    table.key(['post_id', 'tag_id']).primary();
+  });
+
+  // Useful views
+  builder.view('published_posts', (view) {
+    view.select('posts.*, users.display_name as author_name')
+        .from('posts')
+        .join('users', 'posts.author_id = users.id')
+        .where('posts.published = 1')
+        .orderBy('posts.published_at DESC');
+  });
+
+  builder.view('post_comment_counts', (view) {
+    view.select('posts.id, posts.title, COUNT(comments.id) as comment_count')
+        .from('posts')
+        .leftJoin('comments', 'posts.id = comments.post_id AND comments.approved = 1')
+        .groupBy('posts.id, posts.title');
+  });
+}
 ```
+
+### E-commerce Schema
+
+```dart
+void buildEcommerceSchema(SchemaBuilder builder) {
+  // Products table
+  builder.table('products', (table) {
+    table.guid('id').notNull();
+    table.text('name').notNull();
+    table.text('description');
+    table.text('sku').notNull();
+    table.real('price').min(0.0).notNull();
+    table.integer('stock_quantity').min(0).notNull();
+    table.integer('active').notNull().defaultValue(1);
+    table.fileset('images'); // Product images
+    table.date('created_at').notNull();
+    table.key(['id']).primary();
+  });
+
+  // Customers table
+  builder.table('customers', (table) {
+    table.guid('id').notNull();
+    table.text('email').notNull();
+    table.text('first_name').notNull();
+    table.text('last_name').notNull();
+    table.text('phone');
+    table.date('created_at').notNull();
+    table.key(['id']).primary();
+  });
+
+  // Orders table
+  builder.table('orders', (table) {
+    table.guid('id').notNull();
+    table.guid('customer_id').notNull();
+    table.text('status').notNull().defaultValue('pending');
+    table.real('total_amount').min(0.0).notNull();
+    table.date('created_at').notNull();
+    table.date('shipped_at');
+    table.key(['id']).primary();
+  });
+
+  // Order items table
+  builder.table('order_items', (table) {
+    table.guid('id').notNull();
+    table.guid('order_id').notNull();
+    table.guid('product_id').notNull();
+    table.integer('quantity').min(1).notNull();
+    table.real('unit_price').min(0.0).notNull();
+    table.real('total_price').min(0.0).notNull();
+    table.key(['id']).primary();
+  });
+
+  // Order summary view
+  builder.view('order_summaries', (view) {
+    view.select('''
+        orders.id,
+        orders.created_at,
+        customers.first_name || " " || customers.last_name as customer_name,
+        orders.status,
+        orders.total_amount,
+        COUNT(order_items.id) as item_count
+      ''')
+        .from('orders')
+        .join('customers', 'orders.customer_id = customers.id')
+        .leftJoin('order_items', 'orders.id = order_items.order_id')
+        .groupBy('orders.id, customers.first_name, customers.last_name, orders.status, orders.total_amount, orders.created_at');
+  });
+}
+```
+
+## Schema Migration
+
+Declarative SQLite automatically handles schema migrations when you modify your schema definition:
+
+### Adding New Columns
+
+```dart
+// Before
+builder.table('users', (table) {
+  table.guid('id').notNull();
+  table.text('name').notNull();
+  table.key(['id']).primary();
+});
+
+// After - new columns are automatically added
+builder.table('users', (table) {
+  table.guid('id').notNull();
+  table.text('name').notNull();
+  table.text('email'); // New optional column
+  table.date('created_at'); // New optional column
+  table.key(['id']).primary();
+});
+```
+
+### Adding New Tables
+
+Simply add new table definitions to your schema - they will be created automatically on the next database initialization.
+
+### Notes on Schema Changes
+
+- **Adding columns**: Fully supported, new columns are added automatically
+- **Adding tables**: Fully supported, new tables are created automatically
+- **Modifying column constraints**: Limited support, some changes may require manual intervention
+- **Removing columns/tables**: Not automatically supported to prevent data loss
+
+## Best Practices
+
+### Schema Organization
+
+```dart
+// Group related table definitions together
+void buildSchema(SchemaBuilder builder) {
+  // User management tables
+  _defineUserTables(builder);
+  
+  // Content management tables
+  _defineContentTables(builder);
+  
+  // System tables
+  _defineSystemTables(builder);
+  
+  // Views
+  _defineViews(builder);
+}
+
+void _defineUserTables(SchemaBuilder builder) {
+  builder.table('users', (table) {
+    // ... user table definition
+  });
+  
+  builder.table('user_profiles', (table) {
+    // ... user profile table definition
+  });
+}
+```
+
+### Naming Conventions
+
+- Use **snake_case** for table and column names
+- Use descriptive names: `user_profiles` instead of `profiles`
+- Use consistent ID column naming: `id` for primary keys, `user_id` for foreign keys
+- Use consistent timestamp naming: `created_at`, `updated_at`
+
+### Column Design
+
+- Always define primary keys
+- Use appropriate column types for data
+- Add constraints for data validation
+- Consider using GUIDs for primary keys in distributed systems
+- Use `notNull()` for required fields
+
+### Performance Considerations
+
+- Define views for complex queries you'll use frequently
+- Consider the query patterns when designing your schema
+- Use appropriate data types to minimize storage
 
 ## Next Steps
 
-Now that you understand schema definition:
+Now that you understand schema definition, learn about:
 
-- Learn about [Database Operations](./database-operations)
-- Explore [Streaming Queries](./streaming-queries)
-- Set up [Code Generation](https://pub.dev/packages/declarative_sqlite_generator) for type-safe data classes
-- See [Migration](#migration) (coming soon) for handling schema changes
+- [Database Operations](database-operations) - How to query and manipulate data
+- [Streaming Queries](streaming-queries) - Real-time data updates
