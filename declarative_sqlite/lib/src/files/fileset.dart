@@ -83,4 +83,30 @@ class FileSet {
       await _db.delete('__files', where: 'id = ?', whereArgs: [fileId]);
     }
   }
+
+  /// Gets all files in a specific fileset.
+  ///
+  /// Returns a list of file metadata records from the `__files` table
+  /// for the given fileset.
+  Future<List<Map<String, dynamic>>> getFilesInFileset(String fileset) async {
+    return await _db.queryTable(
+      '__files',
+      where: 'fileset = ?',
+      whereArgs: [fileset],
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  /// Gets the count of files in a specific fileset.
+  ///
+  /// Returns the number of files in the given fileset.
+  Future<int> getFileCountInFileset(String fileset) async {
+    final result = await _db.queryTable(
+      '__files',
+      columns: ['COUNT(*) as count'],
+      where: 'fileset = ?',
+      whereArgs: [fileset],
+    );
+    return result.first['count'] as int;
+  }
 }

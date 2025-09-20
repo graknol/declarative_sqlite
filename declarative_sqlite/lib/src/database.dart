@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import 'files/file_repository.dart';
 import 'files/fileset.dart';
+import 'files/fileset_field.dart';
 import 'migration/diff_schemas.dart';
 import 'migration/generate_migration_scripts.dart';
 import 'migration/introspect_schema.dart';
@@ -173,9 +174,17 @@ class DeclarativeDatabase {
   }
 
   /// Executes a query built with a [QueryBuilder].
-  Future<List<Map<String, Object?>>> queryWith(QueryBuilder builder) {
+  Future<List<Map<String, Object?>>> queryWith(QueryBuilder builder) async {
     final (sql, params) = builder.build();
-    return rawQuery(sql, params);
+    final rawResults = await rawQuery(sql, params);
+    
+    // Apply fileset transformation if we have table context
+    final tableName = builder.tableName;
+    if (tableName != null) {
+      return _transformFilesetColumns(tableName, rawResults);
+    }
+    
+    return rawResults;
   }
 
   /// Creates a streaming query that emits new results whenever the underlying data changes.
@@ -279,7 +288,10 @@ class DeclarativeDatabase {
       String tableName, Map<String, Object?> values, Hlc hlc) async {
     final tableDef = _getTableDefinition(tableName);
 
-    final valuesToInsert = {...values};
+    // Convert FilesetField values to database strings
+    final convertedValues = _convertFilesetFieldsToValues(tableName, values);
+    
+    final valuesToInsert = {...convertedValues};
     valuesToInsert['system_version'] = hlc.toString();
     if (valuesToInsert['system_id'] == null) {
       valuesToInsert['system_id'] = Uuid().v4();
@@ -348,10 +360,13 @@ class DeclarativeDatabase {
   }) async {
     final tableDef = _getTableDefinition(tableName);
 
+    // Convert FilesetField values to database strings
+    final convertedValues = _convertFilesetFieldsToValues(tableName, values);
+
     final lwwColumns =
         tableDef.columns.where((c) => c.isLww).map((c) => c.name);
 
-    final valuesToUpdate = {...values};
+    final valuesToUpdate = {...convertedValues};
     valuesToUpdate['system_version'] = hlc.toString();
 
     if (lwwColumns.isNotEmpty) {
@@ -458,8 +473,8 @@ class DeclarativeDatabase {
     String? orderBy,
     int? limit,
     int? offset,
-  }) {
-    return _db.query(
+  }) async {
+    final rawResults = await _db.query(
       table,
       distinct: distinct,
       columns: columns,
@@ -471,6 +486,72 @@ class DeclarativeDatabase {
       limit: limit,
       offset: offset,
     );
+    
+    return _transformFilesetColumns(table, rawResults);
+  }
+
+  /// Transforms raw query results by converting fileset columns to FilesetField objects.
+  List<Map<String, Object?>> _transformFilesetColumns(
+    String tableName,
+    List<Map<String, Object?>> rawResults,
+  ) {
+    if (rawResults.isEmpty) return rawResults;
+    
+    // Get table definition to identify fileset columns
+    final tableDef = _getTableDefinition(tableName);
+    final filesetColumns = tableDef.columns
+        .where((col) => col.logicalType == 'fileset')
+        .map((col) => col.name)
+        .toSet();
+    
+    if (filesetColumns.isEmpty) return rawResults;
+    
+    // Transform each row
+    return rawResults.map((row) {
+      final transformedRow = <String, Object?>{...row};
+      
+      for (final columnName in filesetColumns) {
+        if (transformedRow.containsKey(columnName)) {
+          final value = transformedRow[columnName];
+          transformedRow[columnName] = _createFilesetField(value);
+        }
+      }
+      
+      return transformedRow;
+    }).toList();
+  }
+
+  /// Creates a FilesetField from a database value.
+  Object? _createFilesetField(Object? value) {
+    if (value == null) return null;
+    return FilesetField.fromDatabaseValue(value, this);
+  }
+
+  /// Converts FilesetField values back to database strings before storing.
+  Map<String, Object?> _convertFilesetFieldsToValues(
+    String tableName,
+    Map<String, Object?> values,
+  ) {
+    final tableDef = _getTableDefinition(tableName);
+    final filesetColumns = tableDef.columns
+        .where((col) => col.logicalType == 'fileset')
+        .map((col) => col.name)
+        .toSet();
+    
+    if (filesetColumns.isEmpty) return values;
+    
+    final convertedValues = <String, Object?>{...values};
+    
+    for (final columnName in filesetColumns) {
+      if (convertedValues.containsKey(columnName)) {
+        final value = convertedValues[columnName];
+        if (value is FilesetField) {
+          convertedValues[columnName] = value.toDatabaseValue();
+        }
+      }
+    }
+    
+    return convertedValues;
   }
 
   /// Bulk loads data into a table, performing an "upsert" operation.
