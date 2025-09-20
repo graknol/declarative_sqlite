@@ -60,13 +60,17 @@ class _ServerSyncManagerWidgetState extends State<ServerSyncManagerWidget> {
     super.didUpdateWidget(oldWidget);
     
     // If configuration changed, restart sync manager
-    if (widget.fetchInterval != oldWidget.fetchInterval ||
-        widget.onFetch != oldWidget.onFetch ||
-        widget.onSend != oldWidget.onSend ||
-        widget.database != oldWidget.database) {
+    if (_shouldRestartSyncManager(oldWidget)) {
       _disposeSyncManager();
       _initializeSyncManager();
     }
+  }
+
+  bool _shouldRestartSyncManager(ServerSyncManagerWidget oldWidget) {
+    return widget.fetchInterval != oldWidget.fetchInterval ||
+        widget.onFetch != oldWidget.onFetch ||
+        widget.onSend != oldWidget.onSend ||
+        widget.database != oldWidget.database;
   }
 
   @override
@@ -76,7 +80,7 @@ class _ServerSyncManagerWidgetState extends State<ServerSyncManagerWidget> {
   }
 
   void _initializeSyncManager() {
-    final database = widget.database ?? DatabaseProvider.maybeOf(context);
+    final database = _getDatabaseInstance();
     
     if (database == null) {
       // No database available, can't initialize sync
@@ -84,19 +88,30 @@ class _ServerSyncManagerWidgetState extends State<ServerSyncManagerWidget> {
     }
 
     try {
-      _syncManager = ServerSyncManager(
-        db: database,
-        retryStrategy: widget.retryStrategy,
-        fetchInterval: widget.fetchInterval,
-        onFetch: widget.onFetch,
-        onSend: widget.onSend,
-      );
-      
-      _syncManager?.start();
+      _createAndStartSyncManager(database);
     } catch (error) {
-      // Handle sync manager initialization error
-      debugPrint('Failed to initialize ServerSyncManager: $error');
+      _handleSyncManagerError(error);
     }
+  }
+
+  DeclarativeDatabase? _getDatabaseInstance() {
+    return widget.database ?? DatabaseProvider.maybeOf(context);
+  }
+
+  void _createAndStartSyncManager(DeclarativeDatabase database) {
+    _syncManager = ServerSyncManager(
+      db: database,
+      retryStrategy: widget.retryStrategy,
+      fetchInterval: widget.fetchInterval,
+      onFetch: widget.onFetch,
+      onSend: widget.onSend,
+    );
+    
+    _syncManager?.start();
+  }
+
+  void _handleSyncManagerError(Object error) {
+    debugPrint('Failed to initialize ServerSyncManager: $error');
   }
 
   void _disposeSyncManager() {

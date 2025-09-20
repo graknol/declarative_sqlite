@@ -81,67 +81,105 @@ class _QueryListViewState<T> extends State<QueryListView<T>> {
     super.didUpdateWidget(oldWidget);
     
     // Check if database changed
-    if (widget.database != oldWidget.database) {
-      _disposeStream();
-      _initializeStream();
+    if (_hasDatabaseChanged(oldWidget)) {
+      _handleDatabaseChange();
       return;
     }
     
-    // If we have a streaming query, update it with new parameters
+    // Update query if we have an active streaming query
+    _updateQueryIfNeeded();
+  }
+
+  bool _hasDatabaseChanged(QueryListView<T> oldWidget) {
+    return widget.database != oldWidget.database;
+  }
+
+  void _handleDatabaseChange() {
+    _disposeStream();
+    _initializeStream();
+  }
+
+  void _updateQueryIfNeeded() {
     if (_streamingQuery != null && widget.database != null) {
-      // Build new query to check for changes
-      final newBuilder = QueryBuilder();
-      widget.query(newBuilder);
-      
-      // Update the streaming query (it will handle change detection internally)
-      _streamingQuery!.updateQuery(
-        newBuilder: newBuilder,
-        newMapper: widget.mapper,
-      );
+      final newBuilder = _buildNewQuery();
+      _updateStreamingQuery(newBuilder);
     }
   }
 
+  QueryBuilder _buildNewQuery() {
+    final newBuilder = QueryBuilder();
+    widget.query(newBuilder);
+    return newBuilder;
+  }
+
+  void _updateStreamingQuery(QueryBuilder newBuilder) {
+    _streamingQuery!.updateQuery(
+      newBuilder: newBuilder,
+      newMapper: widget.mapper,
+    );
+  }
+
   void _initializeStream() {
-    if (widget.database == null) {
-      setState(() {
-        _isLoading = false;
-      });
+    if (!_canInitializeStream()) {
+      _setLoadingComplete();
       return;
     }
 
-    // Create new query builder
+    final builder = _buildQuery();
+    _createStreamingQuery(builder);
+    _subscribeToStream();
+  }
+
+  bool _canInitializeStream() {
+    return widget.database != null;
+  }
+
+  void _setLoadingComplete() {
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  QueryBuilder _buildQuery() {
     final builder = QueryBuilder();
     widget.query(builder);
+    return builder;
+  }
 
-    // Create advanced streaming query
+  void _createStreamingQuery(QueryBuilder builder) {
     _streamingQuery = AdvancedStreamingQuery.create(
       id: 'query_list_view_${DateTime.now().millisecondsSinceEpoch}',
       builder: builder,
       database: widget.database!,
       mapper: widget.mapper,
     );
+  }
 
-    // Subscribe to the stream
+  void _subscribeToStream() {
     _subscription = _streamingQuery!.stream.listen(
-      (data) {
-        if (mounted) {
-          setState(() {
-            _currentData = data;
-            _currentError = null;
-            _isLoading = false;
-          });
-        }
-      },
-      onError: (error) {
-        if (mounted) {
-          setState(() {
-            _currentData = null;
-            _currentError = error;
-            _isLoading = false;
-          });
-        }
-      },
+      _handleStreamData,
+      onError: _handleStreamError,
     );
+  }
+
+  void _handleStreamData(List<T> data) {
+    if (mounted) {
+      setState(() {
+        _currentData = data;
+        _currentError = null;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _handleStreamError(Object error) {
+    if (mounted) {
+      setState(() {
+        _currentData = null;
+        _currentError = error;
+        _isLoading = false;
+      });
+    }
   }
 
   void _disposeStream() {
@@ -162,6 +200,10 @@ class _QueryListViewState<T> extends State<QueryListView<T>> {
 
   @override
   Widget build(BuildContext context) {
+    return _buildStateBasedWidget(context);
+  }
+
+  Widget _buildStateBasedWidget(BuildContext context) {
     // If no database is provided, show loading state
     if (widget.database == null) {
       return widget.loadingBuilder(context);
@@ -177,7 +219,11 @@ class _QueryListViewState<T> extends State<QueryListView<T>> {
       return widget.loadingBuilder(context);
     }
 
-    // Build the list with current data, passing through all ListView properties
+    // Build the list with current data
+    return _buildListView();
+  }
+
+  Widget _buildListView() {
     final items = _currentData!;
     return ListView.builder(
       // Core ListView.builder properties

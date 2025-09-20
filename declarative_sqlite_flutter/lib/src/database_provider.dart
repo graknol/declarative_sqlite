@@ -119,36 +119,43 @@ class _DatabaseProviderState extends State<DatabaseProvider> {
   }
 
   Future<void> _initializeDatabase() async {
-    setState(() {
-      _isInitializing = true;
-      _initializationError = null;
-    });
+    _setInitializationState(isInitializing: true, error: null);
 
     try {
-      // Build schema
-      final schemaBuilder = SchemaBuilder();
-      widget.schema(schemaBuilder);
-      final schema = schemaBuilder.build();
-
-      // Initialize database
-      final database = await DeclarativeDatabase.sqlite(
-        path: widget.databasePath ?? widget.databaseName,
-        schema: schema,
-      );
-
-      if (mounted) {
-        setState(() {
-          _database = database;
-          _isInitializing = false;
-        });
-      }
+      final schema = _buildDatabaseSchema();
+      final database = await _createDatabaseInstance(schema);
+      _setInitializationState(isInitializing: false, database: database);
     } catch (error) {
-      if (mounted) {
-        setState(() {
-          _initializationError = error;
-          _isInitializing = false;
-        });
-      }
+      _setInitializationState(isInitializing: false, error: error);
+    }
+  }
+
+  Schema _buildDatabaseSchema() {
+    final schemaBuilder = SchemaBuilder();
+    widget.schema(schemaBuilder);
+    return schemaBuilder.build();
+  }
+
+  Future<DeclarativeDatabase> _createDatabaseInstance(Schema schema) async {
+    return await DeclarativeDatabase.sqlite(
+      path: widget.databasePath ?? widget.databaseName,
+      schema: schema,
+    );
+  }
+
+  void _setInitializationState({
+    required bool isInitializing,
+    Object? error,
+    DeclarativeDatabase? database,
+  }) {
+    if (mounted) {
+      setState(() {
+        _isInitializing = isInitializing;
+        _initializationError = error;
+        if (database != null) {
+          _database = database;
+        }
+      });
     }
   }
 

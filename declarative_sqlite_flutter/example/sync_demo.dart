@@ -16,55 +16,69 @@ class SyncDemoApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: DatabaseProvider(
-        schema: (builder) {
-          builder.table('users', (table) {
-            table.guid('id').notNull();
-            table.text('name').notNull();
-            table.text('email').notNull();
-            table.date('created_at').notNull();
-            table.key(['id']).primary();
-          });
-        },
-        databaseName: 'sync_demo.db',
-        child: ServerSyncManagerWidget(
-          retryStrategy: null, // Could use exponential backoff
-          fetchInterval: const Duration(minutes: 2),
-          onFetch: (database, table, lastSynced) async {
-            // Simulate fetching data from server
-            print('Fetching data for table: $table since $lastSynced');
-            
-            // In a real app, you would make HTTP requests here
-            // await apiClient.fetchUsers(lastSynced);
-            
-            // Simulate adding some data
-            if (table == 'users') {
-              await database.insert('users', {
-                'id': 'server-${DateTime.now().millisecondsSinceEpoch}',
-                'name': 'Server User ${DateTime.now().second}',
-                'email': 'server${DateTime.now().second}@example.com',
-                'created_at': DateTime.now().toIso8601String(),
-              });
-            }
-          },
-          onSend: (operations) async {
-            // Simulate sending changes to server
-            print('Sending ${operations.length} operations to server');
-            
-            for (final operation in operations) {
-              print('Operation: ${operation.operation} on ${operation.tableName}');
-            }
-            
-            // In a real app, you would make HTTP requests here
-            // final success = await apiClient.sendChanges(operations);
-            
-            // Simulate success
-            return true;
-          },
-          child: const UserListScreen(),
-        ),
+      home: _buildMainScreen(),
+    );
+  }
+
+  Widget _buildMainScreen() {
+    return DatabaseProvider(
+      schema: _buildDatabaseSchema,
+      databaseName: 'sync_demo.db',
+      child: ServerSyncManagerWidget(
+        retryStrategy: null, // Could use exponential backoff
+        fetchInterval: const Duration(minutes: 2),
+        onFetch: _handleDataFetch,
+        onSend: _handleDataSend,
+        child: const UserListScreen(),
       ),
     );
+  }
+
+  void _buildDatabaseSchema(SchemaBuilder builder) {
+    builder.table('users', (table) {
+      table.guid('id').notNull();
+      table.text('name').notNull();
+      table.text('email').notNull();
+      table.date('created_at').notNull();
+      table.key(['id']).primary();
+    });
+  }
+
+  Future<void> _handleDataFetch(DeclarativeDatabase database, String table, DateTime? lastSynced) async {
+    // Simulate fetching data from server
+    print('Fetching data for table: $table since $lastSynced');
+    
+    // In a real app, you would make HTTP requests here
+    // await apiClient.fetchUsers(lastSynced);
+    
+    // Simulate adding some data
+    if (table == 'users') {
+      await _simulateServerDataInsertion(database);
+    }
+  }
+
+  Future<void> _simulateServerDataInsertion(DeclarativeDatabase database) async {
+    await database.insert('users', {
+      'id': 'server-${DateTime.now().millisecondsSinceEpoch}',
+      'name': 'Server User ${DateTime.now().second}',
+      'email': 'server${DateTime.now().second}@example.com',
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<bool> _handleDataSend(List<DirtyRow> operations) async {
+    // Simulate sending changes to server
+    print('Sending ${operations.length} operations to server');
+    
+    for (final operation in operations) {
+      print('Operation: ${operation.operation} on ${operation.tableName}');
+    }
+    
+    // In a real app, you would make HTTP requests here
+    // final success = await apiClient.sendChanges(operations);
+    
+    // Simulate success
+    return true;
   }
 }
 
@@ -74,80 +88,118 @@ class UserListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Users (with Sync)'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.sync),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Sync is running automatically every 2 minutes'),
-                ),
-              );
-            },
+      appBar: _buildAppBar(context),
+      body: _buildUserList(),
+      floatingActionButton: _buildFloatingActionButton(),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    return AppBar(
+      title: const Text('Users (with Sync)'),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.sync),
+          onPressed: () => _showSyncInfo(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUserList() {
+    return QueryListView<User>(
+      database: DatabaseProvider.of(context),
+      query: (q) => q.from('users').orderBy('created_at', descending: true),
+      mapper: User.fromMap,
+      loadingBuilder: _buildLoadingState,
+      errorBuilder: _buildErrorState,
+      itemBuilder: _buildUserItem,
+      // ListView properties
+      padding: const EdgeInsets.all(8.0),
+      physics: const BouncingScrollPhysics(),
+      shrinkWrap: false,
+    );
+  }
+
+  Widget _buildLoadingState(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text('Loading users...'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context, Object error) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error, color: Colors.red, size: 48),
+          const SizedBox(height: 16),
+          Text(
+            'Error: $error',
+            style: const TextStyle(color: Colors.red),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
-      body: QueryListView<User>(
-        database: DatabaseProvider.of(context),
-        query: (q) => q.from('users').orderBy('created_at', descending: true),
-        mapper: User.fromMap,
-        loadingBuilder: (context) => const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading users...'),
-            ],
-          ),
-        ),
-        errorBuilder: (context, error) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error, color: Colors.red, size: 48),
-              const SizedBox(height: 16),
-              Text(
-                'Error: $error',
-                style: const TextStyle(color: Colors.red),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-        itemBuilder: (context, user) => Card(
-          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: ListTile(
-            leading: CircleAvatar(
-              child: Text(user.name.isNotEmpty ? user.name[0].toUpperCase() : '?'),
-            ),
-            title: Text(user.name),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(user.email),
-                Text(
-                  'Created: ${_formatDate(user.createdAt)}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete, color: Colors.red),
-              onPressed: () => _deleteUser(context, user),
-            ),
-          ),
-        ),
-        // ListView properties
-        padding: const EdgeInsets.all(8.0),
-        physics: const BouncingScrollPhysics(),
-        shrinkWrap: false,
+    );
+  }
+
+  Widget _buildUserItem(BuildContext context, User user) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: ListTile(
+        leading: _buildUserAvatar(user),
+        title: Text(user.name),
+        subtitle: _buildUserSubtitle(user),
+        trailing: _buildDeleteButton(context, user),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _addUser(context),
-        child: const Icon(Icons.person_add),
+    );
+  }
+
+  Widget _buildUserAvatar(User user) {
+    return CircleAvatar(
+      child: Text(user.name.isNotEmpty ? user.name[0].toUpperCase() : '?'),
+    );
+  }
+
+  Widget _buildUserSubtitle(User user) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(user.email),
+        Text(
+          'Created: ${_formatDate(user.createdAt)}',
+          style: const TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDeleteButton(BuildContext context, User user) {
+    return IconButton(
+      icon: const Icon(Icons.delete, color: Colors.red),
+      onPressed: () => _deleteUser(context, user),
+    );
+  }
+
+  Widget _buildFloatingActionButton() {
+    return FloatingActionButton(
+      onPressed: () => _addUser(context),
+      child: const Icon(Icons.person_add),
+    );
+  }
+
+  void _showSyncInfo(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Sync is running automatically every 2 minutes'),
       ),
     );
   }
