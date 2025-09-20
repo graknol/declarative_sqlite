@@ -172,12 +172,24 @@ class AdvancedStreamingQuery<T> {
     }
   }
 
-  /// Computes a hash code for a database row (Map<String, Object?>)
+  /// Computes a hash code for a database row using system columns for efficiency
   int _computeRowHash(Map<String, Object?> row) {
-    // Use a simple but effective hash combining algorithm
+    // Optimization: Use system columns (system_id + system_version) instead of full object hashing
+    // system_version is updated with HLC timestamp on every insert/update, making this sufficient
+    // for change detection while being much faster than full object hashing
+    
+    final systemId = row['system_id'];
+    final systemVersion = row['system_version'];
+    
+    // If system columns are available, use them for fast change detection
+    if (systemId != null && systemVersion != null) {
+      return _combineHash(systemId.hashCode, systemVersion.hashCode);
+    }
+    
+    // Fallback to full object hashing if system columns are not available
+    // This maintains compatibility with tables that don't have system columns
     var hash = 0;
     for (final entry in row.entries) {
-      // Combine key and value hashes
       hash = _combineHash(hash, entry.key.hashCode);
       hash = _combineHash(hash, entry.value.hashCode);
     }

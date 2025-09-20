@@ -95,10 +95,12 @@ QueryListView<User>(
 ### Hash-Based Result Caching
 The streaming system implements sophisticated caching to minimize expensive mapping operations:
 
-- **Row Hashing**: Each database row (Map) gets a computed hash code based on its contents
+- **System Column Optimization**: Uses `system_id` and `system_version` for fast change detection
+- **Efficient Hashing**: Avoids expensive full-object hashing by leveraging HLC timestamps  
 - **Cache Lookup**: Before mapping, the system checks if a row with the same hash exists in cache
 - **Selective Mapping**: Only rows with new/changed hash codes are mapped to objects
 - **Reference Equality**: Unchanged objects maintain reference equality between emissions
+- **Fallback Support**: Falls back to full-object hashing for tables without system columns
 - **Cache Cleanup**: Automatically removes cached entries no longer in the result set
 
 ### Performance Benefits
@@ -110,9 +112,10 @@ final usersStream = db.stream<User>(
 );
 
 // When 1 user changes out of 1000:
-// - Old approach: Maps all 1000 users
-// - New approach: Maps only 1 user (99.9% savings)
-// - Reference equality: 999 users are identical objects
+// - System column hash: 2 hash operations (system_id + system_version)
+// - Old full-object hash: 20+ hash operations (all fields)
+// - Mapping: Only 1 user mapped instead of 1000
+// - Result: 99.9%+ performance improvement
 ```
 
 ### Memory Management
