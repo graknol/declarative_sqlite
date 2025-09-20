@@ -92,15 +92,15 @@ QueryListView<User>(
 
 ## Performance Optimizations
 
-### Hash-Based Result Caching
-The streaming system implements sophisticated caching to minimize expensive mapping operations:
+### System Column-Based Result Caching
+The streaming system implements sophisticated caching using system columns for optimal performance:
 
-- **System Column Optimization**: Uses `system_id` and `system_version` for fast change detection
-- **Efficient Hashing**: Avoids expensive full-object hashing by leveraging HLC timestamps  
-- **Cache Lookup**: Before mapping, the system checks if a row with the same hash exists in cache
-- **Selective Mapping**: Only rows with new/changed hash codes are mapped to objects
+- **System ID Indexing**: Uses `system_id` as direct cache key (no hashing required)
+- **Version Tracking**: Uses `system_version` to detect changes efficiently  
+- **Cache Lookup**: Before mapping, checks if a row with same system_id and system_version exists in cache
+- **Selective Mapping**: Only rows with new/changed system_version are mapped to objects
 - **Reference Equality**: Unchanged objects maintain reference equality between emissions
-- **Fallback Support**: Falls back to full-object hashing for tables without system columns
+- **Fallback Support**: Falls back to generated identifiers for tables without system columns
 - **Cache Cleanup**: Automatically removes cached entries no longer in the result set
 
 ### Performance Benefits
@@ -112,10 +112,10 @@ final usersStream = db.stream<User>(
 );
 
 // When 1 user changes out of 1000:
-// - System column hash: 2 hash operations (system_id + system_version)
-// - Old full-object hash: 20+ hash operations (all fields)
+// - Cache lookup: Direct hashmap access by system_id (O(1))
+// - Version check: Simple string comparison of system_version
 // - Mapping: Only 1 user mapped instead of 1000
-// - Result: 99.9%+ performance improvement
+// - Result: 99.9%+ performance improvement with zero hash computation overhead
 ```
 
 ### Memory Management

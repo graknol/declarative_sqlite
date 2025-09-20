@@ -4,12 +4,12 @@ import '../builders/query_builder.dart';
 import '../database.dart';
 import 'query_dependency_analyzer.dart';
 
-/// A cached result entry containing the mapped object and its hash
+/// A cached result entry containing the mapped object and its system version
 class _CachedResult<T> {
   final T object;
-  final int hashCode;
+  final String systemVersion;
   
-  const _CachedResult(this.object, this.hashCode);
+  const _CachedResult(this.object, this.systemVersion);
 }
 
 /// A streaming query that emits new results whenever the underlying data changes
@@ -24,11 +24,11 @@ class StreamingQuery<T> {
   bool _isActive = false;
   List<T>? _lastResults;
   
-  /// Cache of previously mapped results indexed by their hash codes
-  final Map<int, _CachedResult<T>> _resultCache = {};
+  /// Cache of previously mapped results indexed by their system_id
+  final Map<String, _CachedResult<T>> _resultCache = {};
   
-  /// Hash codes of the last emitted result set for fast comparison
-  List<int>? _lastResultHashes;
+  /// System IDs of the last emitted result set for fast comparison
+  List<String>? _lastResultSystemIds;
 
   StreamingQuery._({
     required String id,
@@ -95,11 +95,40 @@ class StreamingQuery<T> {
     try {
       final rawResults = await _database.queryWith(_builder);
       
-      // Compute hash codes for all raw results
-      final newResultHashes = rawResults.map(_computeRowHash).toList();
+      // Extract system IDs and versions for all raw results
+      final newResultSystemIds = <String>[];
+      final systemIdToVersion = <String, String>{};
       
-      // Quick check: if hash sequence is identical, no changes occurred
-      if (_areHashSequencesEqual(newResultHashes, _lastResultHashes)) {
+      for (final rawRow in rawResults) {
+        final systemId = rawRow['system_id'] as String?;
+        final systemVersion = rawRow['system_version'] as String?;
+        
+        if (systemId != null && systemVersion != null) {
+          newResultSystemIds.add(systemId);
+          systemIdToVersion[systemId] = systemVersion;
+        } else {
+          // Fallback for rows without system columns: generate unique identifier
+          final fallbackId = 'fallback_${newResultSystemIds.length}';
+          newResultSystemIds.add(fallbackId);
+          systemIdToVersion[fallbackId] = DateTime.now().millisecondsSinceEpoch.toString();
+        }
+      }
+      
+      // Quick check: if system ID sequence is identical, check for version changes
+      bool hasChanges = !_areSystemIdSequencesEqual(newResultSystemIds, _lastResultSystemIds);
+      if (!hasChanges && _lastResultSystemIds != null) {
+        // Check if any system versions have changed
+        for (final systemId in newResultSystemIds) {
+          final cached = _resultCache[systemId];
+          final currentVersion = systemIdToVersion[systemId];
+          if (cached == null || cached.systemVersion != currentVersion) {
+            hasChanges = true;
+            break;
+          }
+        }
+      }
+      
+      if (!hasChanges) {
         return; // No changes, no emission needed
       }
       
@@ -108,28 +137,29 @@ class StreamingQuery<T> {
       
       for (int i = 0; i < rawResults.length; i++) {
         final rawRow = rawResults[i];
-        final rowHash = newResultHashes[i];
+        final systemId = newResultSystemIds[i];
+        final systemVersion = systemIdToVersion[systemId]!;
         
-        // Check if we have this row cached
-        final cached = _resultCache[rowHash];
-        if (cached != null) {
+        // Check if we have this row cached with same version
+        final cached = _resultCache[systemId];
+        if (cached != null && cached.systemVersion == systemVersion) {
           // Use cached mapped object (reference equality maintained)
           mappedResults.add(cached.object);
         } else {
           // Map new row and cache it
           final mappedRow = _mapper(rawRow);
-          final cachedResult = _CachedResult(mappedRow, rowHash);
-          _resultCache[rowHash] = cachedResult;
+          final cachedResult = _CachedResult(mappedRow, systemVersion);
+          _resultCache[systemId] = cachedResult;
           mappedResults.add(mappedRow);
         }
       }
       
       // Clean up cache: remove entries not in current result set
-      _cleanupCache(newResultHashes.toSet());
+      _cleanupCache(newResultSystemIds.toSet());
       
       // Update cached state and emit
       _lastResults = mappedResults;
-      _lastResultHashes = newResultHashes;
+      _lastResultSystemIds = newResultSystemIds;
       _controller.add(mappedResults);
       
     } catch (error) {
@@ -137,39 +167,8 @@ class StreamingQuery<T> {
     }
   }
 
-  /// Computes a hash code for a database row using system columns for efficiency
-  int _computeRowHash(Map<String, Object?> row) {
-    // Optimization: Use system columns (system_id + system_version) instead of full object hashing
-    // system_version is updated with HLC timestamp on every insert/update, making this sufficient
-    // for change detection while being much faster than full object hashing
-    
-    final systemId = row['system_id'];
-    final systemVersion = row['system_version'];
-    
-    // If system columns are available, use them for fast change detection
-    if (systemId != null && systemVersion != null) {
-      return _combineHash(systemId.hashCode, systemVersion.hashCode);
-    }
-    
-    // Fallback to full object hashing if system columns are not available
-    // This maintains compatibility with tables that don't have system columns
-    var hash = 0;
-    for (final entry in row.entries) {
-      hash = _combineHash(hash, entry.key.hashCode);
-      hash = _combineHash(hash, entry.value.hashCode);
-    }
-    return hash;
-  }
-
-  /// Combines two hash codes using a simple algorithm
-  int _combineHash(int hash, int value) {
-    hash = 0x1fffffff & (hash + value);
-    hash = 0x1fffffff & (hash + ((0x0007ffff & hash) << 10));
-    return hash ^ (hash >> 6);
-  }
-
-  /// Compares two hash sequences for equality
-  bool _areHashSequencesEqual(List<int>? a, List<int>? b) {
+  /// Compares two system ID sequences for equality
+  bool _areSystemIdSequencesEqual(List<String>? a, List<String>? b) {
     if (a == null && b == null) return true;
     if (a == null || b == null) return false;
     if (a.length != b.length) return false;
@@ -182,9 +181,9 @@ class StreamingQuery<T> {
   }
 
   /// Removes cached entries that are no longer in the current result set
-  void _cleanupCache(Set<int> currentHashes) {
-    // Only keep cache entries that are still relevant
-    _resultCache.removeWhere((hash, _) => !currentHashes.contains(hash));
+  void _cleanupCache(Set<String> currentSystemIds) {
+    // Only keep cache entries that are still relevant to prevent infinite growth
+    _resultCache.removeWhere((systemId, _) => !currentSystemIds.contains(systemId));
   }
 
   /// Called when the first listener subscribes
