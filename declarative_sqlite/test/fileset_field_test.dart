@@ -151,6 +151,26 @@ void main() {
       expect(field2.toString(), contains('null'));
       expect(field2.toString(), contains('false'));
     });
+
+    test('FilesetField can get file metadata', () async {
+      final field = FilesetField.fromDatabaseValue('test-fileset', db);
+      final content = Uint8List.fromList([1, 2, 3, 4, 5]);
+      
+      // Add a file
+      final fileId = await field.addFile('metadata-test.txt', content);
+      
+      // Get file metadata
+      final metadata = await field.getFileMetadata(fileId);
+      expect(metadata, isNotNull);
+      expect(metadata!['id'], equals(fileId));
+      expect(metadata['fileset'], equals('test-fileset'));
+      expect(metadata['name'], equals('metadata-test.txt'));
+      expect(metadata['size'], equals(5));
+      
+      // Test with non-existent file
+      final nonExistent = await field.getFileMetadata('fake-id');
+      expect(nonExistent, isNull);
+    });
   });
 
   group('DataMappingUtils', () {

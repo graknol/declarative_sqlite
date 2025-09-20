@@ -57,6 +57,24 @@ class FilesetField {
     return await _fileSet.getFileContent(fileId);
   }
 
+  /// Gets metadata for a specific file by its ID.
+  /// 
+  /// Returns the file metadata record from the __files table,
+  /// or null if the file is not found.
+  Future<Map<String, dynamic>?> getFileMetadata(String fileId) async {
+    final fileRecords = await _database.queryTable(
+      '__files',
+      where: 'id = ?',
+      whereArgs: [fileId],
+    );
+    
+    if (fileRecords.isEmpty) {
+      return null;
+    }
+    
+    return fileRecords.first;
+  }
+
   /// Deletes a file from this fileset.
   /// 
   /// [fileId] is the ID of the file to delete.
@@ -72,11 +90,7 @@ class FilesetField {
     if (!hasValue) {
       return [];
     }
-    return await _database.queryTable(
-      '__files',
-      where: 'fileset = ?',
-      whereArgs: [_filesetId],
-    );
+    return await _fileSet.getFilesInFileset(_filesetId!);
   }
 
   /// Gets the count of files in this fileset.
@@ -86,13 +100,7 @@ class FilesetField {
     if (!hasValue) {
       return 0;
     }
-    final result = await _database.queryTable(
-      '__files',
-      columns: ['COUNT(*) as count'],
-      where: 'fileset = ?',
-      whereArgs: [_filesetId],
-    );
-    return result.first['count'] as int;
+    return await _fileSet.getFileCountInFileset(_filesetId!);
   }
 
   /// Returns the database value for this fileset field.
