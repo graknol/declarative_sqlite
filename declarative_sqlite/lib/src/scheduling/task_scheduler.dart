@@ -170,6 +170,12 @@ class TaskScheduler {
   final Map<String, ScheduledTask> _tasks = <String, ScheduledTask>{};
   final Set<String> _runningTasks = <String>{};
   
+  /// Semaphore for resource-constrained devices
+  late final Semaphore _concurrencySemaphore;
+  
+  /// Database for storing task execution history
+  DeclarativeDatabase? _database;
+  
   Timer? _schedulerTimer;
   bool _isRunning = false;
   TaskExecutionCallback? _onTaskComplete;
@@ -180,12 +186,20 @@ class TaskScheduler {
   Duration _totalExecutionTime = Duration.zero;
   
   TaskScheduler._internal([TaskSchedulerConfig? config]) 
-    : _config = config ?? const TaskSchedulerConfig();
+    : _config = config ?? const TaskSchedulerConfig() {
+    _concurrencySemaphore = Semaphore(_config.maxConcurrentTasks);
+  }
   
   /// Initialize with custom configuration
   factory TaskScheduler.withConfig(TaskSchedulerConfig config) {
     _instance = TaskScheduler._internal(config);
     return _instance!;
+  }
+  
+  /// Initialize with database for persistent task tracking
+  void initializeWithDatabase(DeclarativeDatabase database) {
+    _database = database;
+    _ensureTaskHistoryTable();
   }
   
   /// Set callback for task completion events
@@ -235,7 +249,7 @@ class TaskScheduler {
     return taskId;
   }
   
-  /// Schedule a recurring task
+  /// Schedule a recurring task with persistent tracking
   String scheduleRecurringTask({
     required String name,
     required Future<void> Function() task,
@@ -246,6 +260,13 @@ class TaskScheduler {
     Duration? timeout,
   }) {
     final taskId = _generateTaskId();
+    
+    // Check last run time from database if available
+    DateTime? effectiveFirstRun = firstRun;
+    if (_database != null && effectiveFirstRun == null) {
+      effectiveFirstRun = _getNextRunTimeFromHistory(name, interval);
+    }
+    
     final scheduledTask = ScheduledTask(
       id: taskId,
       name: name,

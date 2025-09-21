@@ -3,7 +3,7 @@ import 'package:declarative_sqlite/src/scheduling/task_scheduler.dart';
 /// Built-in database maintenance tasks
 class DatabaseMaintenanceTasks {
   /// Schedule fileset garbage collection
-  static String scheduleFilesetGarbageCollection({
+  static Future<String> scheduleFilesetGarbageCollection({
     required Future<void> Function() garbageCollectTask,
     Duration interval = const Duration(hours: 6),
     TaskPriority priority = TaskPriority.low,
