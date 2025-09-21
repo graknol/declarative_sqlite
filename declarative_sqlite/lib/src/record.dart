@@ -12,23 +12,58 @@ import 'package:declarative_sqlite/src/sync/hlc.dart';
 /// - FilesetField conversion
 /// - LWW (Last-Write-Wins) column updates
 /// - Automatic dirty tracking for updates
+/// - Read-only vs CRUD differentiation
 abstract class DbRecord {
   final Map<String, Object?> _data;
   final String _tableName;
   final DeclarativeDatabase _database;
-  final Table _tableDefinition;
+  final Table? _tableDefinition;
+  final String? _updateTableName; // Table to target for CRUD operations
+  final bool _isReadOnly;
   
   /// Map to track which fields have been modified since creation
   final Set<String> _modifiedFields = <String>{};
   
-  DbRecord(this._data, this._tableName, this._database) 
+  /// Creates a DbRecord from a table (CRUD-enabled by default)
+  DbRecord.fromTable(this._data, this._tableName, this._database) 
       : _tableDefinition = _database.schema.userTables.firstWhere(
           (table) => table.name == _tableName,
           orElse: () => throw ArgumentError('Table $_tableName not found in schema'),
-        );
+        ),
+        _updateTableName = _tableName,
+        _isReadOnly = false;
+
+  /// Creates a DbRecord from a view or query (read-only by default)
+  DbRecord.fromQuery(this._data, this._tableName, this._database, {String? updateTable}) 
+      : _tableDefinition = updateTable != null 
+          ? _database.schema.userTables.firstWhere(
+              (table) => table.name == updateTable,
+              orElse: () => throw ArgumentError('Update table $updateTable not found in schema'),
+            )
+          : null,
+        _updateTableName = updateTable,
+        _isReadOnly = updateTable == null;
+
+  /// Creates a generic DbRecord (for backward compatibility)
+  DbRecord(this._data, this._tableName, this._database) 
+      : _tableDefinition = _database.schema.userTables.firstWhere(
+          (table) => table.name == _tableName,
+          orElse: () => null, // Don't throw for views
+        ),
+        _updateTableName = _tableName,
+        _isReadOnly = _database.schema.userTables.any((table) => table.name == _tableName) ? false : true;
 
   /// Gets the table name for this record
   String get tableName => _tableName;
+
+  /// Gets the table name that will be used for CRUD operations
+  String? get updateTableName => _updateTableName;
+
+  /// Whether this record is read-only (cannot be updated/deleted)
+  bool get isReadOnly => _isReadOnly;
+
+  /// Whether this record supports CRUD operations
+  bool get isCrudEnabled => !_isReadOnly && _updateTableName != null;
 
   /// Gets the underlying data map (read-only copy)
   Map<String, Object?> get data => Map.unmodifiable(_data);
@@ -81,11 +116,24 @@ abstract class DbRecord {
   }
 
   /// Sets a value with automatic conversion and LWW handling
+  /// Throws StateError if the record is read-only
   void setValue<T>(String columnName, T? value) {
+    if (_isReadOnly) {
+      throw StateError('Cannot modify read-only record from ${_tableName}');
+    }
+
+    // Validate that the column exists in the update table schema
+    if (_tableDefinition != null) {
+      final column = _getColumn(columnName);
+      if (column == null) {
+        throw ArgumentError('Column $columnName does not exist in update table ${_updateTableName}');
+      }
+    }
+
     final column = _getColumn(columnName);
     Object? databaseValue;
     
-    switch (column.logicalType) {
+    switch (column?.logicalType ?? 'unknown') {
       case 'text':
       case 'guid':
       case 'integer':
@@ -106,7 +154,7 @@ abstract class DbRecord {
     _modifiedFields.add(columnName);
 
     // Handle LWW column HLC updates
-    if (column.isLww) {
+    if (column?.isLww == true) {
       final hlcColumnName = '${columnName}__hlc';
       final currentHlc = _database.hlcClock.now();
       _data[hlcColumnName] = currentHlc.toString();
@@ -204,12 +252,22 @@ abstract class DbRecord {
   void setFilesetField(String columnName, FilesetField? value) => setValue(columnName, value);
 
   /// Saves any modified fields back to the database
+  /// Throws StateError if the record is read-only
   Future<void> save() async {
+    if (_isReadOnly) {
+      throw StateError('Cannot save read-only record from ${_tableName}');
+    }
+
     if (_modifiedFields.isEmpty) return;
 
     final systemId = this.systemId;
     if (systemId == null) {
       throw StateError('Cannot save record without system_id');
+    }
+
+    final systemVersion = this.systemVersion;
+    if (systemVersion == null) {
+      throw StateError('Cannot save record without system_version');
     }
 
     // Build update map with only modified fields (excluding system columns)
@@ -223,7 +281,7 @@ abstract class DbRecord {
 
     if (updateData.isNotEmpty) {
       await _database.update(
-        _tableName,
+        _updateTableName ?? _tableName,
         updateData,
         where: 'system_id = ?',
         whereArgs: [systemId],
@@ -235,36 +293,80 @@ abstract class DbRecord {
   }
 
   /// Creates a new record in the database with the current data
+  /// Throws StateError if the record is read-only
   Future<void> insert() async {
+    if (_isReadOnly) {
+      throw StateError('Cannot insert read-only record from ${_tableName}');
+    }
+
     // Remove system columns - they'll be added by the database layer
     final insertData = Map<String, Object?>.from(_data);
     insertData.removeWhere((key, value) => key.startsWith('system_'));
 
-    await _database.insert(_tableName, insertData);
+    await _database.insert(_updateTableName ?? _tableName, insertData);
     
     // Clear modified fields since this is a new record
     _modifiedFields.clear();
   }
 
   /// Deletes this record from the database
+  /// Throws StateError if the record is read-only
   Future<void> delete() async {
+    if (_isReadOnly) {
+      throw StateError('Cannot delete read-only record from ${_tableName}');
+    }
+
     final systemId = this.systemId;
     if (systemId == null) {
       throw StateError('Cannot delete record without system_id');
     }
 
     await _database.delete(
-      _tableName,
+      _updateTableName ?? _tableName,
       where: 'system_id = ?',
       whereArgs: [systemId],
     );
   }
 
+  /// Reloads this record from the database
+  /// Only available for CRUD-enabled records as views cannot guarantee uniqueness
+  Future<void> reload() async {
+    if (_isReadOnly) {
+      throw StateError('Cannot reload read-only record from ${_tableName}');
+    }
+
+    final systemId = this.systemId;
+    if (systemId == null) {
+      throw StateError('Cannot reload record without system_id');
+    }
+
+    final results = await _database.queryTable(
+      _updateTableName ?? _tableName,
+      where: 'system_id = ?',
+      whereArgs: [systemId],
+    );
+
+    if (results.isEmpty) {
+      throw StateError('Record with system_id $systemId not found in table ${_updateTableName ?? _tableName}');
+    }
+
+    // Update the data map with fresh data
+    _data.clear();
+    _data.addAll(results.first);
+    
+    // Clear modified fields since we have fresh data
+    _modifiedFields.clear();
+  }
+
   /// Gets the column definition for the specified column name
-  Column _getColumn(String columnName) {
-    return _tableDefinition.columns.firstWhere(
+  Column? _getColumn(String columnName) {
+    if (_tableDefinition == null) {
+      return null; // For views or queries without table definitions
+    }
+    
+    return _tableDefinition!.columns.firstWhere(
       (col) => col.name == columnName,
-      orElse: () => throw ArgumentError('Column $columnName not found in table $_tableName'),
+      orElse: () => throw ArgumentError('Column $columnName not found in table ${_updateTableName ?? _tableName}'),
     );
   }
 

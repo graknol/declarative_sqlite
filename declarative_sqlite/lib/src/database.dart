@@ -259,12 +259,30 @@ class DeclarativeDatabase {
   Future<List<DbRecord>> queryRecordsWith(QueryBuilder builder) async {
     final results = await queryWith(builder);
     final tableName = builder.tableName;
+    final updateTableName = builder.updateTableName;
     
     if (tableName == null) {
       throw ArgumentError('QueryBuilder must specify a table to return DbRecord objects');
     }
     
-    return RecordFactory.fromMapList(results, tableName, this);
+    // If forUpdate was specified, validate the requirements
+    if (updateTableName != null) {
+      _validateForUpdateQuery(results, updateTableName);
+      
+      // Return records configured for CRUD with the specified update table
+      return RecordFactory.fromMapList(results, tableName, this, updateTable: updateTableName);
+    }
+    
+    // Determine if this is a table or view query
+    final isTableQuery = schema.userTables.any((table) => table.name == tableName);
+    
+    if (isTableQuery) {
+      // Direct table query - CRUD enabled by default
+      return results.map((data) => RecordFactory.fromTable(data, tableName, this)).toList();
+    } else {
+      // View or complex query - read-only by default
+      return results.map((data) => RecordFactory.fromQuery(data, tableName, this)).toList();
+    }
   }
 
   /// Queries a table and returns typed DbRecord objects.
@@ -294,7 +312,16 @@ class DeclarativeDatabase {
       offset: offset,
     );
     
-    return RecordFactory.fromMapList(results, table, this);
+    // Determine if this is a table or view query
+    final isTableQuery = schema.userTables.any((t) => t.name == table);
+    
+    if (isTableQuery) {
+      // Direct table query - CRUD enabled by default
+      return results.map((data) => RecordFactory.fromTable(data, table, this)).toList();
+    } else {
+      // View query - read-only by default
+      return results.map((data) => RecordFactory.fromQuery(data, table, this)).toList();
+    }
   }
 
   /// Creates a streaming query that returns typed DbRecord objects.
@@ -323,13 +350,30 @@ class DeclarativeDatabase {
   /// Creates a streaming query using an existing [QueryBuilder] that returns DbRecord objects.
   Stream<List<DbRecord>> streamRecordsWith(QueryBuilder builder) {
     final tableName = builder.tableName;
+    final updateTableName = builder.updateTableName;
+    
     if (tableName == null) {
       throw ArgumentError('QueryBuilder must specify a table to return DbRecord objects');
     }
     
     return streamWith(
       builder,
-      (row) => RecordFactory.fromMap(row, tableName, this),
+      (row) {
+        // Validate forUpdate requirements on each emitted result
+        if (updateTableName != null) {
+          _validateForUpdateQuery([row], updateTableName);
+          return RecordFactory.fromQuery(row, tableName, this, updateTable: updateTableName);
+        }
+        
+        // Determine if this is a table or view query
+        final isTableQuery = schema.userTables.any((table) => table.name == tableName);
+        
+        if (isTableQuery) {
+          return RecordFactory.fromTable(row, tableName, this);
+        } else {
+          return RecordFactory.fromQuery(row, tableName, this);
+        }
+      },
     );
   }
 
@@ -825,6 +869,33 @@ class DeclarativeDatabase {
       whereArgs: [key],
     );
     return deleteCount > 0;
+  }
+
+  /// Validates that a query result meets the requirements for forUpdate
+  void _validateForUpdateQuery(List<Map<String, Object?>> results, String updateTableName) {
+    // Check that the update table exists in the schema
+    final updateTable = schema.userTables.firstWhere(
+      (table) => table.name == updateTableName,
+      orElse: () => throw ArgumentError('Update table $updateTableName not found in schema'),
+    );
+
+    if (results.isEmpty) return; // No results to validate
+
+    final firstResult = results.first;
+    
+    // Verify that system_id is present
+    if (!firstResult.containsKey('system_id') || firstResult['system_id'] == null) {
+      throw StateError(
+        'Query with forUpdate(\'$updateTableName\') must include system_id column from the target table'
+      );
+    }
+
+    // Verify that system_version is present
+    if (!firstResult.containsKey('system_version') || firstResult['system_version'] == null) {
+      throw StateError(
+        'Query with forUpdate(\'$updateTableName\') must include system_version column from the target table'
+      );
+    }
   }
 
   static Future<String> _setSettingIfNotSet(

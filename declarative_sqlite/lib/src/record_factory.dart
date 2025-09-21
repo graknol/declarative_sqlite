@@ -6,19 +6,40 @@ class RecordFactory {
   static DbRecord fromMap(
     Map<String, Object?> data,
     String tableName,
+    DeclarativeDatabase database, {
+    String? updateTable,
+  }) {
+    return _GenericRecord(data, tableName, database, updateTable: updateTable);
+  }
+
+  /// Creates a DbRecord from a table query (CRUD-enabled by default)
+  static DbRecord fromTable(
+    Map<String, Object?> data,
+    String tableName,
     DeclarativeDatabase database,
   ) {
-    return _GenericRecord(data, tableName, database);
+    return _GenericRecord.fromTable(data, tableName, database);
+  }
+
+  /// Creates a DbRecord from a view or complex query (read-only by default)
+  static DbRecord fromQuery(
+    Map<String, Object?> data,
+    String tableName,
+    DeclarativeDatabase database, {
+    String? updateTable,
+  }) {
+    return _GenericRecord.fromQuery(data, tableName, database, updateTable: updateTable);
   }
 
   /// Creates a list of records from query results
   static List<DbRecord> fromMapList(
     List<Map<String, Object?>> dataList,
     String tableName,
-    DeclarativeDatabase database,
-  ) {
+    DeclarativeDatabase database, {
+    String? updateTable,
+  }) {
     return dataList
-        .map((data) => fromMap(data, tableName, database))
+        .map((data) => fromMap(data, tableName, database, updateTable: updateTable))
         .toList();
   }
 }
@@ -28,8 +49,22 @@ class _GenericRecord extends DbRecord {
   _GenericRecord(
     Map<String, Object?> data,
     String tableName,
+    DeclarativeDatabase database, {
+    String? updateTable,
+  }) : super.fromQuery(data, tableName, database, updateTable: updateTable);
+
+  _GenericRecord.fromTable(
+    Map<String, Object?> data,
+    String tableName,
     DeclarativeDatabase database,
-  ) : super(data, tableName, database);
+  ) : super.fromTable(data, tableName, database);
+
+  _GenericRecord.fromQuery(
+    Map<String, Object?> data,
+    String tableName,
+    DeclarativeDatabase database, {
+    String? updateTable,
+  }) : super.fromQuery(data, tableName, database, updateTable: updateTable);
 
   /// Provides dynamic property access via noSuchMethod
   @override
@@ -48,6 +83,9 @@ class _GenericRecord extends DbRecord {
       if (propertyName == 'systemId') return systemId;
       if (propertyName == 'systemCreatedAt') return systemCreatedAt;
       if (propertyName == 'systemVersion') return systemVersion;
+      if (propertyName == 'isReadOnly') return isReadOnly;
+      if (propertyName == 'isCrudEnabled') return isCrudEnabled;
+      if (propertyName == 'updateTableName') return updateTableName;
       
       // Handle regular column getters
       return getValue(propertyName);
@@ -74,6 +112,8 @@ class _GenericRecord extends DbRecord {
           return insert();
         case 'delete':
           return delete();
+        case 'reload':
+          return reload();
         case 'toString':
           return toString();
         default:
