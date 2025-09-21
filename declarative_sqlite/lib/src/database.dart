@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:declarative_sqlite/src/builders/query_builder.dart';
+import 'package:declarative_sqlite/src/exceptions/db_exception_wrapper.dart';
 import 'package:declarative_sqlite/src/record.dart';
 import 'package:declarative_sqlite/src/record_factory.dart';
 import 'package:declarative_sqlite/src/record_map_factory_registry.dart';
@@ -86,43 +87,45 @@ class DeclarativeDatabase {
     bool isReadOnly = false,
     bool isSingleInstance = true,
   }) async {
-    final db = await databaseFactory.openDatabase(
-      path,
-      options: sqflite.OpenDatabaseOptions(
-        readOnly: isReadOnly,
-        singleInstance: isSingleInstance,
-      ),
-    );
+    return await DbExceptionWrapper.wrapConnection(() async {
+      final db = await databaseFactory.openDatabase(
+        path,
+        options: sqflite.OpenDatabaseOptions(
+          readOnly: isReadOnly,
+          singleInstance: isSingleInstance,
+        ),
+      );
 
-    // Migrate schema
-    final liveSchemaHash = await _getSetting(db, 'schema_hash');
-    final newSchemaHash = schema.toHash();
-    if (newSchemaHash != liveSchemaHash) {
-      final liveSchema = await introspectSchema(db);
-      final changes = diffSchemas(schema, liveSchema);
-      final scripts = generateMigrationScripts(changes);
-      for (final script in scripts) {
-        await db.execute(script);
+      // Migrate schema
+      final liveSchemaHash = await _getSetting(db, 'schema_hash');
+      final newSchemaHash = schema.toHash();
+      if (newSchemaHash != liveSchemaHash) {
+        final liveSchema = await introspectSchema(db);
+        final changes = diffSchemas(schema, liveSchema);
+        final scripts = generateMigrationScripts(changes);
+        for (final script in scripts) {
+          await db.execute(script);
+        }
       }
-    }
 
-    // Initialize the dirty row store
-    dirtyRowStore ??= SqliteDirtyRowStore();
-    await dirtyRowStore.init(db);
+      // Initialize the dirty row store
+      dirtyRowStore ??= SqliteDirtyRowStore();
+      await dirtyRowStore.init(db);
 
-    // Get or create the persistent HLC node ID
-    final nodeId =
-        await _setSettingIfNotSet(db, 'hlc_node_id', () => Uuid().v4());
+      // Get or create the persistent HLC node ID
+      final nodeId =
+          await _setSettingIfNotSet(db, 'hlc_node_id', () => Uuid().v4());
 
-    final hlcClock = HlcClock(nodeId: nodeId);
+      final hlcClock = HlcClock(nodeId: nodeId);
 
-    return DeclarativeDatabase._internal(
-      db,
-      schema,
-      dirtyRowStore,
-      hlcClock,
-      fileRepository,
-    );
+      return DeclarativeDatabase._internal(
+        db,
+        schema,
+        dirtyRowStore,
+        hlcClock,
+        fileRepository,
+      );
+    });
   }
 
   /// Closes the database.
@@ -464,38 +467,42 @@ class DeclarativeDatabase {
     Future<T> Function(DeclarativeDatabase txn) action, {
     bool? exclusive,
   }) async {
-    if (_db is! sqflite.Database) {
-      throw StateError('Cannot start a transaction within a transaction.');
-    }
-    final txnId = Uuid().v4();
-    return _db.transaction(
-      (txn) async {
-        final db = DeclarativeDatabase._inTransaction(
-          txn,
-          schema,
-          dirtyRowStore,
-          hlcClock,
-          fileRepository,
-          txnId,
-        );
-        return await action(db);
-      },
-      exclusive: exclusive,
-    );
+    return await DbExceptionWrapper.wrapTransaction(() async {
+      if (_db is! sqflite.Database) {
+        throw StateError('Cannot start a transaction within a transaction.');
+      }
+      final txnId = Uuid().v4();
+      return _db.transaction(
+        (txn) async {
+          final db = DeclarativeDatabase._inTransaction(
+            txn,
+            schema,
+            dirtyRowStore,
+            hlcClock,
+            fileRepository,
+            txnId,
+          );
+          return await action(db);
+        },
+        exclusive: exclusive,
+      );
+    });
   }
 
   /// Inserts a row into the given [tableName].
   ///
   /// Returns the System ID of the last inserted row.
   Future<String> insert(String tableName, Map<String, Object?> values) async {
-    final now = hlcClock.now();
-    final systemId = await _insert(tableName, values, now);
-    await dirtyRowStore.add(tableName, systemId, now);
-    
-    // Notify streaming queries of the change
-    await _streamManager.notifyTableChanged(tableName);
-    
-    return systemId;
+    return await DbExceptionWrapper.wrapCreate(() async {
+      final now = hlcClock.now();
+      final systemId = await _insert(tableName, values, now);
+      await dirtyRowStore.add(tableName, systemId, now);
+      
+      // Notify streaming queries of the change
+      await _streamManager.notifyTableChanged(tableName);
+      
+      return systemId;
+    }, tableName: tableName);
   }
 
   Future<String> _insert(
@@ -537,32 +544,34 @@ class DeclarativeDatabase {
     String? where,
     List<Object?>? whereArgs,
   }) async {
-    // We need to get the system_ids of the rows being updated so we can
-    // mark them as dirty.
-    final rowsToUpdate = await queryTable(
-      tableName,
-      columns: ['system_id'],
-      where: where,
-      whereArgs: whereArgs,
-    );
+    return await DbExceptionWrapper.wrapUpdate(() async {
+      // We need to get the system_ids of the rows being updated so we can
+      // mark them as dirty.
+      final rowsToUpdate = await queryTable(
+        tableName,
+        columns: ['system_id'],
+        where: where,
+        whereArgs: whereArgs,
+      );
 
-    final now = hlcClock.now();
-    final result = await _update(
-      tableName,
-      values,
-      now,
-      where: where,
-      whereArgs: whereArgs,
-    );
+      final now = hlcClock.now();
+      final result = await _update(
+        tableName,
+        values,
+        now,
+        where: where,
+        whereArgs: whereArgs,
+      );
 
-    for (final row in rowsToUpdate) {
-      await dirtyRowStore.add(tableName, row['system_id']! as String, now);
-    }
+      for (final row in rowsToUpdate) {
+        await dirtyRowStore.add(tableName, row['system_id']! as String, now);
+      }
 
-    // Notify streaming queries of the change
-    await _streamManager.notifyTableChanged(tableName);
+      // Notify streaming queries of the change
+      await _streamManager.notifyTableChanged(tableName);
 
-    return result;
+      return result;
+    }, tableName: tableName);
   }
 
   Future<int> _update(
@@ -647,32 +656,34 @@ class DeclarativeDatabase {
     String? where,
     List<Object?>? whereArgs,
   }) async {
-    // Make sure the table exists or throw an exception
-    final _ = _getTableDefinition(tableName);
+    return await DbExceptionWrapper.wrapDelete(() async {
+      // Make sure the table exists or throw an exception
+      final _ = _getTableDefinition(tableName);
 
-    final now = hlcClock.now();
+      final now = hlcClock.now();
 
-    final rowsToDelete = await queryTable(
-      tableName,
-      columns: ['system_id'],
-      where: where,
-      whereArgs: whereArgs,
-    );
+      final rowsToDelete = await queryTable(
+        tableName,
+        columns: ['system_id'],
+        where: where,
+        whereArgs: whereArgs,
+      );
 
-    final result = await _db.delete(
-      tableName,
-      where: where,
-      whereArgs: whereArgs,
-    );
+      final result = await _db.delete(
+        tableName,
+        where: where,
+        whereArgs: whereArgs,
+      );
 
-    for (final row in rowsToDelete) {
-      await dirtyRowStore.add(tableName, row['system_id']! as String, now);
-    }
+      for (final row in rowsToDelete) {
+        await dirtyRowStore.add(tableName, row['system_id']! as String, now);
+      }
 
-    // Notify streaming queries of the change
-    await _streamManager.notifyTableChanged(tableName);
+      // Notify streaming queries of the change
+      await _streamManager.notifyTableChanged(tableName);
 
-    return result;
+      return result;
+    }, tableName: tableName);
   }
 
   /// Queries the given [table] and returns a list of the results.
@@ -688,20 +699,22 @@ class DeclarativeDatabase {
     int? limit,
     int? offset,
   }) async {
-    final rawResults = await _db.query(
-      table,
-      distinct: distinct,
-      columns: columns,
-      where: where,
-      whereArgs: whereArgs,
-      groupBy: groupBy,
-      having: having,
-      orderBy: orderBy,
-      limit: limit,
-      offset: offset,
-    );
-    
-    return _transformFilesetColumns(table, rawResults);
+    return await DbExceptionWrapper.wrapRead(() async {
+      final rawResults = await _db.query(
+        table,
+        distinct: distinct,
+        columns: columns,
+        where: where,
+        whereArgs: whereArgs,
+        groupBy: groupBy,
+        having: having,
+        orderBy: orderBy,
+        limit: limit,
+        offset: offset,
+      );
+      
+      return _transformFilesetColumns(table, rawResults);
+    }, tableName: table);
   }
 
   /// Transforms raw query results by converting fileset columns to FilesetField objects.

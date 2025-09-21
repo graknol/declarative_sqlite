@@ -1,4 +1,5 @@
 import 'package:declarative_sqlite/src/database.dart';
+import 'package:declarative_sqlite/src/exceptions/db_exception_wrapper.dart';
 import 'package:declarative_sqlite/src/files/fileset_field.dart';
 import 'package:declarative_sqlite/src/schema/column.dart';
 import 'package:declarative_sqlite/src/schema/table.dart';
