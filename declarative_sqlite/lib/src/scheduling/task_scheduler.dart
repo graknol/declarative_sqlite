@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:isolate';
 import 'dart:math';
+import '../database.dart';
 
 /// Priority levels for scheduled tasks
 enum TaskPriority {

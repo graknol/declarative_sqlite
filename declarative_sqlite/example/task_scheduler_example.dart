@@ -1,6 +1,12 @@
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
 void main() async {
+  // Initialize database for task persistence
+  final database = DeclarativeDatabase.memory();
+  await database.open();
+  
+  // Initialize task scheduler with database
+  DatabaseMaintenanceTasks.initialize(database);
   print('=== Task Scheduler Example ===\n');
   
   // Initialize scheduler for resource-constrained device
