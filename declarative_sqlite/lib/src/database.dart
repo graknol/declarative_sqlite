@@ -171,16 +171,25 @@ class DeclarativeDatabase {
   /// Executes a query built with a [QueryBuilder].
   /// This is a cleaner way of composing the query,
   /// rather than having to create the [QueryBuilder]
-  /// object yourself.
-  Future<List<Map<String, Object?>>> query(
+  /// Executes a query built with a [QueryBuilder] and returns raw Map objects.
+  ///
+  /// This is a lower-level method. Most code should use query() to get
+  /// typed DbRecord objects instead of raw maps.
+  ///
+  /// Example:
+  /// ```dart
+  /// final results = await db.queryMaps((q) => q.from('users'));
+  /// final userName = results.first['name'] as String; // Manual casting needed
+  /// ```
+  Future<List<Map<String, Object?>>> queryMaps(
       void Function(QueryBuilder) onBuild) {
     final builder = QueryBuilder();
     onBuild(builder);
-    return queryWith(builder);
+    return queryMapsWith(builder);
   }
 
-  /// Executes a query built with a [QueryBuilder].
-  Future<List<Map<String, Object?>>> queryWith(QueryBuilder builder) async {
+  /// Executes a query built with a [QueryBuilder] and returns raw Map results.
+  Future<List<Map<String, Object?>>> queryMapsWith(QueryBuilder builder) async {
     final (sql, params) = builder.build();
     final rawResults = await rawQuery(sql, params);
     
@@ -188,6 +197,10 @@ class DeclarativeDatabase {
     final tableName = builder.tableName;
     if (tableName != null) {
       return _transformFilesetColumns(tableName, rawResults);
+    }
+    
+    return rawResults;
+  }
     }
     
     return rawResults;
@@ -219,13 +232,13 @@ class DeclarativeDatabase {
   ) {
     final builder = QueryBuilder();
     onBuild(builder);
-    return streamWith(builder, mapper);
+    return streamMapsWith(builder, mapper);
   }
 
   /// Creates a streaming query using an existing [QueryBuilder].
   /// 
   /// See [stream] for more details.
-  Stream<List<T>> streamWith<T>(
+  Stream<List<T>> streamMapsWith<T>(
     QueryBuilder builder,
     T Function(Map<String, Object?>) mapper,
   ) {
@@ -248,19 +261,42 @@ class DeclarativeDatabase {
     return streamingQuery.stream;
   }
 
-  /// Executes a query built with a [QueryBuilder] and returns typed DbRecord objects.
-  /// This provides a more convenient API with automatic type conversion and
-  /// setter functionality for easy updates.
-  Future<List<DbRecord>> queryRecords(
+  /// Executes a query and returns typed DbRecord objects.
+  /// 
+  /// This is the main query method that intelligently determines CRUD vs read-only
+  /// behavior by inspecting the QueryBuilder:
+  /// - Table queries (simple from('table')) → CRUD-enabled
+  /// - View queries → Read-only  
+  /// - Complex queries with forUpdate('table') → CRUD-enabled for specified table
+  /// 
+  /// Examples:
+  /// ```dart
+  /// // Table query - CRUD enabled
+  /// final users = await db.query((q) => q.from('users'));
+  /// users.first.setValue('name', 'Updated');
+  /// await users.first.save(); // ✅ Works
+  /// 
+  /// // View query - read-only
+  /// final details = await db.query((q) => q.from('user_details_view'));
+  /// details.first.setValue('name', 'Test'); // ❌ StateError
+  /// 
+  /// // Complex query with forUpdate - CRUD enabled for target table
+  /// final results = await db.query(
+  ///   (q) => q.from('user_details_view').forUpdate('users')
+  /// );
+  /// results.first.setValue('name', 'Updated');
+  /// await results.first.save(); // ✅ Updates users table
+  /// ```
+  Future<List<DbRecord>> query(
       void Function(QueryBuilder) onBuild) async {
     final builder = QueryBuilder();
     onBuild(builder);
-    return queryRecordsWith(builder);
+    return queryWith(builder);
   }
 
   /// Executes a query built with a [QueryBuilder] and returns typed DbRecord objects.
-  Future<List<DbRecord>> queryRecordsWith(QueryBuilder builder) async {
-    final results = await queryWith(builder);
+  Future<List<DbRecord>> queryWith(QueryBuilder builder) async {
+    final results = await queryMapsWith(builder);
     final tableName = builder.tableName;
     final updateTableName = builder.updateTableName;
     
@@ -276,11 +312,11 @@ class DeclarativeDatabase {
       return RecordFactory.fromMapList(results, tableName, this, updateTable: updateTableName);
     }
     
-    // Determine if this is a table or view query
-    final isTableQuery = schema.userTables.any((table) => table.name == tableName);
+    // Determine if this is a table or view query by inspecting the QueryBuilder
+    final isSimpleTableQuery = _isSimpleTableQuery(builder);
     
-    if (isTableQuery) {
-      // Direct table query - CRUD enabled by default
+    if (isSimpleTableQuery) {
+      // Simple table query - CRUD enabled by default
       return results.map((data) => RecordFactory.fromTable(data, tableName, this)).toList();
     } else {
       // View or complex query - read-only by default
@@ -288,70 +324,35 @@ class DeclarativeDatabase {
     }
   }
 
-  /// Queries a table and returns typed DbRecord objects.
-  /// This is similar to queryTable but returns DbRecord objects instead of Maps.
-  Future<List<DbRecord>> queryTableRecords(
-    String table, {
-    bool? distinct,
-    List<String>? columns,
-    String? where,
-    List<Object?>? whereArgs,
-    String? groupBy,
-    String? having,
-    String? orderBy,
-    int? limit,
-    int? offset,
-  }) async {
-    final results = await queryTable(
-      table,
-      distinct: distinct,
-      columns: columns,
-      where: where,
-      whereArgs: whereArgs,
-      groupBy: groupBy,
-      having: having,
-      orderBy: orderBy,
-      limit: limit,
-      offset: offset,
-    );
-    
-    // Determine if this is a table or view query
-    final isTableQuery = schema.userTables.any((t) => t.name == table);
-    
-    if (isTableQuery) {
-      // Direct table query - CRUD enabled by default
-      return results.map((data) => RecordFactory.fromTable(data, table, this)).toList();
-    } else {
-      // View query - read-only by default
-      return results.map((data) => RecordFactory.fromQuery(data, table, this)).toList();
-    }
-  }
-
   /// Creates a streaming query that returns typed DbRecord objects.
+  /// 
+  /// Like the query() method, this intelligently determines CRUD vs read-only
+  /// behavior by inspecting the QueryBuilder shape.
   /// 
   /// Example:
   /// ```dart
-  /// final usersStream = db.streamRecords(
+  /// final usersStream = db.stream(
   ///   (q) => q.from('users').where(col('age').gt(18)),
   /// );
   /// 
   /// usersStream.listen((users) {
   ///   for (final user in users) {
   ///     print('User: ${user.getValue<String>('name')}');
-  ///     // or with dynamic access: print('User: ${user.name}');
+  ///     user.setValue('last_seen', DateTime.now());
+  ///     await user.save(); // ✅ Works for table queries
   ///   }
   /// });
   /// ```
-  Stream<List<DbRecord>> streamRecords(
+  Stream<List<DbRecord>> stream(
     void Function(QueryBuilder) onBuild,
   ) {
     final builder = QueryBuilder();
     onBuild(builder);
-    return streamRecordsWith(builder);
+    return streamWith(builder);
   }
 
   /// Creates a streaming query using an existing [QueryBuilder] that returns DbRecord objects.
-  Stream<List<DbRecord>> streamRecordsWith(QueryBuilder builder) {
+  Stream<List<DbRecord>> streamWith(QueryBuilder builder) {
     final tableName = builder.tableName;
     final updateTableName = builder.updateTableName;
     
@@ -359,7 +360,7 @@ class DeclarativeDatabase {
       throw ArgumentError('QueryBuilder must specify a table to return DbRecord objects');
     }
     
-    return streamWith(
+    return streamMapsWith(
       builder,
       (row) {
         // Validate forUpdate requirements on each emitted result
@@ -368,10 +369,10 @@ class DeclarativeDatabase {
           return RecordFactory.fromQuery(row, tableName, this, updateTable: updateTableName);
         }
         
-        // Determine if this is a table or view query
-        final isTableQuery = schema.userTables.any((table) => table.name == tableName);
+        // Determine if this is a simple table query by inspecting the QueryBuilder
+        final isSimpleTableQuery = _isSimpleTableQuery(builder);
         
-        if (isTableQuery) {
+        if (isSimpleTableQuery) {
           return RecordFactory.fromTable(row, tableName, this);
         } else {
           return RecordFactory.fromQuery(row, tableName, this);
@@ -385,6 +386,7 @@ class DeclarativeDatabase {
   /// Executes a query and returns typed record objects using registered factories.
   /// 
   /// The record type T must be registered with RecordMapFactoryRegistry.register<T>().
+  /// This method uses the same intelligent CRUD vs read-only detection as query().
   /// 
   /// Example:
   /// ```dart
@@ -393,6 +395,8 @@ class DeclarativeDatabase {
   /// 
   /// // Then query with automatic typing
   /// final users = await db.queryTyped<User>((q) => q.from('users'));
+  /// users.first.name = 'Updated'; // Direct property access
+  /// await users.first.save(); // ✅ Works for table queries
   /// ```
   Future<List<T>> queryTyped<T extends DbRecord>(
     void Function(QueryBuilder) onBuild,
@@ -404,43 +408,15 @@ class DeclarativeDatabase {
 
   /// Executes a query using an existing QueryBuilder and returns typed record objects.
   Future<List<T>> queryTypedWith<T extends DbRecord>(QueryBuilder builder) async {
-    final results = await queryWith(builder);
+    final results = await queryMapsWith(builder);
     final factory = RecordMapFactoryRegistry.getFactory<T>();
     
-    return results.map((row) => factory(row)).toList();
-  }
-
-  /// Queries a table and returns typed record objects using registered factories.
-  Future<List<T>> queryTableTyped<T extends DbRecord>(
-    String table, {
-    bool? distinct,
-    List<String>? columns,
-    String? where,
-    List<Object?>? whereArgs,
-    String? groupBy,
-    String? having,
-    String? orderBy,
-    int? limit,
-    int? offset,
-  }) async {
-    final results = await queryTable(
-      table,
-      distinct: distinct,
-      columns: columns,
-      where: where,
-      whereArgs: whereArgs,
-      groupBy: groupBy,
-      having: having,
-      orderBy: orderBy,
-      limit: limit,
-      offset: offset,
-    );
-    
-    final factory = RecordMapFactoryRegistry.getFactory<T>();
-    return results.map((row) => factory(row)).toList();
+    return results.map((row) => factory(row, this)).toList();
   }
 
   /// Creates a streaming query that returns typed record objects using registered factories.
+  /// 
+  /// Uses the same intelligent CRUD vs read-only detection as stream().
   Stream<List<T>> streamTyped<T extends DbRecord>(
     void Function(QueryBuilder) onBuild,
   ) {
@@ -453,9 +429,9 @@ class DeclarativeDatabase {
   Stream<List<T>> streamTypedWith<T extends DbRecord>(QueryBuilder builder) {
     final factory = RecordMapFactoryRegistry.getFactory<T>();
     
-    return streamWith(
+    return streamMapsWith(
       builder,
-      (row) => factory(row),
+      (row) => factory(row, this),
     );
   }
 
@@ -960,5 +936,26 @@ class DeclarativeDatabase {
       // in which case, there's nothing to do but to return null
     }
     return null;
+  }
+
+  /// Determines if a QueryBuilder represents a simple table query (CRUD-enabled)
+  /// vs a complex query or view query (read-only by default).
+  /// 
+  /// A simple table query is one that:
+  /// - Queries directly from a table (not a view)
+  /// - Has no complex joins, subqueries, or aggregations
+  /// - Can be safely updated via system_id
+  bool _isSimpleTableQuery(QueryBuilder builder) {
+    final tableName = builder.tableName;
+    if (tableName == null) return false;
+    
+    // Check if the table name refers to an actual table (not a view)
+    final isActualTable = schema.userTables.any((table) => table.name == tableName);
+    if (!isActualTable) return false;
+    
+    // For now, we'll consider any direct table reference as "simple"
+    // This could be enhanced to check for complex joins, aggregations, etc.
+    // based on the QueryBuilder structure
+    return true;
   }
 }
