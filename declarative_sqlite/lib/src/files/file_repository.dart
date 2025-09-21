@@ -29,4 +29,29 @@ abstract class IFileRepository {
   ///
   /// Returns a stream of the file's byte content.
   Future<Stream<List<int>>> getFileContent(String filesetId, String fileId);
+
+  /// Performs garbage collection on filesets.
+  ///
+  /// Removes all fileset directories on disk that are not in the provided
+  /// [validFilesetIds] list. This helps clean up orphaned filesets that
+  /// may have been left behind when database records were deleted.
+  ///
+  /// [validFilesetIds] is the list of all valid fileset IDs that should
+  /// be preserved. Any fileset directory not in this list will be removed.
+  ///
+  /// Returns the number of orphaned filesets that were removed.
+  Future<int> garbageCollectFilesets(List<String> validFilesetIds);
+
+  /// Performs garbage collection on files within a specific fileset.
+  ///
+  /// Removes all files on disk in the specified fileset that are not in the
+  /// provided [validFileIds] list. This helps clean up orphaned files that
+  /// may have been left behind when file records were deleted.
+  ///
+  /// [filesetId] is the ID of the fileset to clean up.
+  /// [validFileIds] is the list of all valid file IDs that should be
+  /// preserved within this fileset. Any file not in this list will be removed.
+  ///
+  /// Returns the number of orphaned files that were removed.
+  Future<int> garbageCollectFiles(String filesetId, List<String> validFileIds);
 }

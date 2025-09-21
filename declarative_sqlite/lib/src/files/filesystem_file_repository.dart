@@ -55,4 +55,70 @@ class FilesystemFileRepository implements IFileRepository {
     }
     return file.openRead();
   }
+
+  @override
+  Future<int> garbageCollectFilesets(List<String> validFilesetIds) async {
+    final storageDir = Directory(_storagePath);
+    if (!await storageDir.exists()) {
+      return 0; // Nothing to clean up
+    }
+
+    final validFilesetSet = validFilesetIds.toSet();
+    int removedCount = 0;
+
+    await for (final entity in storageDir.list()) {
+      if (entity is Directory) {
+        final filesetId = p.basename(entity.path);
+        
+        // Skip if this fileset ID is valid
+        if (validFilesetSet.contains(filesetId)) {
+          continue;
+        }
+
+        // This is an orphaned fileset directory, remove it
+        try {
+          await entity.delete(recursive: true);
+          removedCount++;
+        } catch (e) {
+          // Log error but continue with cleanup
+          print('Warning: Failed to delete orphaned fileset directory ${entity.path}: $e');
+        }
+      }
+    }
+
+    return removedCount;
+  }
+
+  @override
+  Future<int> garbageCollectFiles(String filesetId, List<String> validFileIds) async {
+    final filesetDir = Directory(_getFolderPath(filesetId));
+    if (!await filesetDir.exists()) {
+      return 0; // Fileset directory doesn't exist
+    }
+
+    final validFileSet = validFileIds.toSet();
+    int removedCount = 0;
+
+    await for (final entity in filesetDir.list()) {
+      if (entity is File) {
+        final fileId = p.basename(entity.path);
+        
+        // Skip if this file ID is valid
+        if (validFileSet.contains(fileId)) {
+          continue;
+        }
+
+        // This is an orphaned file, remove it
+        try {
+          await entity.delete();
+          removedCount++;
+        } catch (e) {
+          // Log error but continue with cleanup
+          print('Warning: Failed to delete orphaned file ${entity.path}: $e');
+        }
+      }
+    }
+
+    return removedCount;
+  }
 }
