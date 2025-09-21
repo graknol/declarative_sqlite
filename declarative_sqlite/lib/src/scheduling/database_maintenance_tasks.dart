@@ -18,12 +18,12 @@ class DatabaseMaintenanceTasks {
   }
   
   /// Schedule database optimization
-  static String scheduleDatabaseOptimization({
+  static Future<String> scheduleDatabaseOptimization({
     required Future<void> Function() optimizeTask,
     Duration interval = const Duration(days: 1),
     TaskPriority priority = TaskPriority.low,
-  }) {
-    return TaskScheduler.instance.scheduleRecurringTask(
+  }) async {
+    return await TaskScheduler.instance.scheduleRecurringTask(
       name: 'Database Optimization',
       task: optimizeTask,
       interval: interval,
@@ -33,12 +33,12 @@ class DatabaseMaintenanceTasks {
   }
   
   /// Schedule sync operations
-  static String scheduleSyncOperation({
+  static Future<String> scheduleSyncOperation({
     required Future<void> Function() syncTask,
     Duration interval = const Duration(minutes: 15),
     TaskPriority priority = TaskPriority.normal,
-  }) {
-    return TaskScheduler.instance.scheduleRecurringTask(
+  }) async {
+    return await TaskScheduler.instance.scheduleRecurringTask(
       name: 'Data Synchronization',
       task: syncTask,
       interval: interval,
@@ -48,12 +48,12 @@ class DatabaseMaintenanceTasks {
   }
   
   /// Schedule backup operations
-  static String scheduleBackup({
+  static Future<String> scheduleBackup({
     required Future<void> Function() backupTask,
     Duration interval = const Duration(hours: 12),
     TaskPriority priority = TaskPriority.normal,
-  }) {
-    return TaskScheduler.instance.scheduleRecurringTask(
+  }) async {
+    return await TaskScheduler.instance.scheduleRecurringTask(
       name: 'Database Backup',
       task: backupTask,
       interval: interval,
@@ -63,12 +63,12 @@ class DatabaseMaintenanceTasks {
   }
   
   /// Schedule cleanup of old records
-  static String scheduleDataCleanup({
+  static Future<String> scheduleDataCleanup({
     required Future<void> Function() cleanupTask,
     Duration interval = const Duration(days: 7),
     TaskPriority priority = TaskPriority.low,
-  }) {
-    return TaskScheduler.instance.scheduleRecurringTask(
+  }) async {
+    return await TaskScheduler.instance.scheduleRecurringTask(
       name: 'Data Cleanup',
       task: cleanupTask,
       interval: interval,
@@ -78,12 +78,12 @@ class DatabaseMaintenanceTasks {
   }
   
   /// Schedule health checks
-  static String scheduleHealthCheck({
+  static Future<String> scheduleHealthCheck({
     required Future<void> Function() healthCheckTask,
     Duration interval = const Duration(hours: 1),
     TaskPriority priority = TaskPriority.high,
-  }) {
-    return TaskScheduler.instance.scheduleRecurringTask(
+  }) async {
+    return await TaskScheduler.instance.scheduleRecurringTask(
       name: 'Database Health Check',
       task: healthCheckTask,
       interval: interval,
