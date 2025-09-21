@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:declarative_sqlite/src/builders/query_builder.dart';
 import 'package:declarative_sqlite/src/record.dart';
 import 'package:declarative_sqlite/src/record_factory.dart';
+import 'package:declarative_sqlite/src/record_map_factory_registry.dart';
 import 'package:declarative_sqlite/src/schema/table.dart';
 import 'package:declarative_sqlite/src/sync/sqlite_dirty_row_store.dart';
 import 'package:sqflite_common/sqlite_api.dart' as sqflite;
@@ -329,6 +330,85 @@ class DeclarativeDatabase {
     return streamWith(
       builder,
       (row) => RecordFactory.fromMap(row, tableName, this),
+    );
+  }
+
+  // Typed query methods using RecordMapFactoryRegistry
+
+  /// Executes a query and returns typed record objects using registered factories.
+  /// 
+  /// The record type T must be registered with RecordMapFactoryRegistry.register<T>().
+  /// 
+  /// Example:
+  /// ```dart
+  /// // First register the factory
+  /// RecordMapFactoryRegistry.register<User>(User.fromMap);
+  /// 
+  /// // Then query with automatic typing
+  /// final users = await db.queryTyped<User>((q) => q.from('users'));
+  /// ```
+  Future<List<T>> queryTyped<T extends DbRecord>(
+    void Function(QueryBuilder) onBuild,
+  ) async {
+    final builder = QueryBuilder();
+    onBuild(builder);
+    return queryTypedWith<T>(builder);
+  }
+
+  /// Executes a query using an existing QueryBuilder and returns typed record objects.
+  Future<List<T>> queryTypedWith<T extends DbRecord>(QueryBuilder builder) async {
+    final results = await queryWith(builder);
+    final factory = RecordMapFactoryRegistry.getFactory<T>();
+    
+    return results.map((row) => factory(row)).toList();
+  }
+
+  /// Queries a table and returns typed record objects using registered factories.
+  Future<List<T>> queryTableTyped<T extends DbRecord>(
+    String table, {
+    bool? distinct,
+    List<String>? columns,
+    String? where,
+    List<Object?>? whereArgs,
+    String? groupBy,
+    String? having,
+    String? orderBy,
+    int? limit,
+    int? offset,
+  }) async {
+    final results = await queryTable(
+      table,
+      distinct: distinct,
+      columns: columns,
+      where: where,
+      whereArgs: whereArgs,
+      groupBy: groupBy,
+      having: having,
+      orderBy: orderBy,
+      limit: limit,
+      offset: offset,
+    );
+    
+    final factory = RecordMapFactoryRegistry.getFactory<T>();
+    return results.map((row) => factory(row)).toList();
+  }
+
+  /// Creates a streaming query that returns typed record objects using registered factories.
+  Stream<List<T>> streamTyped<T extends DbRecord>(
+    void Function(QueryBuilder) onBuild,
+  ) {
+    final builder = QueryBuilder();
+    onBuild(builder);
+    return streamTypedWith<T>(builder);
+  }
+
+  /// Creates a streaming query using an existing QueryBuilder that returns typed record objects.
+  Stream<List<T>> streamTypedWith<T extends DbRecord>(QueryBuilder builder) {
+    final factory = RecordMapFactoryRegistry.getFactory<T>();
+    
+    return streamWith(
+      builder,
+      (row) => factory(row),
     );
   }
 

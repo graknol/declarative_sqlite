@@ -22,6 +22,7 @@ export 'src/database.dart' show DeclarativeDatabase;
 export 'src/files/fileset_field.dart';
 export 'src/record.dart' show DbRecord;
 export 'src/record_factory.dart';
+export 'src/record_map_factory_registry.dart';
 export 'src/schema/schema.dart';
 export 'src/streaming/advanced_streaming_query.dart';
 export 'src/streaming/query_dependency_analyzer.dart';

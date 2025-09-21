@@ -1,267 +1,294 @@
 # DbRecord: Typed Database Records
 
-The DeclarativeDatabase now provides a new `DbRecord` API that offers typed access to database rows with automatic type conversion, setter functionality, and built-in support for LWW (Last-Write-Wins) columns.
+The DeclarativeDatabase now provides a comprehensive `DbRecord` API that offers typed access to database rows with automatic type conversion, setter functionality, code generation, and built-in support for LWW (Last-Write-Wins) columns.
 
 ## Overview
 
-Instead of working with raw `Map<String, Object?>` objects from database queries, you can now use `DbRecord` objects that provide:
+Instead of working with raw `Map<String, Object?>` objects from database queries, you can now use:
 
-- **Typed getters** with automatic type conversion
-- **Typed setters** with automatic serialization  
-- **LWW column handling** with automatic HLC updates
-- **Dirty field tracking** for efficient updates
-- **System column access** (system_id, system_created_at, etc.)
+1. **Generic DbRecord objects** with typed `getValue<T>()` and `setValue<T>()` methods
+2. **Generated typed record classes** that extend DbRecord with property-style access
+3. **RecordMapFactoryRegistry** for eliminating mapper parameters from query methods
+4. **Singleton HLC clock** ensuring causal ordering across the entire application
 
-## Basic Usage
+## Generated Typed Record Classes
 
-### Querying with DbRecord
+The build system can generate typed record classes that extend DbRecord:
 
 ```dart
-// Query using the new DbRecord API
-final users = await db.queryRecords(
-  (q) => q.from('users').where(col('age').gt(21)),
-);
+// Generated class for the 'users' table
+class User extends DbRecord {
+  User(Map<String, Object?> data, DeclarativeDatabase database)
+      : super(data, 'users', database);
 
-// Or query a table directly
-final products = await db.queryTableRecords(
-  'products',
-  where: 'price < ?',
-  whereArgs: [100.0],
-);
+  // Typed getters - no getValue() calls needed!
+  int get id => getIntegerNotNull('id');
+  String get name => getTextNotNull('name');
+  String get email => getTextNotNull('email');
+  DateTime? get birthDate => getDateTime('birth_date');
 
-// Access typed values
-for (final user in users) {
-  final name = user.getValue<String>('name');     // No casting needed
-  final age = user.getValue<int>('age');           // Automatic type conversion
-  final birthDate = user.getValue<DateTime>('birth_date'); // DateTime parsing
-  
-  print('$name is $age years old, born on $birthDate');
+  // Typed setters - direct property assignment!
+  set name(String value) => setText('name', value);
+  set email(String value) => setText('email', value);
+  set birthDate(DateTime? value) => setDateTime('birth_date', value);
+
+  // Factory for registry
+  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+    return User(data, database);
+  }
 }
 ```
 
-### Updating Records
+### Using Generated Classes
 
 ```dart
+// Register the factory once at app startup
+RecordMapFactoryRegistry.register<User>(User.fromMap);
+
+// Query with full type safety
+final users = await db.queryTyped<User>((q) => q.from('users'));
+
+// Direct property access - truly magical! 
 final user = users.first;
+print('Name: ${user.name}');              // No getValue needed
+print('Age: ${user.age}');                // No casting needed
+print('Birth: ${user.birthDate}');        // Automatic DateTime parsing
 
-// Set values with automatic type conversion
-user.setValue('age', 25);
-user.setValue('birth_date', DateTime(1998, 3, 15)); // Auto-serialized to ISO string
-user.setValue('bio', 'Updated bio');  // If 'bio' is LWW, HLC is auto-updated
+// Direct property assignment
+user.name = 'New Name';                   // No setValue needed
+user.birthDate = DateTime(1990, 1, 1);    // Automatic serialization
+await user.save();                        // Save changes
+```
 
-// Save only the modified fields
-await user.save();
+## RecordMapFactoryRegistry
 
-// Check what was modified
-print('Modified fields: ${user.modifiedFields}'); // ['age', 'birth_date', 'bio', 'bio__hlc']
+Eliminates the need for mapper parameters in query methods:
+
+```dart
+// Register factories at app startup
+RecordMapFactoryRegistry.register<User>(User.fromMap);
+RecordMapFactoryRegistry.register<Product>(Product.fromMap);
+
+// Before: Required mapper parameter
+final users = await db.stream<User>(
+  (q) => q.from('users'),
+  (row) => User.fromMap(row),  // ← mapper parameter
+);
+
+// After: No mapper needed!
+final users = await db.streamTyped<User>(
+  (q) => q.from('users'),
+);
+```
+
+### Registry API
+
+```dart
+// Register factory
+RecordMapFactoryRegistry.register<User>(User.fromMap);
+
+// Check if registered
+bool hasFactory = RecordMapFactoryRegistry.hasFactory<User>();
+
+// Get registered types
+Set<Type> types = RecordMapFactoryRegistry.registeredTypes;
+
+// Clear (for testing)
+RecordMapFactoryRegistry.clear();
+```
+
+## Singleton HLC Clock
+
+The HLC (Hybrid Logical Clock) is now a singleton ensuring causal ordering across the entire application:
+
+```dart
+final clock1 = HlcClock();
+final clock2 = HlcClock(); 
+print(identical(clock1, clock2)); // true - same instance
+
+// All database instances use the same clock
+final db1 = await DeclarativeDatabase.open('db1.sqlite', schema: schema);
+final db2 = await DeclarativeDatabase.open('db2.sqlite', schema: schema);
+// Both use the same HLC instance for consistent ordering
+```
+
+## New Query Methods
+
+### Typed Query Methods (using registry)
+
+```dart
+// Query with automatic typing
+Future<List<T>> queryTyped<T extends DbRecord>(QueryBuilder);
+Future<List<T>> queryTableTyped<T extends DbRecord>(String table, ...);
+Stream<List<T>> streamTyped<T extends DbRecord>(QueryBuilder);
+
+// Examples
+final users = await db.queryTyped<User>((q) => q.from('users'));
+final products = await db.queryTableTyped<Product>('products');
+final userStream = db.streamTyped<User>((q) => q.from('users'));
+```
+
+### Generic DbRecord Methods (no registry needed)
+
+```dart
+// Query returning generic DbRecord objects
+Future<List<DbRecord>> queryRecords(QueryBuilder);
+Future<List<DbRecord>> queryTableRecords(String table, ...);
+Stream<List<DbRecord>> streamRecords(QueryBuilder);
+
+// Examples  
+final records = await db.queryRecords((q) => q.from('users'));
+final name = records.first.getValue<String>('name');
 ```
 
 ## Type Conversion
 
 DbRecord automatically handles conversion between database values and Dart types:
 
-| Column Type | Dart Type | Conversion |
-|-------------|-----------|------------|
-| `text`, `guid` | `String` | Direct |
-| `integer` | `int` | Direct |
-| `real` | `double` | Direct |
-| `date` | `DateTime` | Parse ISO string / timestamp |
-| `fileset` | `FilesetField` | Database value ↔ FilesetField |
+| Column Type | Dart Type | Generated Getter/Setter |
+|-------------|-----------|------------------------|
+| `text`, `guid` | `String` | `getText()` / `setText()` |
+| `integer` | `int` | `getInteger()` / `setInteger()` |
+| `real` | `double` | `getReal()` / `setReal()` |
+| `date` | `DateTime` | `getDateTime()` / `setDateTime()` |
+| `fileset` | `FilesetField` | `getFilesetField()` / `setFilesetField()` |
 
-### DateTime Handling
+### Helper Methods
 
-```dart
-// Setting DateTime values
-user.setValue('created_at', DateTime.now()); // Stored as ISO string
-user.setValue('timestamp', DateTime.fromMillisecondsSinceEpoch(1234567890));
-
-// Getting DateTime values  
-final createdAt = user.getValue<DateTime>('created_at'); // Parsed automatically
-final timestamp = user.getValue<DateTime>('timestamp');
-```
-
-### FilesetField Support
+DbRecord provides helper methods for generated code:
 
 ```dart
-// Setting FilesetField values
-final filesetField = FilesetField.create(database, 'file-content');
-user.setValue('profile_image', filesetField); // Stored as fileset ID
+// Nullable getters
+String? getText(String column);
+int? getInteger(String column);
+DateTime? getDateTime(String column);
 
-// Getting FilesetField values
-final profileImage = user.getValue<FilesetField>('profile_image');
-final content = await profileImage?.getContent();
+// Non-null getters (throw if null)
+String getTextNotNull(String column);
+int getIntegerNotNull(String column); 
+DateTime getDateTimeNotNull(String column);
+
+// Typed setters
+void setText(String column, String? value);
+void setInteger(String column, int? value);
+void setDateTime(String column, DateTime? value);
 ```
 
-## LWW (Last-Write-Wins) Columns
+## Code Generation Setup
 
-For columns marked as LWW in your schema, DbRecord automatically manages HLC (Hybrid Logical Clock) timestamps:
+Add the generator to your `pubspec.yaml`:
+
+```yaml
+dev_dependencies:
+  declarative_sqlite_generator: ^1.0.0
+  build_runner: ^2.0.0
+
+dependencies:
+  declarative_sqlite: ^1.0.0
+```
+
+Annotate your schema:
 
 ```dart
-// Schema definition
-table.text('description').lww(); // Mark as LWW column
-
-// When you update an LWW column
-record.setValue('description', 'New description');
-
-// The HLC is automatically updated
-print(record.getRawValue('description__hlc')); // New HLC timestamp
-print(record.modifiedFields); // ['description', 'description__hlc']
+@GenerateRecords()
+final schema = SchemaBuilder()
+  ..table('users', (table) {
+    table.integer('id').notNull(0);
+    table.text('name').notNull('');
+    table.text('email').notNull('');
+    table.integer('age').notNull(0);
+    table.date('birth_date');
+    table.key(['id']).primary();
+  })
+  ..build();
 ```
 
-## System Column Access
+Run code generation:
 
-DbRecord provides convenient access to system columns:
-
-```dart
-final user = users.first;
-
-print('System ID: ${user.systemId}');                    // system_id
-print('Created: ${user.systemCreatedAt}');               // system_created_at 
-print('Version: ${user.systemVersion}');                 // system_version (HLC)
+```bash
+dart run build_runner build
 ```
 
-## CRUD Operations
+## Migration Guide
 
-### Creating Records
-
-```dart
-// Create a new record (not yet in database)
-final newUser = RecordFactory.fromMap({
-  'name': 'Jane Doe',
-  'email': 'jane@example.com',
-  'age': 28,
-}, 'users', database);
-
-// Insert into database
-await newUser.insert();
-```
-
-### Updating Records
-
-```dart
-// Modify and save
-user.setValue('email', 'newemail@example.com');
-user.setValue('age', user.getValue<int>('age')! + 1);
-await user.save(); // Only modified fields are updated
-```
-
-### Deleting Records
-
-```dart
-await user.delete(); // Removes from database
-```
-
-## Streaming Queries
-
-DbRecord works with streaming queries for real-time updates:
-
-```dart
-final userStream = db.streamRecords(
-  (q) => q.from('users').where(col('active').eq(true)),
-);
-
-userStream.listen((users) {
-  print('Active users count: ${users.length}');
-  for (final user in users) {
-    print('  ${user.getValue<String>('name')}');
-  }
-});
-```
-
-## Migration from Map-based API
-
-The DbRecord API is fully compatible with the existing Map-based API:
+### From Map-based API
 
 ```dart
 // Old way
 final results = await db.query((q) => q.from('users'));
-final userName = results.first['name'] as String; // Manual casting
+final userName = results.first['name'] as String;
 final userAge = results.first['age'] as int;
 
-// New way  
+// New way with generic DbRecord
 final users = await db.queryRecords((q) => q.from('users'));
-final userName = users.first.getValue<String>('name'); // No casting
+final userName = users.first.getValue<String>('name');
 final userAge = users.first.getValue<int>('age');
 
-// Both APIs can be used simultaneously
+// New way with generated typed classes
+final users = await db.queryTyped<User>((q) => q.from('users'));
+final userName = users.first.name;  // Direct property access!
+final userAge = users.first.age;    // No casting needed!
 ```
 
-## Error Handling
+### From Previous DbRecord API
 
-DbRecord provides helpful error messages:
+The previous DbRecord API continues to work unchanged. The new features are additive:
 
 ```dart
-try {
-  user.getValue('nonexistent_column');
-} catch (e) {
-  print(e); // ArgumentError: Column nonexistent_column not found in table users
-}
+// All existing code continues to work
+final users = await db.queryRecords((q) => q.from('users'));
+final name = users.first.getValue<String>('name');
 
-try {
-  user.save(); // Without system_id
-} catch (e) {
-  print(e); // StateError: Cannot save record without system_id
-}
+// New: Generated typed classes
+final typedUsers = await db.queryTyped<User>((q) => q.from('users'));
+final name = typedUsers.first.name;  // Even better!
 ```
-
-## Performance Considerations
-
-- **Efficient updates**: Only modified fields are sent to the database
-- **Lazy conversion**: Type conversion happens only when values are accessed
-- **Memory efficient**: DbRecord wraps the original Map without copying data
-- **Dirty tracking**: Minimal overhead for tracking field modifications
 
 ## Best Practices
 
-1. **Use typed getters**: Always specify the type when calling `getValue<T>()`
-2. **Handle null values**: Use nullable types when columns can be null
-3. **Batch updates**: Modify multiple fields before calling `save()`
-4. **Stream queries**: Use `streamRecords()` for real-time data updates
-5. **Error handling**: Wrap database operations in try-catch blocks
+1. **Register factories at startup**: Call `RecordMapFactoryRegistry.register()` for all your record types in your app's main() function
+2. **Use typed classes when possible**: Generated classes provide the best developer experience
+3. **Singleton HLC**: The HLC clock singleton ensures proper causal ordering - don't try to create your own instances
+4. **Property-style access**: Use direct property access (`user.name`) instead of method calls (`user.getValue<String>('name')`)
+5. **Batch updates**: Modify multiple properties before calling `save()`
 
-## Example: Complete User Management
+## Performance
+
+- **Zero-copy wrapping**: Generated classes wrap the original Map without copying data
+- **Lazy conversion**: Type conversion only happens when properties are accessed
+- **Efficient updates**: Only modified fields are sent to the database
+- **Singleton overhead**: HLC singleton adds no runtime overhead
+
+## Example: Complete Workflow
 
 ```dart
-class UserManager {
-  final DeclarativeDatabase db;
+void main() async {
+  // 1. Register factories at startup
+  RecordMapFactoryRegistry.register<User>(User.fromMap);
+  RecordMapFactoryRegistry.register<Product>(Product.fromMap);
   
-  UserManager(this.db);
+  final db = await DeclarativeDatabase.open('app.db', schema: schema);
   
-  Future<DbRecord> createUser(String name, String email, int age) async {
-    final user = RecordFactory.fromMap({
-      'name': name,
-      'email': email,
-      'age': age,
-      'created_at': DateTime.now().toIso8601String(),
-    }, 'users', db);
+  // 2. Query with full type safety
+  final users = await db.queryTyped<User>(
+    (q) => q.from('users').where(col('active').eq(true)),
+  );
+  
+  // 3. Direct property access
+  for (final user in users) {
+    print('${user.name} is ${user.age} years old');
     
-    await user.insert();
-    return user;
+    // 4. Direct property modification
+    user.lastLoginAt = DateTime.now();
+    await user.save();  // Only lastLoginAt is updated
   }
   
-  Future<List<DbRecord>> getActiveUsers() {
-    return db.queryRecords(
-      (q) => q.from('users').where(col('active').eq(true)),
-    );
-  }
-  
-  Future<void> updateUserAge(String userId, int newAge) async {
-    final users = await db.queryTableRecords(
-      'users',
-      where: 'system_id = ?',
-      whereArgs: [userId],
-    );
-    
-    if (users.isNotEmpty) {
-      final user = users.first;
-      user.setValue('age', newAge);
-      user.setValue('updated_at', DateTime.now());
-      await user.save();
-    }
-  }
-  
-  Stream<List<DbRecord>> watchUsers() {
-    return db.streamRecords((q) => q.from('users'));
-  }
+  // 5. Streaming with typed records
+  final userStream = db.streamTyped<User>((q) => q.from('users'));
+  userStream.listen((users) {
+    print('User count: ${users.length}');
+  });
 }
 ```
+
+This enhanced API provides a truly magical developer experience similar to Entity Framework Core in .NET, while maintaining all the performance and flexibility of the underlying SQLite database.

@@ -114,6 +114,95 @@ abstract class DbRecord {
     }
   }
 
+  // Typed helper methods for generated code
+
+  /// Gets a String value from the specified column.
+  /// Returns null if the column value is null.
+  String? getText(String columnName) => getValue<String>(columnName);
+
+  /// Gets a non-null String value from the specified column.
+  /// Throws if the column value is null.
+  String getTextNotNull(String columnName) {
+    final value = getText(columnName);
+    if (value == null) {
+      throw StateError('Column $columnName is null but expected to be non-null');
+    }
+    return value;
+  }
+
+  /// Gets an int value from the specified column.
+  /// Returns null if the column value is null.
+  int? getInteger(String columnName) => getValue<int>(columnName);
+
+  /// Gets a non-null int value from the specified column.
+  /// Throws if the column value is null.
+  int getIntegerNotNull(String columnName) {
+    final value = getInteger(columnName);
+    if (value == null) {
+      throw StateError('Column $columnName is null but expected to be non-null');
+    }
+    return value;
+  }
+
+  /// Gets a double value from the specified column.
+  /// Returns null if the column value is null.
+  double? getReal(String columnName) => getValue<double>(columnName);
+
+  /// Gets a non-null double value from the specified column.
+  /// Throws if the column value is null.
+  double getRealNotNull(String columnName) {
+    final value = getReal(columnName);
+    if (value == null) {
+      throw StateError('Column $columnName is null but expected to be non-null');
+    }
+    return value;
+  }
+
+  /// Gets a DateTime value from the specified column.
+  /// Returns null if the column value is null.
+  DateTime? getDateTime(String columnName) => getValue<DateTime>(columnName);
+
+  /// Gets a non-null DateTime value from the specified column.
+  /// Throws if the column value is null.
+  DateTime getDateTimeNotNull(String columnName) {
+    final value = getDateTime(columnName);
+    if (value == null) {
+      throw StateError('Column $columnName is null but expected to be non-null');
+    }
+    return value;
+  }
+
+  /// Gets a FilesetField value from the specified column.
+  /// Returns null if the column value is null.
+  FilesetField? getFilesetField(String columnName) => getValue<FilesetField>(columnName);
+
+  /// Gets a non-null FilesetField value from the specified column.
+  /// Throws if the column value is null.
+  FilesetField getFilesetFieldNotNull(String columnName) {
+    final value = getFilesetField(columnName);
+    if (value == null) {
+      throw StateError('Column $columnName is null but expected to be non-null');
+    }
+    return value;
+  }
+
+  // Typed setter methods for generated code
+
+  /// Sets a String value for the specified column.
+  void setText(String columnName, String? value) => setValue(columnName, value);
+
+  /// Sets an int value for the specified column.
+  void setInteger(String columnName, int? value) => setValue(columnName, value);
+
+  /// Sets a double value for the specified column.
+  void setReal(String columnName, double? value) => setValue(columnName, value);
+
+  /// Sets a DateTime value for the specified column.
+  void setDateTime(String columnName, DateTime? value) => setValue(columnName, value);
+
+  /// Sets a FilesetField value for the specified column.
+  void setFilesetField(String columnName, FilesetField? value) => setValue(columnName, value);
+
   /// Saves any modified fields back to the database
   Future<void> save() async {
     if (_modifiedFields.isEmpty) return;
