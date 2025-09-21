@@ -158,10 +158,12 @@ Define SQL views for complex queries:
 
 ```dart
 builder.view('user_post_counts', (view) {
-  view.select('users.id, users.name, COUNT(posts.id) as post_count')
+  view.select('users.id')
+      .select('users.name')
+      .select('COUNT(posts.id)', 'post_count')
       .from('users')
-      .leftJoin('posts', 'users.id = posts.user_id')
-      .groupBy('users.id, users.name');
+      .leftJoin('posts', col('users.id').eq(col('posts.user_id')))
+      .groupBy(['users.id', 'users.name']);
 });
 ```
 
@@ -171,18 +173,23 @@ The view builder supports common SQL operations:
 
 ```dart
 builder.view('active_users', (view) {
-  view.select('id, name, email')
+  view.select('id')
+      .select('name')
+      .select('email')
       .from('users')
-      .where('last_login > date("now", "-30 days")')
-      .orderBy('last_login DESC');
+      .where(col('last_login').gt('date("now", "-30 days")'))
+      .orderBy(['last_login DESC']);
 });
 
 builder.view('post_summaries', (view) {
-  view.select('posts.id, posts.title, users.name as author, posts.created_at')
+  view.select('posts.id')
+      .select('posts.title')
+      .select('users.name', 'author')
+      .select('posts.created_at')
       .from('posts')
-      .join('users', 'posts.user_id = users.id')
-      .where('posts.published = 1')
-      .orderBy('posts.created_at DESC');
+      .innerJoin('users', col('posts.user_id').eq(col('users.id')))
+      .where(col('posts.published').eq(1))
+      .orderBy(['posts.created_at DESC']);
 });
 ```
 
@@ -248,18 +255,24 @@ void buildBlogSchema(SchemaBuilder builder) {
 
   // Useful views
   builder.view('published_posts', (view) {
-    view.select('posts.*, users.display_name as author_name')
+    view.select('posts.*')
+        .select('users.display_name', 'author_name')
         .from('posts')
-        .join('users', 'posts.author_id = users.id')
-        .where('posts.published = 1')
-        .orderBy('posts.published_at DESC');
+        .innerJoin('users', col('posts.author_id').eq(col('users.id')))
+        .where(col('posts.published').eq(1))
+        .orderBy(['posts.published_at DESC']);
   });
 
   builder.view('post_comment_counts', (view) {
-    view.select('posts.id, posts.title, COUNT(comments.id) as comment_count')
+    view.select('posts.id')
+        .select('posts.title')
+        .select('COUNT(comments.id)', 'comment_count')
         .from('posts')
-        .leftJoin('comments', 'posts.id = comments.post_id AND comments.approved = 1')
-        .groupBy('posts.id, posts.title');
+        .leftJoin('comments', and([
+          col('posts.id').eq(col('comments.post_id')),
+          col('comments.approved').eq(1)
+        ]))
+        .groupBy(['posts.id', 'posts.title']);
   });
 }
 ```
@@ -315,20 +328,18 @@ void buildEcommerceSchema(SchemaBuilder builder) {
     table.key(['id']).primary();
   });
 
-  // Order summary view
+  // Order summary view - corrected to use proper builder pattern
   builder.view('order_summaries', (view) {
-    view.select('''
-        orders.id,
-        orders.created_at,
-        customers.first_name || " " || customers.last_name as customer_name,
-        orders.status,
-        orders.total_amount,
-        COUNT(order_items.id) as item_count
-      ''')
+    view.select('orders.id')
+        .select('orders.created_at')
+        .select('customers.first_name || " " || customers.last_name', 'customer_name')
+        .select('orders.status')
+        .select('orders.total_amount')
+        .select('COUNT(order_items.id)', 'item_count')
         .from('orders')
-        .join('customers', 'orders.customer_id = customers.id')
-        .leftJoin('order_items', 'orders.id = order_items.order_id')
-        .groupBy('orders.id, customers.first_name, customers.last_name, orders.status, orders.total_amount, orders.created_at');
+        .innerJoin('customers', col('orders.customer_id').eq(col('customers.id')))
+        .leftJoin('order_items', col('orders.id').eq(col('order_items.order_id')))
+        .groupBy(['orders.id', 'customers.first_name', 'customers.last_name', 'orders.status', 'orders.total_amount', 'orders.created_at']);
   });
 }
 ```
