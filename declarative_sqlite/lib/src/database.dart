@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:declarative_sqlite/src/builders/query_builder.dart';
+import 'package:declarative_sqlite/src/record.dart';
+import 'package:declarative_sqlite/src/record_factory.dart';
 import 'package:declarative_sqlite/src/schema/table.dart';
 import 'package:declarative_sqlite/src/sync/sqlite_dirty_row_store.dart';
 import 'package:sqflite_common/sqlite_api.dart' as sqflite;
@@ -240,6 +242,94 @@ class DeclarativeDatabase {
     );
 
     return streamingQuery.stream;
+  }
+
+  /// Executes a query built with a [QueryBuilder] and returns typed DbRecord objects.
+  /// This provides a more convenient API with automatic type conversion and
+  /// setter functionality for easy updates.
+  Future<List<DbRecord>> queryRecords(
+      void Function(QueryBuilder) onBuild) async {
+    final builder = QueryBuilder();
+    onBuild(builder);
+    return queryRecordsWith(builder);
+  }
+
+  /// Executes a query built with a [QueryBuilder] and returns typed DbRecord objects.
+  Future<List<DbRecord>> queryRecordsWith(QueryBuilder builder) async {
+    final results = await queryWith(builder);
+    final tableName = builder.tableName;
+    
+    if (tableName == null) {
+      throw ArgumentError('QueryBuilder must specify a table to return DbRecord objects');
+    }
+    
+    return RecordFactory.fromMapList(results, tableName, this);
+  }
+
+  /// Queries a table and returns typed DbRecord objects.
+  /// This is similar to queryTable but returns DbRecord objects instead of Maps.
+  Future<List<DbRecord>> queryTableRecords(
+    String table, {
+    bool? distinct,
+    List<String>? columns,
+    String? where,
+    List<Object?>? whereArgs,
+    String? groupBy,
+    String? having,
+    String? orderBy,
+    int? limit,
+    int? offset,
+  }) async {
+    final results = await queryTable(
+      table,
+      distinct: distinct,
+      columns: columns,
+      where: where,
+      whereArgs: whereArgs,
+      groupBy: groupBy,
+      having: having,
+      orderBy: orderBy,
+      limit: limit,
+      offset: offset,
+    );
+    
+    return RecordFactory.fromMapList(results, table, this);
+  }
+
+  /// Creates a streaming query that returns typed DbRecord objects.
+  /// 
+  /// Example:
+  /// ```dart
+  /// final usersStream = db.streamRecords(
+  ///   (q) => q.from('users').where(col('age').gt(18)),
+  /// );
+  /// 
+  /// usersStream.listen((users) {
+  ///   for (final user in users) {
+  ///     print('User: ${user.getValue<String>('name')}');
+  ///     // or with dynamic access: print('User: ${user.name}');
+  ///   }
+  /// });
+  /// ```
+  Stream<List<DbRecord>> streamRecords(
+    void Function(QueryBuilder) onBuild,
+  ) {
+    final builder = QueryBuilder();
+    onBuild(builder);
+    return streamRecordsWith(builder);
+  }
+
+  /// Creates a streaming query using an existing [QueryBuilder] that returns DbRecord objects.
+  Stream<List<DbRecord>> streamRecordsWith(QueryBuilder builder) {
+    final tableName = builder.tableName;
+    if (tableName == null) {
+      throw ArgumentError('QueryBuilder must specify a table to return DbRecord objects');
+    }
+    
+    return streamWith(
+      builder,
+      (row) => RecordFactory.fromMap(row, tableName, this),
+    );
   }
 
   /// Creates a transaction and runs the given [action] in it.

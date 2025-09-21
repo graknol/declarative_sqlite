@@ -20,6 +20,8 @@ export 'src/builders/where_clause.dart';
 export 'src/data_mapping.dart';
 export 'src/database.dart' show DeclarativeDatabase;
 export 'src/files/fileset_field.dart';
+export 'src/record.dart' show DbRecord;
+export 'src/record_factory.dart';
 export 'src/schema/schema.dart';
 export 'src/streaming/advanced_streaming_query.dart';
 export 'src/streaming/query_dependency_analyzer.dart';
