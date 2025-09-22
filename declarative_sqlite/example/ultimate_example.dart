@@ -185,14 +185,15 @@ class BlogApp {
     }
     
     // ========================================================================
-    // Individual factory registration for granular control
+    // Individual factory registration (manual approach if needed)
     // ========================================================================
     
     // Clear all and register selectively
     RecordMapFactoryRegistry.clear();
     
-    registerUserFactory(database);   // Only users
-    registerPostFactory(database);   // Add posts
+    // Manual registration for granular control
+    RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, database));
+    RecordMapFactoryRegistry.register<Post>((data) => PostGenerated.fromMap(data, database));
     // Comments deliberately not registered
     
     print('Selective registration complete');

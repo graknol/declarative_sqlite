@@ -18,63 +18,49 @@ Created a companion annotation to `@GenerateDbRecord` that triggers automatic fa
 
 ```dart
 @RegisterFactory()
-class User extends DbRecord with UserFromMapMixin {
-  // Minimal code required
+class User extends DbRecord {
+  User(Map<String, Object?> data, DeclarativeDatabase database)
+      : super(data, 'users', database);
+  // Minimal code required - everything else is generated
 }
 ```
 
 ### 2. Enhanced Generator Architecture
 
-The generator now produces a comprehensive multi-layered architecture:
+The generator produces a clean, single-extension architecture that provides everything needed:
 
-#### Layer 1: Typed Properties Extension
+#### Single Extension with Everything
 ```dart
 extension UserGenerated on User {
-  // Auto-generated getters and setters for all table columns
+  // Auto-generated typed getters for all table columns
   int get id => getIntegerNotNull('id');
   String get name => getTextNotNull('name');
+  String? get email => getText('email');
+  int? get age => getInteger('age');
+  DateTime get createdAt => getDateTimeNotNull('created_at');
+  DateTime? get updatedAt => getDateTime('updated_at');
+  
+  // Auto-generated typed setters for all table columns
   set name(String value) => setText('name', value);
-  // ... all other columns
-}
-```
-
-#### Layer 2: Factory Methods Extension  
-```dart
-extension UserFactory on User {
-  // Core factory implementation
-  static User createFromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+  set email(String? value) => setText('email', value);
+  set age(int? value) => setInteger('age', value);
+  set createdAt(DateTime value) => setDateTime('created_at', value);
+  set updatedAt(DateTime? value) => setDateTime('updated_at', value);
+  
+  // Generated fromMap factory method
+  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
     return User(data, database);
   }
-  
-  // Registry-compatible factory generator
-  static User Function(Map<String, Object?>) getFactory(DeclarativeDatabase database) {
-    return (data) => createFromMap(data, database);
-  }
 }
 ```
 
-#### Layer 3: FromMap Mixin
+#### Simple Registration Function
 ```dart
-mixin UserFromMapMixin {
-  // Convenient static fromMap method
-  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return UserFactory.createFromMap(data, database);
-  }
-}
-```
-
-#### Layer 4: Registration Functions
-```dart
-// Bulk registration
+// Auto-generated registration function
 void registerAllFactories(DeclarativeDatabase database) {
-  RecordMapFactoryRegistry.register<User>(UserFactory.getFactory(database));
-  RecordMapFactoryRegistry.register<Post>(PostFactory.getFactory(database));
+  RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, database));
+  RecordMapFactoryRegistry.register<Post>((data) => PostGenerated.fromMap(data, database));
   // ... all @RegisterFactory classes
-}
-
-// Individual registration for granular control
-void registerUserFactory(DeclarativeDatabase database) {
-  RecordMapFactoryRegistry.register<User>(UserFactory.getFactory(database));
 }
 ```
 
@@ -114,15 +100,14 @@ RecordMapFactoryRegistry.register<Comment>(Comment.fromMap);
 ```dart
 @GenerateDbRecord('users')
 @RegisterFactory()
-class User extends DbRecord with UserFromMapMixin {
+class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
   
   // That's it! Everything else is generated automatically:
-  // - All typed getters and setters
-  // - fromMap method via mixin
-  // - Factory methods
-  // - Registration functions
+  // - All typed getters and setters in UserGenerated extension
+  // - fromMap method in UserGenerated extension
+  // - Registration function for automatic factory setup
 }
 
 // One-line registration (in main())
@@ -143,35 +128,47 @@ For a typical table with 8 columns:
 
 ### 5. Architecture Benefits
 
-#### Extensibility
-- `createFromMap` provides a central point for future enhancements
-- Can add validation, transformation, or initialization logic
-- Backwards compatible with existing code
+#### Simplicity
+- Single extension per class contains everything needed
+- No complex factory layers or indirection
+- Easy to understand and debug generated code
 
-#### Flexibility  
-- Multiple ways to access: direct factory, mixin, extension
-- Individual registration functions for granular control
-- Works with existing manual registration
+#### Extensibility
+- Generated extensions can be extended further if needed
+- Works seamlessly with manual method additions
+- Backwards compatible with existing code
 
 #### Type Safety
 - All generated code is fully typed
 - No runtime type errors from manual property access
 - Compile-time verification of column access
 
+#### Performance
+- Zero-copy approach - wraps original Map without copying data
+- Lazy type conversion only when properties are accessed
+- Minimal generated code overhead
+
 ### 6. Factory Method Redirection Achievement
 
 The original requirement for "fromMap should be a factory method that redirects to generated implementation" is fully achieved:
 
 ```dart
-// Developer writes minimal redirect
-static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-  return UserFactory.createFromMap(data, database);  // Generated method
+// Generated extension provides the fromMap method
+extension UserGenerated on User {
+  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+    return User(data, database);  // Clean, simple factory
+  }
 }
 
-// Or uses generated mixin (even less code)
-class User extends DbRecord with UserFromMapMixin {
-  // fromMap is automatically available from mixin!
+// Optional: Developer can add their own redirect if desired
+class User extends DbRecord {
+  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+    return UserGenerated.fromMap(data, database);  // Redirect to generated
+  }
 }
+
+// Or use generated extension directly (recommended)
+final user = UserGenerated.fromMap(userData, database);
 ```
 
 ### 7. Registration Automation Achievement
@@ -185,9 +182,12 @@ The requirement for "easy automatic factory registration with second annotation"
 // Single call registers everything
 registerAllFactories(database);
 
-// Individual control when needed
-registerUserFactory(database);
-registerPostFactory(database);
+// Generated registration function handles everything
+void registerAllFactories(DeclarativeDatabase database) {
+  RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, database));
+  RecordMapFactoryRegistry.register<Post>((data) => PostGenerated.fromMap(data, database));
+  // ... all classes with @RegisterFactory annotation
+}
 ```
 
 ## Files Modified/Created
@@ -219,12 +219,12 @@ registerPostFactory(database);
 
 ## Conclusion
 
-This implementation transforms declarative_sqlite from a library requiring substantial boilerplate to one where developers write minimal placeholder classes and get maximum functionality automatically. The layered generation architecture provides multiple access patterns while maintaining backwards compatibility and enabling future extensibility.
+This implementation transforms declarative_sqlite from a library requiring substantial boilerplate to one where developers write minimal placeholder classes and get maximum functionality automatically. The single-extension generation architecture provides clean, understandable code while maintaining backwards compatibility and excellent performance.
 
 The solution directly addresses all aspects of the problem statement:
-- **Generator generates as much as possible**: 90%+ code reduction achieved
-- **fromMap factory redirection**: Multiple implementation patterns provided  
+- **Generator generates as much as possible**: 90%+ code reduction achieved through single comprehensive extension
+- **fromMap factory redirection**: Generated directly in extension, optionally redirected in user class  
 - **Automatic registration**: Single annotation + single function call
-- **Minimal placeholder classes**: Just constructor + mixin inclusion required
+- **Minimal placeholder classes**: Just constructor required, everything else generated
 
-This represents a significant improvement in developer experience and productivity.
+This represents a significant improvement in developer experience and productivity while keeping the generated code simple and maintainable.

@@ -100,42 +100,37 @@ void demonstrateUltraMinimalUsage() async {
 
 /* Generated code (automatic):
 
-// Typed properties
+// Single extension with everything
 extension UserGenerated on User {
+  // Typed getters
   int get id => getIntegerNotNull('id');
   String get name => getTextNotNull('name');
   String? get email => getText('email');
   int? get age => getInteger('age');
   DateTime get createdAt => getDateTimeNotNull('created_at');
+  DateTime? get updatedAt => getDateTime('updated_at');
   
+  // Typed setters
   set name(String value) => setText('name', value);
   set email(String? value) => setText('email', value);
   set age(int? value) => setInteger('age', value);
   set createdAt(DateTime value) => setDateTime('created_at', value);
-}
-
-// Factory methods
-extension UserFactory on User {
-  static User createFromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+  set updatedAt(DateTime? value) => setDateTime('updated_at', value);
+  
+  // fromMap factory method
+  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
     return User(data, database);
   }
-  
-  static User Function(Map<String, Object?>) getFactory(DeclarativeDatabase database) {
-    return (data) => createFromMap(data, database);
-  }
 }
 
-// FromMap mixin
-mixin UserFromMapMixin {
-  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return UserFactory.createFromMap(data, database);
-  }
+extension PostGenerated on Post {
+  // Similar extension for Post class...
 }
 
-// Registration functions
+// Registration function
 void registerAllFactories(DeclarativeDatabase database) {
-  RecordMapFactoryRegistry.register<User>(UserFactory.getFactory(database));
-  RecordMapFactoryRegistry.register<Post>(PostFactory.getFactory(database));
+  RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, database));
+  RecordMapFactoryRegistry.register<Post>((data) => PostGenerated.fromMap(data, database));
 }
 
 */

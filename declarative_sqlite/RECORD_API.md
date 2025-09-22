@@ -203,7 +203,7 @@ class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
 
-  // Simple redirect to generated extension
+  // Optional: Simple redirect to generated extension
   static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
     return UserGenerated.fromMap(data, database);
   }
@@ -284,7 +284,7 @@ class User extends DbRecord {
       : super(data, 'users', database);
   
   // That's it! Everything else is generated:
-  // - All typed getters and setters
+  // - All typed getters and setters in UserGenerated extension
   // - fromMap method in UserGenerated extension
   // - Factory registration
 }
@@ -297,10 +297,18 @@ The generator creates one clean extension per class that contains everything:
 ```dart
 // Generated automatically:
 extension UserGenerated on User {
-  // Typed getters and setters
+  // Typed getters for all table columns
   int get id => getIntegerNotNull('id');
   String get name => getTextNotNull('name');
+  String get email => getTextNotNull('email');
+  int get age => getIntegerNotNull('age');
+  DateTime? get birthDate => getDateTime('birth_date');
+  
+  // Typed setters for all table columns
   set name(String value) => setText('name', value);
+  set email(String value) => setText('email', value);
+  set age(int value) => setInteger('age', value);
+  set birthDate(DateTime? value) => setDateTime('birth_date', value);
   
   // fromMap method
   static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
@@ -313,7 +321,7 @@ No complex factory layers, mixins, or indirection - just one extension with ever
 
 ### 3. Simple Registration
 
-Instead of complex factory layers, we generate a simple registration function:
+The generator creates a simple registration function that uses the generated extensions:
 
 ```dart
 void registerAllFactories(DeclarativeDatabase database) {
@@ -327,12 +335,17 @@ void registerAllFactories(DeclarativeDatabase database) {
 No more forgetting to register factories or managing registration calls:
 
 ```dart
-// Create records directly
+// Use generated extensions directly
 final user = UserGenerated.fromMap(userData, database);
 
 // Or use with automatic registration
 registerAllFactories(database);
 final users = await database.queryTyped<User>((q) => q.from('users'));
+
+// Access properties directly
+print('Name: ${user.name}');      // Generated getter
+user.email = 'new@example.com';   // Generated setter
+await user.save();
 ```
 
 ## Usage Examples
