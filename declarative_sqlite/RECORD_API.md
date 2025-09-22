@@ -187,10 +187,10 @@ dependencies:
   declarative_sqlite: ^1.0.0
 ```
 
-Annotate your schema:
+Define your classes with annotations:
 
 ```dart
-@GenerateRecords()
+// Define your schema first
 final schema = SchemaBuilder()
   ..table('users', (table) {
     table.integer('id').notNull(0);
@@ -201,6 +201,17 @@ final schema = SchemaBuilder()
     table.key(['id']).primary();
   })
   ..build();
+
+// Then create annotated record classes
+@GenerateDbRecord('users')
+class User extends DbRecord {
+  User(Map<String, Object?> data, DeclarativeDatabase database)
+      : super(data, 'users', database);
+
+  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+    return User(data, database);
+  }
+}
 ```
 
 Run code generation:
