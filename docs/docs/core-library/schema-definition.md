@@ -435,5 +435,7 @@ void _defineUserTables(SchemaBuilder builder) {
 
 Now that you understand schema definition, learn about:
 
+- [Typed Records](typed-records) - Work with generated typed record classes
 - [Database Operations](database-operations) - How to query and manipulate data
+- [Exception Handling](exception-handling) - Handle database errors gracefully
 - [Streaming Queries](streaming-queries) - Real-time data updates

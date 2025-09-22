@@ -23,6 +23,12 @@ dependencies:
     
   # SQLite driver for Flutter
   sqflite: ^2.3.0
+
+dev_dependencies:
+  # Code generation for typed records (recommended)
+  declarative_sqlite_generator:
+    path: declarative_sqlite_generator
+  build_runner: ^2.4.0
 ```
 
 ### For Standalone Dart Applications
@@ -35,6 +41,12 @@ dependencies:
     
   # SQLite driver for Dart (non-Flutter)
   sqflite_common_ffi: ^2.3.0
+
+dev_dependencies:
+  # Code generation for typed records (recommended)
+  declarative_sqlite_generator:
+    path: declarative_sqlite_generator
+  build_runner: ^2.4.0
 ```
 
 ## Platform Setup
@@ -154,4 +166,9 @@ If you see "Installation successful!" then everything is working correctly.
 
 ## Next Steps
 
-Now that you have Declarative SQLite installed, continue with the [Quick Start Guide](quick-start) to learn the basics, or dive into [Schema Definition](../core-library/schema-definition) to understand how to design your database structure.
+Now that you have Declarative SQLite installed, continue with:
+
+- [Quick Start Guide](quick-start) - Learn the basics and set up typed records
+- [Typed Records](../core-library/typed-records) - Work with generated typed record classes
+- [Schema Definition](../core-library/schema-definition) - Design your database structure
+- [Exception Handling](../core-library/exception-handling) - Handle database errors gracefully
