@@ -5,14 +5,14 @@ import styles from './styles.module.css';
 
 type FeatureItem = {
   title: string;
-  Svg: React.ComponentType<React.ComponentProps<'svg'>>;
+  emoji: string;
   description: ReactNode;
 };
 
 const FeatureList: FeatureItem[] = [
   {
     title: 'Typed Database Records',
-    Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
+    emoji: '🎯',
     description: (
       <>
         Work with typed record classes instead of raw maps. Generated classes provide 
@@ -22,7 +22,7 @@ const FeatureList: FeatureItem[] = [
   },
   {
     title: 'Smart Exception Handling',
-    Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
+    emoji: '🛡️',
     description: (
       <>
         REST API-like exception hierarchy with business-focused error categories. 
@@ -32,7 +32,7 @@ const FeatureList: FeatureItem[] = [
   },
   {
     title: 'Flutter Integration',
-    Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
+    emoji: '🚀',
     description: (
       <>
         Seamless integration with Flutter through reactive widgets, typed record support, 
@@ -42,11 +42,11 @@ const FeatureList: FeatureItem[] = [
   },
 ];
 
-function Feature({title, Svg, description}: FeatureItem) {
+function Feature({title, emoji, description}: FeatureItem) {
   return (
     <div className={clsx('col col--4')}>
       <div className="text--center">
-        <Svg className={styles.featureSvg} role="img" />
+        <div className={styles.featureEmoji}>{emoji}</div>
       </div>
       <div className="text--center padding-horiz--md">
         <Heading as="h3">{title}</Heading>

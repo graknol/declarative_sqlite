@@ -58,11 +58,7 @@ const config: Config = {
     // Replace with your project's social card
     image: 'img/docusaurus-social-card.jpg',
     navbar: {
-      title: 'Declarative SQLite',
-      logo: {
-        alt: 'Declarative SQLite Logo',
-        src: 'img/logo.svg',
-      },
+      title: '💾 Declarative SQLite',
       items: [
         {
           type: 'docSidebar',

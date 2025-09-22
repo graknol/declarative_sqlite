@@ -5,6 +5,12 @@
   width: 100%;
 }
 
+.featureEmoji {
+  font-size: 6rem;
+  line-height: 1;
+  margin-bottom: 1rem;
+}
+
 .featureSvg {
   height: 200px;
   width: 200px;
