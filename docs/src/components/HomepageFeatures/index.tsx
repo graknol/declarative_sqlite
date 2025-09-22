@@ -11,22 +11,22 @@ type FeatureItem = {
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Declarative Schema Definition',
+    title: 'Typed Database Records',
     Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
     description: (
       <>
-        Define your database schema using a fluent builder pattern. Create tables, columns, 
-        indices, and relationships with type-safe, intuitive syntax that mirrors your data model.
+        Work with typed record classes instead of raw maps. Generated classes provide 
+        property-style access, automatic type conversion, and intelligent CRUD operations.
       </>
     ),
   },
   {
-    title: 'Automatic Migration',
+    title: 'Smart Exception Handling',
     Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
     description: (
       <>
-        Focus on your data model, not database migrations. Declarative SQLite automatically 
-        creates missing tables, views, and indices when your schema changes.
+        REST API-like exception hierarchy with business-focused error categories. 
+        Handle database errors gracefully with meaningful exception types and context.
       </>
     ),
   },
@@ -35,7 +35,7 @@ const FeatureList: FeatureItem[] = [
     Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
     description: (
       <>
-        Seamless integration with Flutter through reactive widgets, form components, 
+        Seamless integration with Flutter through reactive widgets, typed record support, 
         and real-time UI updates. Build data-driven Flutter apps with minimal boilerplate.
       </>
     ),

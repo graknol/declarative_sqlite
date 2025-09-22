@@ -88,8 +88,12 @@ const config: Config = {
               to: '/docs/intro',
             },
             {
-              label: 'Core Library',
-              to: '/docs/core-library/schema-definition',
+              label: 'Typed Records',
+              to: '/docs/core-library/typed-records',
+            },
+            {
+              label: 'Exception Handling',
+              to: '/docs/core-library/exception-handling',
             },
             {
               label: 'Flutter Integration',
