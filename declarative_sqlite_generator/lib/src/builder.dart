@@ -133,6 +133,18 @@ class DeclarativeSqliteGenerator extends Generator {
     buffer.writeln('    return (data) => createFromMap(data, database);');
     buffer.writeln('  }');
     buffer.writeln('}');
+    buffer.writeln();
+    
+    // Generate a mixin that can provide the fromMap method
+    buffer.writeln('/// Generated fromMap mixin for $className');
+    buffer.writeln('/// This provides the fromMap method implementation automatically');
+    buffer.writeln('mixin ${className}FromMapMixin {');
+    buffer.writeln('  /// Generated fromMap implementation');
+    buffer.writeln('  /// Developers can use this instead of writing their own fromMap');
+    buffer.writeln('  static $className fromMap(Map<String, Object?> data, DeclarativeDatabase database) {');
+    buffer.writeln('    return ${className}Factory.createFromMap(data, database);');
+    buffer.writeln('  }');
+    buffer.writeln('}');
     
     return buffer.toString();
   }
@@ -219,7 +231,7 @@ class DeclarativeSqliteGenerator extends Generator {
     buffer.writeln('void registerGeneratedFactories(DeclarativeDatabase database) {');
     
     for (final className in classNames) {
-      buffer.writeln('  RecordMapFactoryRegistry.register<$className>((data) => $className.fromMap(data, database));');
+      buffer.writeln('  RecordMapFactoryRegistry.register<$className>(${className}Factory.getFactory(database));');
     }
     
     buffer.writeln('}');
@@ -238,6 +250,17 @@ class DeclarativeSqliteGenerator extends Generator {
     buffer.writeln('void registerAllFactories(DeclarativeDatabase database) {');
     buffer.writeln('  registerGeneratedFactories(database);');
     buffer.writeln('}');
+    buffer.writeln();
+    
+    // Add individual registration functions for more flexibility
+    buffer.writeln('/// Individual factory registration functions');
+    for (final className in classNames) {
+      buffer.writeln('/// Registers the $className factory');
+      buffer.writeln('void register${className}Factory(DeclarativeDatabase database) {');
+      buffer.writeln('  RecordMapFactoryRegistry.register<$className>(${className}Factory.getFactory(database));');
+      buffer.writeln('}');
+      buffer.writeln();
+    }
     
     return buffer.toString();
   }

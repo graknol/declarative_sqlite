@@ -276,24 +276,43 @@ class User extends DbRecord {
 You just write:
 
 ```dart
-// NEW WAY - Minimal class with full generation
+// NEW WAY - Ultra-minimal class with mixin
 @GenerateDbRecord('users')
 @RegisterFactory()
-class User extends DbRecord {
+class User extends DbRecord with UserFromMapMixin {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
+  
+  // fromMap is automatically provided by the generated mixin!
+  // No need to write it at all!
+}
+```
 
+### 2. Generated Mixins for Maximum Code Reduction
+
+The generator now creates mixins that provide `fromMap` methods automatically:
+
+```dart
+// Generated automatically:
+mixin UserFromMapMixin {
   static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
     return UserFactory.createFromMap(data, database);
   }
 }
 ```
 
-### 2. Factory Method Redirection
+This means developers can include the mixin and get `fromMap` for free!
 
-The generated `createFromMap` method handles the actual object creation, allowing your `fromMap` to simply redirect. This centralizes the creation logic and makes it easier to add initialization behavior in the future.
+### 3. Factory Method Architecture
 
-### 3. Automatic Registration
+The generator creates a layered factory approach:
+
+1. **`createFromMap`** - Core factory logic (extensible for future enhancements)
+2. **`getFactory`** - Registry-compatible factory function generator  
+3. **`fromMap` mixin** - Convenient static method for direct use
+4. **Individual registration** - Per-class registration functions for granular control
+
+### 4. Automatic Registration
 
 No more forgetting to register factories or managing registration calls:
 
