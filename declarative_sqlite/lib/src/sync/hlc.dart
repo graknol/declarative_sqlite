@@ -66,15 +66,43 @@ class Hlc extends Equatable implements Comparable<Hlc> {
 }
 
 /// A clock that generates Hybrid Logical Clock timestamps.
+/// 
+/// This is a singleton to ensure causal ordering is preserved throughout
+/// the entire application. All database instances should use the same
+/// HLC clock instance.
 class HlcClock {
+  static HlcClock? _instance;
+  
   int _lastMilliseconds;
   int _lastCounter;
   final String nodeId;
 
-  HlcClock({String? nodeId})
+  HlcClock._internal({String? nodeId})
       : _lastMilliseconds = DateTime.now().millisecondsSinceEpoch,
         _lastCounter = 0,
         nodeId = nodeId ?? const Uuid().v4();
+
+  /// Gets the singleton instance of the HLC clock.
+  /// 
+  /// If [nodeId] is provided on first access, it will be used as the node ID.
+  /// Subsequent calls with different node IDs will be ignored.
+  factory HlcClock({String? nodeId}) {
+    return _instance ??= HlcClock._internal(nodeId: nodeId);
+  }
+
+  /// Gets the singleton instance without creating it.
+  /// Throws if the instance hasn't been created yet.
+  static HlcClock get instance {
+    if (_instance == null) {
+      throw StateError('HlcClock instance not initialized. Call HlcClock() first.');
+    }
+    return _instance!;
+  }
+
+  /// Resets the singleton instance. Used primarily for testing.
+  static void resetInstance() {
+    _instance = null;
+  }
 
   /// Generates a new HLC timestamp.
   Hlc now() {

@@ -10,6 +10,7 @@ class QueryBuilder extends Equatable {
   final List<String> _joins = [];
   final List<Object?> _joinParameters = [];
   String? _having;
+  String? _updateTable; // Table to target for CRUD operations
 
   QueryBuilder select(String column, [String? alias]) {
     if (alias != null) {
@@ -46,6 +47,16 @@ class QueryBuilder extends Equatable {
 
   QueryBuilder having(String condition) {
     _having = condition;
+    return this;
+  }
+
+  /// Specifies that results from this query should be CRUD-enabled
+  /// targeting the specified table for update operations.
+  /// 
+  /// This allows queries from views or joins to return updatable records
+  /// as long as they include system_id and system_version from the target table.
+  QueryBuilder forUpdate(String tableName) {
+    _updateTable = tableName;
     return this;
   }
 
@@ -156,6 +167,9 @@ class QueryBuilder extends Equatable {
     return parts.first;
   }
 
+  /// Gets the table name specified for CRUD operations via forUpdate()
+  String? get updateTableName => _updateTable;
+
   @override
   List<Object?> get props => [
         _from,
@@ -166,5 +180,6 @@ class QueryBuilder extends Equatable {
         _joins,
         _joinParameters,
         _having,
+        _updateTable,
       ];
 }

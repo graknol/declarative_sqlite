@@ -2,18 +2,18 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:flutter/widgets.dart';
 import 'database_provider.dart';
 
-/// A widget that manages server synchronization for a declarative_sqlite database.
+/// A widget that manages server synchronization using TaskScheduler.
 /// 
-/// This widget automatically starts and stops sync operations based on the widget
-/// lifecycle and provides sync state to its descendants.
+/// This widget registers sync operations with the TaskScheduler for better
+/// resource management and fair scheduling with other background tasks.
 /// 
 /// Example:
 /// ```dart
 /// ServerSyncManagerWidget(
 ///   retryStrategy: ExponentialBackoffRetry(),
-///   fetchInterval: Duration(minutes: 5),
-///   onFetch: (database, table, lastSynced) async {
-///     // Fetch data from server
+///   syncInterval: Duration(minutes: 5),
+///   onFetch: (database, tableTimestamps) async {
+///     // Fetch data from server using delta timestamps
 ///   },
 ///   onSend: (operations) async {
 ///     // Send changes to server
@@ -24,20 +24,22 @@ import 'database_provider.dart';
 /// ```
 class ServerSyncManagerWidget extends StatefulWidget {
   final dynamic retryStrategy;
-  final Duration fetchInterval;
+  final Duration syncInterval;
   final OnFetch onFetch;
   final OnSend onSend;
   final Widget child;
   final DeclarativeDatabase? database;
+  final TaskScheduler? taskScheduler;
 
   const ServerSyncManagerWidget({
     super.key,
     required this.retryStrategy,
-    required this.fetchInterval,
+    this.syncInterval = const Duration(minutes: 5),
     required this.onFetch,
     required this.onSend,
     required this.child,
     this.database,
+    this.taskScheduler,
   });
 
   @override
@@ -46,6 +48,8 @@ class ServerSyncManagerWidget extends StatefulWidget {
 
 class _ServerSyncManagerWidgetState extends State<ServerSyncManagerWidget> {
   ServerSyncManager? _syncManager;
+  TaskScheduler? _scheduler;
+  String? _syncTaskName;
 
   @override
   void initState() {
@@ -67,10 +71,11 @@ class _ServerSyncManagerWidgetState extends State<ServerSyncManagerWidget> {
   }
 
   bool _shouldRestartSyncManager(ServerSyncManagerWidget oldWidget) {
-    return widget.fetchInterval != oldWidget.fetchInterval ||
+    return widget.syncInterval != oldWidget.syncInterval ||
         widget.onFetch != oldWidget.onFetch ||
         widget.onSend != oldWidget.onSend ||
-        widget.database != oldWidget.database;
+        widget.database != oldWidget.database ||
+        widget.taskScheduler != oldWidget.taskScheduler;
   }
 
   @override
@@ -88,7 +93,7 @@ class _ServerSyncManagerWidgetState extends State<ServerSyncManagerWidget> {
     }
 
     try {
-      _createAndStartSyncManager(database);
+      _createSyncManagerAndScheduleTask(database);
     } catch (error) {
       _handleSyncManagerError(error);
     }
@@ -98,16 +103,34 @@ class _ServerSyncManagerWidgetState extends State<ServerSyncManagerWidget> {
     return widget.database ?? DatabaseProvider.maybeOf(context);
   }
 
-  void _createAndStartSyncManager(DeclarativeDatabase database) {
+  void _createSyncManagerAndScheduleTask(DeclarativeDatabase database) {
+    // Create sync manager without internal timer
     _syncManager = ServerSyncManager(
       db: database,
       retryStrategy: widget.retryStrategy,
-      fetchInterval: widget.fetchInterval,
       onFetch: widget.onFetch,
       onSend: widget.onSend,
     );
-    
-    _syncManager?.start();
+
+    // Get or create task scheduler
+    _scheduler = widget.taskScheduler ?? TaskScheduler.withConfig(
+      TaskSchedulerConfig.autoDetectDevice()
+    );
+
+    // Initialize scheduler with database for persistent tracking
+    _scheduler!.initializeWithDatabase(database);
+
+    // Schedule recurring sync task
+    _syncTaskName = 'server_sync_${database.hashCode}';
+    _scheduler!.scheduleRecurringTask(
+      name: _syncTaskName!,
+      task: () => _syncManager!.performSync(),
+      interval: widget.syncInterval,
+      priority: TaskPriority.normal,
+    );
+
+    // Perform initial sync
+    _syncManager!.performSync();
   }
 
   void _handleSyncManagerError(Object error) {
@@ -115,8 +138,12 @@ class _ServerSyncManagerWidgetState extends State<ServerSyncManagerWidget> {
   }
 
   void _disposeSyncManager() {
-    _syncManager?.stop();
+    if (_syncTaskName != null && _scheduler != null) {
+      _scheduler!.cancelTask(_syncTaskName!);
+    }
     _syncManager = null;
+    _scheduler = null;
+    _syncTaskName = null;
   }
 
   @override

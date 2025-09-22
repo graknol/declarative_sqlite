@@ -30,6 +30,35 @@ class InMemoryFileRepository implements IFileRepository {
     _files[fileset]?.remove(fileId);
   }
 
+  @override
+  Future<int> garbageCollectFilesets(List<String> validFilesetIds) async {
+    final validFilesetSet = validFilesetIds.toSet();
+    final orphanedFilesets = _files.keys.where((filesetId) => !validFilesetSet.contains(filesetId)).toList();
+    
+    for (final filesetId in orphanedFilesets) {
+      _files.remove(filesetId);
+    }
+    
+    return orphanedFilesets.length;
+  }
+
+  @override
+  Future<int> garbageCollectFiles(String filesetId, List<String> validFileIds) async {
+    final filesetFiles = _files[filesetId];
+    if (filesetFiles == null) {
+      return 0; // Fileset doesn't exist
+    }
+
+    final validFileSet = validFileIds.toSet();
+    final orphanedFiles = filesetFiles.keys.where((fileId) => !validFileSet.contains(fileId)).toList();
+    
+    for (final fileId in orphanedFiles) {
+      filesetFiles.remove(fileId);
+    }
+    
+    return orphanedFiles.length;
+  }
+
   Future<Uint8List> _streamToBytes(Stream<List<int>> stream) {
     final completer = Completer<Uint8List>();
     final builder = BytesBuilder();
