@@ -58,11 +58,7 @@ const config: Config = {
     // Replace with your project's social card
     image: 'img/docusaurus-social-card.jpg',
     navbar: {
-      title: 'Declarative SQLite',
-      logo: {
-        alt: 'Declarative SQLite Logo',
-        src: 'img/logo.svg',
-      },
+      title: '💾 Declarative SQLite',
       items: [
         {
           type: 'docSidebar',
@@ -88,8 +84,12 @@ const config: Config = {
               to: '/docs/intro',
             },
             {
-              label: 'Core Library',
-              to: '/docs/core-library/schema-definition',
+              label: 'Typed Records',
+              to: '/docs/core-library/typed-records',
+            },
+            {
+              label: 'Exception Handling',
+              to: '/docs/core-library/exception-handling',
             },
             {
               label: 'Flutter Integration',

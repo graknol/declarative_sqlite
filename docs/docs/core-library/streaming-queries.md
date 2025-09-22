@@ -8,11 +8,39 @@ Streaming queries are one of the most powerful features of Declarative SQLite. T
 
 ## Basic Streaming
 
-### Simple Table Streams
+### Simple Streams with Typed Records
 
 ```dart
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
+// Stream all users with type safety
+final userStream = database.streamTyped<User>((q) => q.from('users'));
+
+userStream.listen((users) {
+  print('Users updated: ${users.length} total users');
+  for (final user in users) {
+    print('- ${user.name} (${user.email})'); // Type-safe property access
+  }
+});
+
+// Stream with WHERE clause
+final adultUserStream = database.streamTyped<User>((q) => 
+  q.from('users').where('age >= ?', [18])
+);
+
+adultUserStream.listen((adultUsers) {
+  print('Adult users: ${adultUsers.length}');
+  for (final user in adultUsers) {
+    print('- ${user.name}, age ${user.age}');
+  }
+});
+```
+
+### Direct Query Streams
+
+For cases where you need direct control over queries:
+
+```dart
 // Stream all users
 final userStream = database.streamQuery('users');
 userStream.listen((users) {
@@ -35,6 +63,40 @@ adultUserStream.listen((adultUsers) {
 ```
 
 ### Stream with Ordering and Limits
+
+Using typed records:
+
+```dart
+// Stream recent posts with type safety
+final recentPostsStream = database.streamTyped<Post>((q) => 
+  q.from('posts')
+   .orderBy('created_at DESC')
+   .limit(10)
+);
+
+recentPostsStream.listen((posts) {
+  print('Latest 10 posts updated');
+  for (final post in posts) {
+    print('- ${post.title} by ${post.authorName}');
+  }
+});
+
+// Stream top users by post count (using a view)
+final topUsersStream = database.streamTyped<UserStats>((q) => 
+  q.from('user_post_counts')
+   .orderBy('post_count DESC')
+   .limit(5)
+);
+
+topUsersStream.listen((topUsers) {
+  print('Top users updated');
+  for (final user in topUsers) {
+    print('- ${user.name}: ${user.postCount} posts');
+  }
+});
+```
+
+Using direct queries:
 
 ```dart
 // Stream recent posts
@@ -615,4 +677,7 @@ class ReactiveUserService {
 
 Now that you understand streaming queries, explore:
 
+- [Typed Records](typed-records) - Work with typed record classes in streams
+- [Exception Handling](exception-handling) - Handle stream errors gracefully  
+- [Advanced Features](advanced-features) - Garbage collection and utilities
 - [Flutter Integration](../flutter-integration/widgets) - Using streams with Flutter widgets

@@ -5,48 +5,48 @@ import styles from './styles.module.css';
 
 type FeatureItem = {
   title: string;
-  Svg: React.ComponentType<React.ComponentProps<'svg'>>;
+  emoji: string;
   description: ReactNode;
 };
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Declarative Schema Definition',
-    Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
+    title: 'Typed Database Records',
+    emoji: '🎯',
     description: (
       <>
-        Define your database schema using a fluent builder pattern. Create tables, columns, 
-        indices, and relationships with type-safe, intuitive syntax that mirrors your data model.
+        Work with typed record classes instead of raw maps. Generated classes provide 
+        property-style access, automatic type conversion, and intelligent CRUD operations.
       </>
     ),
   },
   {
-    title: 'Automatic Migration',
-    Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
+    title: 'Smart Exception Handling',
+    emoji: '🛡️',
     description: (
       <>
-        Focus on your data model, not database migrations. Declarative SQLite automatically 
-        creates missing tables, views, and indices when your schema changes.
+        REST API-like exception hierarchy with business-focused error categories. 
+        Handle database errors gracefully with meaningful exception types and context.
       </>
     ),
   },
   {
     title: 'Flutter Integration',
-    Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
+    emoji: '🚀',
     description: (
       <>
-        Seamless integration with Flutter through reactive widgets, form components, 
+        Seamless integration with Flutter through reactive widgets, typed record support, 
         and real-time UI updates. Build data-driven Flutter apps with minimal boilerplate.
       </>
     ),
   },
 ];
 
-function Feature({title, Svg, description}: FeatureItem) {
+function Feature({title, emoji, description}: FeatureItem) {
   return (
     <div className={clsx('col col--4')}>
       <div className="text--center">
-        <Svg className={styles.featureSvg} role="img" />
+        <div className={styles.featureEmoji}>{emoji}</div>
       </div>
       <div className="text--center padding-horiz--md">
         <Heading as="h3">{title}</Heading>

@@ -78,6 +78,13 @@ class SomeWidget extends StatelessWidget {
     
     return ElevatedButton(
       onPressed: () async {
+        // Using typed records (recommended)
+        final newUser = User.create(database);
+        newUser.name = 'New User';
+        newUser.email = 'user@example.com';
+        await newUser.save();
+        
+        // Or using raw maps
         await database.insert('users', {
           'id': 'user-${DateTime.now().millisecondsSinceEpoch}',
           'name': 'New User',

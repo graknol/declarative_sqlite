@@ -17,6 +17,39 @@ final database = DeclarativeDatabase(
 
 ## Basic CRUD Operations
 
+### Working with Typed Records
+
+```dart
+// Register your record types first (usually in main())
+RecordMapFactoryRegistry.register<User>(User.fromMap);
+
+// Create a new user
+final newUser = User.create(database);
+newUser.name = 'John Doe';
+newUser.email = 'john@example.com';
+newUser.age = 30;
+await newUser.save(); // Automatically handles INSERT
+
+// Query users with type safety
+final users = await database.queryTyped<User>((q) => q.from('users'));
+for (final user in users) {
+  print('User: ${user.name} (${user.email})'); // Type-safe property access
+}
+
+// Update a user
+final user = users.first;
+user.email = 'newemail@example.com';
+user.age = 31;
+await user.save(); // Automatically handles UPDATE (only modified fields)
+
+// Delete a user
+await user.delete();
+```
+
+### Direct Database Operations
+
+For cases where you need direct control over the database operations:
+
 ### Insert Data
 
 ```dart
@@ -49,6 +82,43 @@ await database.insertAll('users', [
 ```
 
 ### Query Data
+
+Using typed records:
+
+```dart
+// Query all users with type safety
+final allUsers = await database.queryTyped<User>((q) => q.from('users'));
+
+// Query with WHERE conditions
+final adultUsers = await database.queryTyped<User>((q) => 
+  q.from('users').where('age >= ?', [18])
+);
+
+// Query with ordering and limits
+final recentUsers = await database.queryTyped<User>((q) => 
+  q.from('users')
+   .orderBy('created_at DESC')
+   .limit(10)
+);
+
+// Complex queries with joins
+final usersWithPosts = await database.queryTyped<User>((q) =>
+  q.from('users u')
+   .join('posts p', 'p.user_id = u.id')
+   .where('p.created_at > ?', [DateTime.now().subtract(Duration(days: 7))])
+   .groupBy('u.id')
+   .forUpdate('users') // Enable CRUD operations
+);
+
+// Table-specific queries (automatically CRUD-enabled)
+final activeUsers = await database.queryTableTyped<User>('users',
+  where: 'active = ?',
+  whereArgs: [true],
+  orderBy: 'name ASC',
+);
+```
+
+Using direct database queries:
 
 ```dart
 // Query all records
@@ -563,4 +633,7 @@ await db.insert('users', userData);
 
 Now that you understand database operations, explore:
 
+- [Typed Records](typed-records) - Work with typed record classes for enhanced type safety
+- [Exception Handling](exception-handling) - Handle database errors gracefully
+- [Advanced Features](advanced-features) - Garbage collection and other utilities
 - [Streaming Queries](streaming-queries) - Real-time data updates

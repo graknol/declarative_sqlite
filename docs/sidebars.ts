@@ -29,8 +29,11 @@ const sidebars: SidebarsConfig = {
       label: 'Core Library',
       items: [
         'core-library/schema-definition',
+        'core-library/typed-records',
         'core-library/database-operations',
+        'core-library/exception-handling',
         'core-library/streaming-queries',
+        'core-library/advanced-features',
       ],
     },
     {

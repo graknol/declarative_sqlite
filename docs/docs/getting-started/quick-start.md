@@ -34,15 +34,72 @@ void buildSchema(SchemaBuilder builder) {
 }
 ```
 
-### Step 2: Initialize Database
+### Step 2: Create Typed Record Classes (Optional but Recommended)
+
+For the best developer experience, create typed record classes:
+
+```dart
+// lib/models/user.dart
+import 'package:declarative_sqlite/declarative_sqlite.dart';
+
+part 'user.g.dart'; // Generated code will be here
+
+@DbRecord('users')
+class User extends DbRecord {
+  User(Map<String, Object?> data, DeclarativeDatabase database)
+      : super(data, 'users', database);
+
+  // The generator creates all getters and setters automatically
+  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+    return User(data, database);
+  }
+}
+
+// lib/models/post.dart
+import 'package:declarative_sqlite/declarative_sqlite.dart';
+
+part 'post.g.dart';
+
+@DbRecord('posts')
+class Post extends DbRecord {
+  Post(Map<String, Object?> data, DeclarativeDatabase database)
+      : super(data, 'posts', database);
+
+  static Post fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+    return Post(data, database);
+  }
+}
+```
+
+Add the generator to your `pubspec.yaml`:
+
+```yaml
+dev_dependencies:
+  declarative_sqlite_generator: ^1.0.0
+  build_runner: ^2.4.0
+```
+
+Run code generation:
+
+```bash
+dart run build_runner build
+```
+
+### Step 3: Initialize Database with Typed Records
 
 ```dart
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // For standalone Dart apps
+import 'models/user.dart';
+import 'models/post.dart';
 
 void main() async {
   // Initialize SQLite driver (for standalone Dart apps)
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
+
+  // Register typed record factories
+  RecordMapFactoryRegistry.register<User>(User.fromMap);
+  RecordMapFactoryRegistry.register<Post>(Post.fromMap);
 
   // Create database instance
   final database = DeclarativeDatabase(
@@ -55,10 +112,51 @@ void main() async {
 }
 ```
 
-### Step 3: Perform Basic Operations
+### Step 4: Perform Operations with Typed Records
+
+With typed records (recommended approach):
 
 ```dart
-// Insert data
+// Create and save a new user
+final newUser = User.create(database);
+newUser.name = 'John Doe';
+newUser.email = 'john@example.com';
+newUser.age = 30;
+newUser.createdAt = DateTime.now();
+await newUser.save();
+
+// Create a post
+final newPost = Post.create(database);
+newPost.userId = newUser.id;
+newPost.title = 'My First Post';
+newPost.content = 'Hello, world!';
+newPost.createdAt = DateTime.now();
+await newPost.save();
+
+// Query with type safety
+final users = await database.queryTyped<User>((q) => q.from('users'));
+print('Found ${'${users.length}'} users');
+
+final user = users.first;
+print('User: ${'${user.name}'} (${'${user.email}'})'); // Type-safe property access
+
+// Update with type safety
+user.email = 'newemail@example.com';
+await user.save(); // Only modified fields are updated
+
+// Query posts for a user
+final userPosts = await database.queryTyped<Post>((q) => 
+  q.from('posts').where('user_id = ?', [user.id])
+);
+print('User has ${'${userPosts.length}'} posts');
+```
+
+### Alternative: Raw Map Operations
+
+You can also work with raw maps if needed:
+
+```dart
+// Insert data using raw maps
 await database.insert('users', {
   'id': 'user-1',
   'name': 'John Doe',
@@ -75,12 +173,19 @@ await database.insert('posts', {
   'created_at': DateTime.now().toIso8601String(),
 });
 
-// Query data
+// Query data using raw maps
 final users = await database.query('users');
-print('Found ${users.length} users');
+print('Found ${'${users.length}'} users');
 
+for (final user in users) {
+  final userName = user['name'] as String;
+  final userEmail = user['email'] as String;
+  print('User: $userName ($userEmail)');
+}
+
+// Query related data
 final posts = await database.query('posts', where: 'user_id = ?', whereArgs: ['user-1']);
-print('User has ${posts.length} posts');
+print('User has ${'${posts.length}'} posts');
 
 // Update data
 await database.update(
@@ -100,7 +205,7 @@ await database.delete('posts', where: 'id = ?', whereArgs: ['post-1']);
 // Listen to real-time updates
 final userStream = database.streamQuery('users');
 userStream.listen((users) {
-  print('Users table updated: ${users.length} total users');
+  print('Users table updated: ${'${users.length}'} total users');
 });
 
 // Listen to specific user changes
@@ -112,7 +217,7 @@ final specificUserStream = database.streamQuery(
 specificUserStream.listen((users) {
   if (users.isNotEmpty) {
     final user = users.first;
-    print('User updated: ${user['name']} (${user['age']} years old)');
+    print('User updated: ${'${user[\'name\']}'} (${'${user[\'age\']}'} years old)');
   }
 });
 
@@ -175,7 +280,7 @@ class UserListScreen extends StatelessWidget {
           leading: CircleAvatar(child: Text(user.name[0])),
           title: Text(user.name),
           subtitle: Text(user.email),
-          trailing: Text('Age: ${user.age}'),
+          trailing: Text('Age: ${'${user.age}'}'),
           onTap: () => _showUserDetails(context, user),
         ),
       ),
@@ -195,9 +300,9 @@ class UserListScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Email: ${user.email}'),
-            Text('Age: ${user.age}'),
-            Text('Created: ${user.createdAt.toString()}'),
+            Text('Email: ${'${user.email}'}'),
+            Text('Age: ${'${user.age}'}'),
+            Text('Created: ${'${user.createdAt.toString()}'}'),
           ],
         ),
         actions: [
@@ -213,9 +318,9 @@ class UserListScreen extends StatelessWidget {
   Future<void> _addUser(BuildContext context) async {
     final db = DatabaseProvider.of(context);
     await db.insert('users', {
-      'id': 'user-${DateTime.now().millisecondsSinceEpoch}',
-      'name': 'New User ${DateTime.now().second}',
-      'email': 'user${DateTime.now().second}@example.com',
+      'id': 'user-${'${DateTime.now().millisecondsSinceEpoch}'}',
+      'name': 'New User ${'${DateTime.now().second}'}',
+      'email': 'user${'${DateTime.now().second}'}@example.com',
       'age': 25,
       'created_at': DateTime.now().toIso8601String(),
     });
