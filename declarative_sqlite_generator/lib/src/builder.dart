@@ -11,15 +11,26 @@ class DeclarativeSqliteGenerator extends Generator {
   String generate(LibraryReader library, BuildStep buildStep) {
     final buffer = StringBuffer();
     
-    // Look for schema definitions in the library
+    // First pass: Find schema definitions to understand table structures
+    final schemaDefinitions = _findSchemaDefinitions(library);
+    
+    // Second pass: Look for classes extending DbRecord with @GenerateDbRecord annotation
     for (final element in library.allElements) {
-      if (element is VariableElement) {
-        // Check if this is a Schema variable
-        final annotation = _getSchemaAnnotation(element);
-        if (annotation != null) {
-          final schema = _parseSchema(element);
-          if (schema != null) {
-            buffer.writeln(_generateRecordClasses(schema));
+      if (element is ClassElement) {
+        final annotation = _getDbRecordAnnotation(element);
+        if (annotation != null && _extendsDbRecord(element)) {
+          final tableName = _getTableNameFromAnnotation(annotation);
+          if (tableName != null) {
+            final table = _findTableInSchemas(tableName, schemaDefinitions);
+            if (table != null) {
+              buffer.writeln(_generateRecordClass(element, table));
+              buffer.writeln();
+            } else {
+              // Generate a warning comment if table not found
+              buffer.writeln('// WARNING: Table "$tableName" not found in any schema definition');
+              buffer.writeln('// for class ${element.name}');
+              buffer.writeln();
+            }
           }
         }
       }
@@ -28,68 +39,86 @@ class DeclarativeSqliteGenerator extends Generator {
     return buffer.toString();
   }
 
-  /// Checks if the element has a @GenerateRecords annotation
-  Object? _getSchemaAnnotation(VariableElement element) {
+  /// Finds schema definitions in the library by looking for SchemaBuilder usage
+  List<Schema> _findSchemaDefinitions(LibraryReader library) {
+    // This is a simplified approach - in practice, this would need more sophisticated
+    // AST analysis to extract schema definitions from code
+    // For now, return an empty list
+    return [];
+  }
+
+  /// Finds a table definition in the collected schemas
+  Table? _findTableInSchemas(String tableName, List<Schema> schemas) {
+    for (final schema in schemas) {
+      final table = schema.userTables.where((t) => t.name == tableName).firstOrNull;
+      if (table != null) return table;
+    }
+    return null;
+  }
+
+  /// Checks if the class has a @GenerateDbRecord annotation
+  Object? _getDbRecordAnnotation(ClassElement element) {
     for (final metadata in element.metadata) {
       final annotation = metadata.computeConstantValue();
-      if (annotation?.type?.element?.name == 'GenerateRecords') {
+      if (annotation?.type?.element?.name == 'GenerateDbRecord') {
         return annotation;
       }
     }
     return null;
   }
 
-  /// Attempts to parse a Schema from the variable element
-  /// This is a simplified version - in practice, you'd need more sophisticated
-  /// analysis of the schema definition
-  Schema? _parseSchema(VariableElement element) {
-    // TODO: Implement schema parsing from the AST
-    // For now, return null as this requires complex AST analysis
-    return null;
-  }
-
-  /// Generates typed record classes for all tables in the schema
-  String _generateRecordClasses(Schema schema) {
-    final buffer = StringBuffer();
-    
-    for (final table in schema.userTables) {
-      buffer.writeln(_generateRecordClass(table));
-      buffer.writeln();
+  /// Checks if the class extends DbRecord
+  bool _extendsDbRecord(ClassElement element) {
+    ClassElement? current = element;
+    while (current != null) {
+      if (current.supertype?.element?.name == 'DbRecord') {
+        return true;
+      }
+      current = current.supertype?.element;
     }
-    
-    return buffer.toString();
+    return false;
   }
 
-  /// Generates a typed record class for a single table
-  String _generateRecordClass(Table table) {
-    final className = _pascalCase(table.name);
+  /// Extracts the table name from the @GenerateDbRecord annotation
+  String? _getTableNameFromAnnotation(Object annotation) {
+    final constantValue = annotation as dynamic;
+    final tableName = constantValue.getField('tableName')?.toStringValue();
+    return tableName;
+  }
+
+  /// Generates a typed record class for a class element
+  String _generateRecordClass(ClassElement element, String tableName) {
+    final className = element.name;
     final buffer = StringBuffer();
     
-    buffer.writeln('/// Generated record class for the ${table.name} table.');
-    buffer.writeln('class $className extends DbRecord {');
-    buffer.writeln('  $className(Map<String, Object?> data, DeclarativeDatabase database)');
-    buffer.writeln('      : super(data, \'${table.name}\', database);');
-    buffer.writeln();
+    // TODO: We need to get the table schema to generate the proper getters/setters
+    // For now, we'll generate a placeholder comment
+    buffer.writeln('// Generated code for $className table: $tableName');
+    buffer.writeln('// Table schema needs to be resolved to generate typed getters/setters');
+  /// Generates a typed record class for a class element
+  String _generateRecordClass(ClassElement element, Table table) {
+    final className = element.name;
+    final buffer = StringBuffer();
     
-    // Generate typed getters for each column
-    for (final column in table.columns) {
+    // Generate extension methods for the existing class
+    buffer.writeln('/// Generated typed properties for $className');
+    buffer.writeln('extension ${className}Generated on $className {');
+    
+    // Generate typed getters for each column (except system columns)
+    final userColumns = table.columns.where((col) => !col.name.startsWith('system_')).toList();
+    
+    for (final column in userColumns) {
       buffer.writeln(_generateGetter(column));
     }
     
-    buffer.writeln();
-    
-    // Generate typed setters for each column
-    for (final column in table.columns) {
-      buffer.writeln(_generateSetter(column));
+    if (userColumns.isNotEmpty) {
+      buffer.writeln();
     }
     
-    buffer.writeln();
-    
-    // Generate factory method
-    buffer.writeln('  /// Creates a $className from a Map.');
-    buffer.writeln('  static $className fromMap(Map<String, Object?> data, DeclarativeDatabase database) {');
-    buffer.writeln('    return $className(data, database);');
-    buffer.writeln('  }');
+    // Generate typed setters for each column (except system columns)
+    for (final column in userColumns) {
+      buffer.writeln(_generateSetter(column));
+    }
     
     buffer.writeln('}');
     
@@ -103,7 +132,7 @@ class DeclarativeSqliteGenerator extends Generator {
     final helperMethod = _getHelperMethod(column);
     
     return '  /// Gets the ${column.name} column value.\n'
-           '  $dartType get $propertyName => $helperMethod(\'${column.name}\')${column.isNotNull ? '!' : ''};';
+           '  $dartType get $propertyName => $helperMethod(\'${column.name}\');';
   }
 
   /// Generates a typed setter for a column
@@ -173,9 +202,4 @@ class DeclarativeSqliteGenerator extends Generator {
     
     return result;
   }
-}
-
-/// Annotation to mark a Schema for record generation
-class GenerateRecords {
-  const GenerateRecords();
 }

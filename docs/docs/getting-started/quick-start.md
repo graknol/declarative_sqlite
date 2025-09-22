@@ -44,7 +44,7 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 
 part 'user.g.dart'; // Generated code will be here
 
-@DbRecord('users')
+@GenerateDbRecord('users')
 class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
@@ -60,7 +60,7 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 
 part 'post.g.dart';
 
-@DbRecord('posts')
+@GenerateDbRecord('posts')
 class Post extends DbRecord {
   Post(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'posts', database);
