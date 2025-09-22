@@ -5,6 +5,7 @@
 library declarative_sqlite;
 
 export 'src/annotations/db_record.dart';
+export 'src/annotations/register_factory.dart';
 export 'src/builders/column_builder.dart';
 export 'src/builders/date_column_builder.dart';
 export 'src/builders/fileset_column_builder.dart';

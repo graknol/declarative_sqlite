@@ -181,7 +181,7 @@ dependencies:
   declarative_sqlite: ^1.0.0
 ```
 
-Define your classes with annotations:
+Define your minimal classes with annotations:
 
 ```dart
 // Define your schema first
@@ -196,14 +196,16 @@ final schema = SchemaBuilder()
   })
   ..build();
 
-// Then create annotated record classes
+// Then create minimal annotated record classes
 @GenerateDbRecord('users')
+@RegisterFactory()
 class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
 
+  // Simple redirect to generated factory
   static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return User(data, database);
+    return UserFactory.createFromMap(data, database);
   }
 }
 ```
@@ -213,6 +215,87 @@ Run code generation:
 ```bash
 dart run build_runner build
 ```
+
+## Automatic Factory Registration
+
+With the new `@RegisterFactory` annotation, you can automatically register all your record factories:
+
+```dart
+void main() async {
+  final db = await DeclarativeDatabase.open('app.db', schema: schema);
+  
+  // This registers ALL classes annotated with @RegisterFactory
+  registerAllFactories(db);
+  
+  runApp(MyApp());
+}
+```
+
+No more manual registration calls:
+
+```dart
+// OLD WAY - Manual registration (no longer needed!)
+RecordMapFactoryRegistry.register<User>(User.fromMap);
+RecordMapFactoryRegistry.register<Post>(Post.fromMap);
+RecordMapFactoryRegistry.register<Comment>(Comment.fromMap);
+
+// NEW WAY - Automatic registration
+registerAllFactories(database);  // Registers everything!
+```
+
+## Generated Code Benefits
+
+The enhanced code generation provides several key benefits:
+
+### 1. Minimal Boilerplate
+
+Instead of writing manual getters and setters:
+
+```dart
+// OLD WAY - Manual implementation
+class User extends DbRecord {
+  User(Map<String, Object?> data, DeclarativeDatabase database)
+      : super(data, 'users', database);
+      
+  // Manual getters
+  int get id => getIntegerNotNull('id');
+  String get name => getTextNotNull('name');
+  String? get email => getText('email');
+  
+  // Manual setters  
+  set name(String value) => setText('name', value);
+  set email(String? value) => setText('email', value);
+  
+  // Manual factory
+  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+    return User(data, database);
+  }
+}
+```
+
+You just write:
+
+```dart
+// NEW WAY - Minimal class with full generation
+@GenerateDbRecord('users')
+@RegisterFactory()
+class User extends DbRecord {
+  User(Map<String, Object?> data, DeclarativeDatabase database)
+      : super(data, 'users', database);
+
+  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+    return UserFactory.createFromMap(data, database);
+  }
+}
+```
+
+### 2. Factory Method Redirection
+
+The generated `createFromMap` method handles the actual object creation, allowing your `fromMap` to simply redirect. This centralizes the creation logic and makes it easier to add initialization behavior in the future.
+
+### 3. Automatic Registration
+
+No more forgetting to register factories or managing registration calls:
 
 ## Usage Examples
 
