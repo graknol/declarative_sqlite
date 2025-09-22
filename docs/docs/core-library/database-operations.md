@@ -21,7 +21,10 @@ final database = DeclarativeDatabase(
 
 ```dart
 // Register your record types first (usually in main())
-RecordMapFactoryRegistry.register<User>(User.fromMap);
+registerAllFactories(database); // Automatic registration with @RegisterFactory
+
+// OR manual registration:
+// RecordMapFactoryRegistry.register<User>(UserGenerated.fromMap);
 
 // Create a new user
 final newUser = User.create(database);

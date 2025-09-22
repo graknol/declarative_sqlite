@@ -6,6 +6,25 @@ Learn how to use Declarative SQLite's Flutter widgets to build reactive, data-dr
 
 The `declarative_sqlite_flutter` package provides Flutter-specific widgets and utilities that seamlessly integrate with the core library. These widgets automatically update when data changes, creating truly reactive user interfaces.
 
+### Factory Registration
+
+With the enhanced code generator, you can set up automatic factory registration:
+
+```dart
+// In your main app setup
+DatabaseProvider(
+  schema: buildSchema,
+  databaseName: 'app.db',
+  onDatabaseReady: (database) {
+    // Register all @RegisterFactory classes automatically
+    registerAllFactories(database);
+  },
+  child: HomeScreen(),
+)
+```
+
+This eliminates the need for `mapper` parameters in most widgets - they'll automatically use the registered factories for type conversion.
+
 ## Core Widgets
 
 ### DatabaseProvider
@@ -116,8 +135,11 @@ class UserListScreen extends StatelessWidget {
           .where('active = 1')
           .orderBy('name ASC'),
           
-        // Map database rows to data objects
-        mapper: User.fromMap,
+        // With automatic factory registry (recommended)
+        // No mapper needed - uses registered factories
+        
+        // OR with explicit mapper (backward compatibility)
+        // mapper: UserGenerated.fromMap,
         
         // Build individual list items
         itemBuilder: (context, user) => UserCard(user: user),
@@ -307,7 +329,7 @@ class PostListScreen extends StatelessWidget {
       body: QueryListView<Post>(
         database: DatabaseProvider.of(context),
         query: (q) => q.from('posts').orderBy('created_at DESC'),
-        mapper: Post.fromMap,
+        // mapper: PostGenerated.fromMap, // Optional - uses factory registry
         itemBuilder: (context, post) => ListTile(
           title: Text(post.title),
           subtitle: Text(post.excerpt ?? ''),
@@ -348,7 +370,7 @@ class PostDetailScreen extends StatelessWidget {
       body: QueryListView<Post>(
         database: DatabaseProvider.of(context),
         query: (q) => q.from('posts').where('id = ?', [postId]),
-        mapper: Post.fromMap,
+        // mapper: PostGenerated.fromMap, // Optional - uses factory registry
         itemBuilder: (context, post) => PostDetailView(post: post),
         emptyBuilder: (context) => Center(
           child: Text('Post not found'),
@@ -505,7 +527,7 @@ class _SearchableUserListState extends State<SearchableUserList> {
                 
                 return query.orderBy('name ASC');
               },
-              mapper: User.fromMap,
+              mapper: UserGenerated.fromMap, // Or omit for automatic factory registry
               itemBuilder: (context, user) => UserListTile(user: user),
               emptyBuilder: (context) => Center(
                 child: Column(
@@ -557,7 +579,7 @@ class _EditUserScreenState extends State<EditUserScreen> {
       body: QueryListView<User>(
         database: DatabaseProvider.of(context),
         query: (q) => q.from('users').where('id = ?', [widget.userId]),
-        mapper: User.fromMap,
+        // mapper: UserGenerated.fromMap, // Optional - uses factory registry
         itemBuilder: (context, user) {
           // Update form when user data changes
           if (_nameController.text != user.name) {

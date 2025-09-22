@@ -36,7 +36,7 @@ Work with typed records:
 
 ```dart
 // Register your record types once
-RecordMapFactoryRegistry.register<User>(User.fromMap);
+registerAllFactories(database); // Automatic registration with @RegisterFactory
 
 // Query with full type safety
 final users = await db.queryTyped<User>((q) => q.from('users'));
