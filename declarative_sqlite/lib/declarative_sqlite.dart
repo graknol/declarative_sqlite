@@ -4,6 +4,7 @@
 /// and interact with a SQLite database.
 library declarative_sqlite;
 
+export 'src/annotations/db_record.dart';
 export 'src/builders/column_builder.dart';
 export 'src/builders/date_column_builder.dart';
 export 'src/builders/fileset_column_builder.dart';
