@@ -13,7 +13,7 @@ Streaming queries are one of the most powerful features of Declarative SQLite. T
 ```dart
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
-// Stream all users with type safety (recommended)
+// Stream all users with type safety
 final userStream = database.streamTyped<User>((q) => q.from('users'));
 
 userStream.listen((users) {
@@ -36,9 +36,9 @@ adultUserStream.listen((adultUsers) {
 });
 ```
 
-### Raw Map Streams
+### Direct Query Streams
 
-For compatibility or when typed records aren't available:
+For cases where you need direct control over queries:
 
 ```dart
 // Stream all users
@@ -64,7 +64,7 @@ adultUserStream.listen((adultUsers) {
 
 ### Stream with Ordering and Limits
 
-With typed records:
+Using typed records:
 
 ```dart
 // Stream recent posts with type safety
@@ -80,9 +80,23 @@ recentPostsStream.listen((posts) {
     print('- ${post.title} by ${post.authorName}');
   }
 });
+
+// Stream top users by post count (using a view)
+final topUsersStream = database.streamTyped<UserStats>((q) => 
+  q.from('user_post_counts')
+   .orderBy('post_count DESC')
+   .limit(5)
+);
+
+topUsersStream.listen((topUsers) {
+  print('Top users updated');
+  for (final user in topUsers) {
+    print('- ${user.name}: ${user.postCount} posts');
+  }
+});
 ```
 
-With raw maps:
+Using direct queries:
 
 ```dart
 // Stream recent posts

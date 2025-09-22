@@ -19,8 +19,6 @@ final database = DeclarativeDatabase(
 
 ### Working with Typed Records
 
-The modern approach using typed records (recommended):
-
 ```dart
 // Register your record types first (usually in main())
 RecordMapFactoryRegistry.register<User>(User.fromMap);
@@ -48,9 +46,9 @@ await user.save(); // Automatically handles UPDATE (only modified fields)
 await user.delete();
 ```
 
-### Raw Map Operations
+### Direct Database Operations
 
-For cases where you need direct control or don't have typed records:
+For cases where you need direct control over the database operations:
 
 ### Insert Data
 
@@ -85,7 +83,7 @@ await database.insertAll('users', [
 
 ### Query Data
 
-With typed records (recommended):
+Using typed records:
 
 ```dart
 // Query all users with type safety
@@ -120,7 +118,7 @@ final activeUsers = await database.queryTableTyped<User>('users',
 );
 ```
 
-With raw maps:
+Using direct database queries:
 
 ```dart
 // Query all records
@@ -635,7 +633,7 @@ await db.insert('users', userData);
 
 Now that you understand database operations, explore:
 
-- [Typed Records](typed-records) - Work with typed record classes instead of raw maps
+- [Typed Records](typed-records) - Work with typed record classes for enhanced type safety
 - [Exception Handling](exception-handling) - Handle database errors gracefully
 - [Advanced Features](advanced-features) - Garbage collection and other utilities
 - [Streaming Queries](streaming-queries) - Real-time data updates

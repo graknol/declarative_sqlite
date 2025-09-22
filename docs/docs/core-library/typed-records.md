@@ -4,32 +4,16 @@ Work with typed database records instead of raw `Map<String, Object?>` objects. 
 
 ## Overview
 
-The DbRecord API transforms database interactions from this:
+The DbRecord API provides typed access to database records with automatic type conversion, property-style access, and intelligent CRUD operations:
 
 ```dart
-// Old way: Working with raw maps
-final result = await db.query('users');
-final userData = result.first;
-final name = userData['name'] as String;
-final age = userData['age'] as int?;
-
-// Updating data
-await db.update('users', {
-  'name': 'New Name',
-  'age': 30,
-}, where: 'id = ?', whereArgs: [userData['id']]);
-```
-
-To this:
-
-```dart
-// New way: Working with typed records
+// Work with typed records
 final users = await db.queryTyped<User>((q) => q.from('users'));
 final user = users.first;
 final name = user.name; // Type-safe property access
 final age = user.age;   // Nullable properties handled automatically
 
-// Updating data
+// Update data
 user.name = 'New Name';
 user.age = 30;
 await user.save(); // Intelligent CRUD operations
@@ -356,22 +340,6 @@ if (user.isCrudEnabled) {
 - **Lazy conversion**: Type conversion only happens when properties are accessed
 - **Efficient updates**: Only modified fields are sent to the database
 - **Optimized queries**: Factory registry eliminates reflection overhead
-
-## Migration from Map-based API
-
-The typed record API is fully compatible with the existing Map-based API:
-
-```dart
-// Existing code continues to work
-final users = await db.query('users');
-final userData = users.first;
-final name = userData['name'] as String;
-
-// Gradually migrate to typed records
-final typedUsers = await db.queryTyped<User>((q) => q.from('users'));
-final user = typedUsers.first;
-final name = user.name; // Much better!
-```
 
 ## Next Steps
 

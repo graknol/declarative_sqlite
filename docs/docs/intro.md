@@ -32,7 +32,7 @@ void buildSchema(SchemaBuilder builder) {
 }
 ```
 
-Work with typed records instead of raw maps:
+Work with typed records:
 
 ```dart
 // Register your record types once
