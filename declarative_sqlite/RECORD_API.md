@@ -69,13 +69,7 @@ Eliminates the need for mapper parameters in query methods:
 RecordMapFactoryRegistry.register<User>(User.fromMap);
 RecordMapFactoryRegistry.register<Product>(Product.fromMap);
 
-// Before: Required mapper parameter
-final users = await db.stream<User>(
-  (q) => q.from('users'),
-  (row) => User.fromMap(row),  // ← mapper parameter
-);
-
-// After: No mapper needed!
+// No mapper needed with registry!
 final users = await db.streamTyped<User>(
   (q) => q.from('users'),
 );
@@ -220,39 +214,25 @@ Run code generation:
 dart run build_runner build
 ```
 
-## Migration Guide
+## Usage Examples
 
-### From Map-based API
+### Working with Different API Levels
 
 ```dart
-// Old way
+// Map-based API for dynamic queries
 final results = await db.query((q) => q.from('users'));
 final userName = results.first['name'] as String;
 final userAge = results.first['age'] as int;
 
-// New way with generic DbRecord
+// Generic DbRecord for type-safe value access
 final users = await db.queryRecords((q) => q.from('users'));
 final userName = users.first.getValue<String>('name');
 final userAge = users.first.getValue<int>('age');
 
-// New way with generated typed classes
+// Generated typed classes for the best developer experience
 final users = await db.queryTyped<User>((q) => q.from('users'));
 final userName = users.first.name;  // Direct property access!
 final userAge = users.first.age;    // No casting needed!
-```
-
-### From Previous DbRecord API
-
-The previous DbRecord API continues to work unchanged. The new features are additive:
-
-```dart
-// All existing code continues to work
-final users = await db.queryRecords((q) => q.from('users'));
-final name = users.first.getValue<String>('name');
-
-// New: Generated typed classes
-final typedUsers = await db.queryTyped<User>((q) => q.from('users'));
-final name = typedUsers.first.name;  // Even better!
 ```
 
 ## Best Practices
@@ -302,4 +282,4 @@ void main() async {
 }
 ```
 
-This enhanced API provides a truly magical developer experience similar to Entity Framework Core in .NET, while maintaining all the performance and flexibility of the underlying SQLite database.
+This enhanced API provides a magical developer experience with full type safety, while maintaining all the performance and flexibility of the underlying SQLite database.

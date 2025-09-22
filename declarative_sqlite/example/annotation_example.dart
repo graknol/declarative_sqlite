@@ -1,7 +1,7 @@
-/// Example demonstrating the new @GenerateDbRecord annotation approach
+/// Example demonstrating the @GenerateDbRecord annotation approach
 /// 
-/// This example shows how to use the new class-level annotations
-/// instead of the old schema-level approach.
+/// This example shows how to use class-level annotations
+/// for generating typed record properties.
 
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
@@ -54,7 +54,7 @@ class Post extends DbRecord {
   }
 }
 
-// Example usage (once the generator works fully):
+// Example usage:
 // 
 // final user = User.fromMap(userData, database);
 // print(user.name);      // Generated getter
