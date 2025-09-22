@@ -40,10 +40,8 @@ class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
 
-  // This fromMap can now be a simple redirect to the generated factory
-  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return UserFactory.createFromMap(data, database);
-  }
+  // No need to write fromMap anymore - it's generated in the extension!
+  // Just use UserGenerated.fromMap(data, database) or the automatic registration
 }
 
 @GenerateDbRecord('posts')
@@ -52,10 +50,8 @@ class Post extends DbRecord {
   Post(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'posts', database);
 
-  // This fromMap can now be a simple redirect to the generated factory
-  static Post fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return PostFactory.createFromMap(data, database);
-  }
+  // No need to write fromMap anymore - it's generated in the extension!
+  // Just use PostGenerated.fromMap(data, database) or the automatic registration
 }
 
 // Example usage:
@@ -64,12 +60,12 @@ class Post extends DbRecord {
 // registerAllFactories(database);
 //
 // Then use the typed properties:
-// final user = User.fromMap(userData, database);
+// final user = UserGenerated.fromMap(userData, database);
 // print(user.name);      // Generated getter
 // user.email = 'new@example.com';  // Generated setter
 // await user.save();
 //
-// final post = Post.fromMap(postData, database);
+// final post = PostGenerated.fromMap(postData, database);
 // print(post.title);     // Generated getter (if title column exists)
 // post.content = 'Updated content'; // Generated setter (if content column exists)
 // await post.save();

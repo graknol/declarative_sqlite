@@ -32,10 +32,10 @@ class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
 
-  // Even this fromMap method can be generated in future versions!
-  // For now, it just redirects to the generated factory
+  // Even this fromMap method can be optional if you only use automatic registration!
+  // For direct usage: UserGenerated.fromMap(data, database)
   static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return UserFactory.createFromMap(data, database);
+    return UserGenerated.fromMap(data, database);
   }
 }
 
@@ -57,6 +57,9 @@ void exampleUsage() async {
   };
   
   final user = User.fromMap(userData, database);
+  
+  // Or use the generated extension directly:
+  // final user = UserGenerated.fromMap(userData, database);
   
   // Use generated getters and setters
   print('User: ${user.name} (${user.age})');  // Generated getters!

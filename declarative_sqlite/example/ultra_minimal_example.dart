@@ -36,22 +36,22 @@ Schema createSchema() {
 
 @GenerateDbRecord('users')
 @RegisterFactory()
-class User extends DbRecord with UserFromMapMixin {
+class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
   
-  // fromMap is provided by the generated mixin!
-  // No need to write it manually anymore!
+  // fromMap is generated automatically in UserGenerated extension!
+  // No need to write it manually
 }
 
 @GenerateDbRecord('posts')  
 @RegisterFactory()
-class Post extends DbRecord with PostFromMapMixin {
+class Post extends DbRecord {
   Post(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'posts', database);
   
-  // fromMap is provided by the generated mixin!
-  // No need to write it manually anymore!
+  // fromMap is generated automatically in PostGenerated extension!
+  // No need to write it manually
 }
 
 // ============================================================================
@@ -74,8 +74,8 @@ void demonstrateUltraMinimalUsage() async {
     'created_at': DateTime.now().toIso8601String(),
   };
   
-  // The fromMap is generated and available via mixin!
-  final user = UserFromMapMixin.fromMap(userData, database);
+  // The fromMap is generated automatically in UserGenerated extension!
+  final user = UserGenerated.fromMap(userData, database);
   
   // All properties are generated with full type safety
   print('User: ${user.name} (${user.age})');  // Generated getters

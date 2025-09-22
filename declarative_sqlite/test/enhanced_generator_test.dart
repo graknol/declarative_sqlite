@@ -17,14 +17,14 @@ void main() {
   // Mock generated classes with new structure
   @GenerateDbRecord('users')
   @RegisterFactory()
-  class User extends DbRecord with UserFromMapMixin {
+  class User extends DbRecord {
     User(Map<String, Object?> data, DeclarativeDatabase database)
         : super(data, 'users', database);
   }
 
   @GenerateDbRecord('posts')
   @RegisterFactory()
-  class Post extends DbRecord with PostFromMapMixin {
+  class Post extends DbRecord {
     Post(Map<String, Object?> data, DeclarativeDatabase database)
         : super(data, 'posts', database);
   }
@@ -64,7 +64,7 @@ void main() {
   });
 
   group('Enhanced Generator Features', () {
-    test('Generated fromMap mixin works', () {
+    test('Generated fromMap extension works', () {
       final userData = {
         'id': 1,
         'name': 'Test User',
@@ -73,8 +73,8 @@ void main() {
         'created_at': DateTime.now().toIso8601String(),
       };
       
-      // Use the generated fromMap from mixin
-      final user = UserFromMapMixin.fromMap(userData, db);
+      // Use the generated fromMap from extension
+      final user = UserGenerated.fromMap(userData, db);
       expect(user, isA<User>());
       expect(user.name, 'Test User');
       expect(user.age, 25);
@@ -90,7 +90,7 @@ void main() {
       };
       
       // Use the generated factory directly
-      final user = UserFactory.createFromMap(userData, db);
+      final user = UserGenerated.fromMap(userData, db);
       expect(user, isA<User>());
       expect(user.name, 'Factory User');
     });
@@ -110,8 +110,8 @@ void main() {
     test('Individual factory registration works', () {
       expect(RecordMapFactoryRegistry.hasFactory<User>(), false);
       
-      // Use generated individual registration
-      registerUserFactory(db);
+      // Use generated registration (simplified - no individual functions in new approach)
+      RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, db));
       
       expect(RecordMapFactoryRegistry.hasFactory<User>(), true);
       expect(RecordMapFactoryRegistry.hasFactory<Post>(), false);
@@ -127,7 +127,7 @@ void main() {
       });
       
       final userData = await db.queryFirst('users', where: 'id = ?', whereArgs: [1]);
-      final user = UserFromMapMixin.fromMap(userData!, db);
+      final user = UserGenerated.fromMap(userData!, db);
       
       // Test generated getters
       expect(user.id, 1);
@@ -163,8 +163,8 @@ void main() {
         'published_at': DateTime.now().toIso8601String(),
       };
       
-      final user = UserFromMapMixin.fromMap(userData, db);
-      final post = PostFromMapMixin.fromMap(postData, db);
+      final user = UserGenerated.fromMap(userData, db);
+      final post = PostGenerated.fromMap(postData, db);
       
       expect(user, isA<User>());
       expect(post, isA<Post>());
@@ -176,7 +176,7 @@ void main() {
   group('Backwards Compatibility', () {
     test('Old manual registration still works', () {
       // Manual registration should still work alongside generated
-      RecordMapFactoryRegistry.register<User>((data) => UserFromMapMixin.fromMap(data, db));
+      RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, db));
       
       expect(RecordMapFactoryRegistry.hasFactory<User>(), true);
       
@@ -198,7 +198,7 @@ void main() {
 // Mock generated code (this would be produced by the actual generator)
 // In a real scenario, this would be in the .g.dart file
 
-// Mock generated extensions and mixins for testing
+// Mock generated extensions for testing
 extension UserGenerated on User {
   int get id => getIntegerNotNull('id');
   String get name => getTextNotNull('name');
@@ -210,21 +210,10 @@ extension UserGenerated on User {
   set email(String? value) => setText('email', value);
   set age(int? value) => setInteger('age', value);
   set createdAt(DateTime value) => setDateTime('created_at', value);
-}
-
-extension UserFactory on User {
-  static User createFromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return User(data, database);
-  }
   
-  static User Function(Map<String, Object?>) getFactory(DeclarativeDatabase database) {
-    return (data) => createFromMap(data, database);
-  }
-}
-
-mixin UserFromMapMixin {
+  // Generated fromMap method
   static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return UserFactory.createFromMap(data, database);
+    return User(data, database);
   }
 }
 
@@ -238,37 +227,14 @@ extension PostGenerated on Post {
   set title(String value) => setText('title', value);
   set content(String? value) => setText('content', value);
   set publishedAt(DateTime? value) => setDateTime('published_at', value);
-}
-
-extension PostFactory on Post {
-  static Post createFromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+  
+  // Generated fromMap method
+  static Post fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
     return Post(data, database);
   }
-  
-  static Post Function(Map<String, Object?>) getFactory(DeclarativeDatabase database) {
-    return (data) => createFromMap(data, database);
-  }
-}
-
-mixin PostFromMapMixin {
-  static Post fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return PostFactory.createFromMap(data, database);
-  }
-}
-
-void registerGeneratedFactories(DeclarativeDatabase database) {
-  RecordMapFactoryRegistry.register<User>(UserFactory.getFactory(database));
-  RecordMapFactoryRegistry.register<Post>(PostFactory.getFactory(database));
 }
 
 void registerAllFactories(DeclarativeDatabase database) {
-  registerGeneratedFactories(database);
-}
-
-void registerUserFactory(DeclarativeDatabase database) {
-  RecordMapFactoryRegistry.register<User>(UserFactory.getFactory(database));
-}
-
-void registerPostFactory(DeclarativeDatabase database) {
-  RecordMapFactoryRegistry.register<Post>(PostFactory.getFactory(database));
+  RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, database));
+  RecordMapFactoryRegistry.register<Post>((data) => PostGenerated.fromMap(data, database));
 }

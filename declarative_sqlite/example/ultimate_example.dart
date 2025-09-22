@@ -48,37 +48,37 @@ Schema createAppSchema() {
 
 @GenerateDbRecord('users')
 @RegisterFactory()
-class User extends DbRecord with UserFromMapMixin {
+class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
   
-  // That's it! Everything else is generated:
+  // Everything is generated automatically:
   // - All getters: id, name, email, age, createdAt, updatedAt
   // - All setters: name=, email=, age=, updatedAt=
-  // - fromMap method via mixin
+  // - fromMap method in UserGenerated extension
   // - Factory registration
 }
 
 @GenerateDbRecord('posts')
 @RegisterFactory()  
-class Post extends DbRecord with PostFromMapMixin {
+class Post extends DbRecord {
   Post(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'posts', database);
   
   // Generated: id, userId, title, content, publishedAt, isPublished
   // Generated: title=, content=, publishedAt=, isPublished=
-  // Generated: fromMap, registration
+  // Generated: fromMap in PostGenerated extension, registration
 }
 
 @GenerateDbRecord('comments')
 @RegisterFactory()
-class Comment extends DbRecord with CommentFromMapMixin {
+class Comment extends DbRecord {
   Comment(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'comments', database);
   
   // Generated: id, postId, userId, comment, createdAt
   // Generated: comment=, (id, postId, userId, createdAt are immutable)
-  // Generated: fromMap, registration
+  // Generated: fromMap in CommentGenerated extension, registration
 }
 
 // ============================================================================
@@ -112,7 +112,7 @@ class BlogApp {
       'created_at': DateTime.now().toIso8601String(),
     };
     
-    final user = UserFromMapMixin.fromMap(userData, database);
+    final user = UserGenerated.fromMap(userData, database);
     
     // Type-safe property access (all generated!)
     print('User: ${user.name} (${user.age}) - ${user.email}');
@@ -133,7 +133,7 @@ class BlogApp {
       'is_published': true,
     };
     
-    final post = PostFromMapMixin.fromMap(postData, database);
+    final post = PostGenerated.fromMap(postData, database);
     
     // All properties are typed and safe
     print('Post: "${post.title}" by User ${post.userId}');
@@ -150,7 +150,7 @@ class BlogApp {
       'created_at': DateTime.now().toIso8601String(),
     };
     
-    final comment = CommentFromMapMixin.fromMap(commentData, database);
+    final comment = CommentGenerated.fromMap(commentData, database);
     await comment.save();
     
     // ========================================================================
@@ -203,7 +203,7 @@ class BlogApp {
     
     // Old manual approach still works
     RecordMapFactoryRegistry.register<Comment>((data) => 
-      CommentFromMapMixin.fromMap(data, database)
+      CommentGenerated.fromMap(data, database)
     );
     
     final manualComment = RecordMapFactoryRegistry.create<Comment>(commentData);
@@ -250,45 +250,18 @@ extension UserGenerated on User {
   set email(String? value) => setText('email', value);
   set age(int? value) => setInteger('age', value);
   set updatedAt(DateTime? value) => setDateTime('updated_at', value);
-}
-
-extension UserFactory on User {
-  static User createFromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+  
+  // Generated fromMap method
+  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
     return User(data, database);
   }
-  
-  static User Function(Map<String, Object?>) getFactory(DeclarativeDatabase database) {
-    return (data) => createFromMap(data, database);
-  }
 }
 
-mixin UserFromMapMixin {
-  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return UserFactory.createFromMap(data, database);
-  }
-}
-
-// Registration functions
+// Registration function
 void registerAllFactories(DeclarativeDatabase database) {
-  registerGeneratedFactories(database);
-}
-
-void registerGeneratedFactories(DeclarativeDatabase database) {
-  RecordMapFactoryRegistry.register<User>(UserFactory.getFactory(database));
-  RecordMapFactoryRegistry.register<Post>(PostFactory.getFactory(database));
-  RecordMapFactoryRegistry.register<Comment>(CommentFactory.getFactory(database));
-}
-
-void registerUserFactory(DeclarativeDatabase database) {
-  RecordMapFactoryRegistry.register<User>(UserFactory.getFactory(database));
-}
-
-void registerPostFactory(DeclarativeDatabase database) {
-  RecordMapFactoryRegistry.register<Post>(PostFactory.getFactory(database));
-}
-
-void registerCommentFactory(DeclarativeDatabase database) {
-  RecordMapFactoryRegistry.register<Comment>(CommentFactory.getFactory(database));
+  RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, database));
+  RecordMapFactoryRegistry.register<Post>((data) => PostGenerated.fromMap(data, database));
+  RecordMapFactoryRegistry.register<Comment>((data) => CommentGenerated.fromMap(data, database));
 }
 
 */

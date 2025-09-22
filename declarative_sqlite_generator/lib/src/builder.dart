@@ -100,7 +100,7 @@ class DeclarativeSqliteGenerator extends Generator {
     return tableName;
   }
 
-  /// Generates a comprehensive record class with typed methods and factory
+  /// Generates typed properties extension and simple fromMap method
   String _generateRecordClass(ClassElement element, String tableName) {
     final className = element.name;
     final buffer = StringBuffer();
@@ -113,37 +113,13 @@ class DeclarativeSqliteGenerator extends Generator {
     // In a real implementation, this would analyze the actual schema
     _generateCommonGettersSetters(buffer, tableName);
     
-    buffer.writeln('}');
+    // Add the fromMap method directly in the extension
     buffer.writeln();
-    
-    // Generate a static factory extension that provides the actual implementation
-    buffer.writeln('/// Generated factory methods for $className');
-    buffer.writeln('extension ${className}Factory on $className {');
-    buffer.writeln('  /// Generated factory method that handles the actual mapping');
-    buffer.writeln('  /// This method does the heavy lifting so the manual fromMap can simply redirect here');
-    buffer.writeln('  static $className createFromMap(Map<String, Object?> data, DeclarativeDatabase database) {');
-    buffer.writeln('    final record = $className(data, database);');
-    buffer.writeln('    // Additional initialization logic could go here in the future');
-    buffer.writeln('    return record;');
-    buffer.writeln('  }');
-    buffer.writeln();
-    buffer.writeln('  /// Generated factory registration helper');
-    buffer.writeln('  /// Creates a factory function suitable for RecordMapFactoryRegistry');
-    buffer.writeln('  static $className Function(Map<String, Object?>) getFactory(DeclarativeDatabase database) {');
-    buffer.writeln('    return (data) => createFromMap(data, database);');
-    buffer.writeln('  }');
-    buffer.writeln('}');
-    buffer.writeln();
-    
-    // Generate a mixin that can provide the fromMap method
-    buffer.writeln('/// Generated fromMap mixin for $className');
-    buffer.writeln('/// This provides the fromMap method implementation automatically');
-    buffer.writeln('mixin ${className}FromMapMixin {');
-    buffer.writeln('  /// Generated fromMap implementation');
-    buffer.writeln('  /// Developers can use this instead of writing their own fromMap');
+    buffer.writeln('  /// Generated fromMap factory method');
     buffer.writeln('  static $className fromMap(Map<String, Object?> data, DeclarativeDatabase database) {');
-    buffer.writeln('    return ${className}Factory.createFromMap(data, database);');
+    buffer.writeln('    return $className(data, database);');
     buffer.writeln('  }');
+    
     buffer.writeln('}');
     
     return buffer.toString();
@@ -228,39 +204,13 @@ class DeclarativeSqliteGenerator extends Generator {
     
     buffer.writeln('/// Auto-generated factory registration function');
     buffer.writeln('/// Call this function to register all annotated record factories');
-    buffer.writeln('void registerGeneratedFactories(DeclarativeDatabase database) {');
-    
-    for (final className in classNames) {
-      buffer.writeln('  RecordMapFactoryRegistry.register<$className>(${className}Factory.getFactory(database));');
-    }
-    
-    buffer.writeln('}');
-    buffer.writeln();
-    
-    // Add a helper function for batch registration
-    buffer.writeln('/// Convenience function to register all factories at application startup');
-    buffer.writeln('/// Usage example:');
-    buffer.writeln('/// ```dart');
-    buffer.writeln('/// void main() async {');
-    buffer.writeln('///   final db = await openDatabase(...);');
-    buffer.writeln('///   registerAllFactories(db);');
-    buffer.writeln('///   runApp(MyApp());');
-    buffer.writeln('/// }');
-    buffer.writeln('/// ```');
     buffer.writeln('void registerAllFactories(DeclarativeDatabase database) {');
-    buffer.writeln('  registerGeneratedFactories(database);');
-    buffer.writeln('}');
-    buffer.writeln();
     
-    // Add individual registration functions for more flexibility
-    buffer.writeln('/// Individual factory registration functions');
     for (final className in classNames) {
-      buffer.writeln('/// Registers the $className factory');
-      buffer.writeln('void register${className}Factory(DeclarativeDatabase database) {');
-      buffer.writeln('  RecordMapFactoryRegistry.register<$className>(${className}Factory.getFactory(database));');
-      buffer.writeln('}');
-      buffer.writeln();
+      buffer.writeln('  RecordMapFactoryRegistry.register<$className>((data) => ${className}Generated.fromMap(data, database));');
     }
+    
+    buffer.writeln('}');
     
     return buffer.toString();
   }

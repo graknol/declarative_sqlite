@@ -203,9 +203,9 @@ class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
 
-  // Simple redirect to generated factory
+  // Simple redirect to generated extension
   static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return UserFactory.createFromMap(data, database);
+    return UserGenerated.fromMap(data, database);
   }
 }
 ```
@@ -276,45 +276,64 @@ class User extends DbRecord {
 You just write:
 
 ```dart
-// NEW WAY - Ultra-minimal class with mixin
+// NEW WAY - Minimal class with full generation
 @GenerateDbRecord('users')
 @RegisterFactory()
-class User extends DbRecord with UserFromMapMixin {
+class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
   
-  // fromMap is automatically provided by the generated mixin!
-  // No need to write it at all!
+  // That's it! Everything else is generated:
+  // - All typed getters and setters
+  // - fromMap method in UserGenerated extension
+  // - Factory registration
 }
 ```
 
-### 2. Generated Mixins for Maximum Code Reduction
+### 2. Single Extension Approach
 
-The generator now creates mixins that provide `fromMap` methods automatically:
+The generator creates one clean extension per class that contains everything:
 
 ```dart
 // Generated automatically:
-mixin UserFromMapMixin {
+extension UserGenerated on User {
+  // Typed getters and setters
+  int get id => getIntegerNotNull('id');
+  String get name => getTextNotNull('name');
+  set name(String value) => setText('name', value);
+  
+  // fromMap method
   static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return UserFactory.createFromMap(data, database);
+    return User(data, database);
   }
 }
 ```
 
-This means developers can include the mixin and get `fromMap` for free!
+No complex factory layers, mixins, or indirection - just one extension with everything you need.
 
-### 3. Factory Method Architecture
+### 3. Simple Registration
 
-The generator creates a layered factory approach:
+Instead of complex factory layers, we generate a simple registration function:
 
-1. **`createFromMap`** - Core factory logic (extensible for future enhancements)
-2. **`getFactory`** - Registry-compatible factory function generator  
-3. **`fromMap` mixin** - Convenient static method for direct use
-4. **Individual registration** - Per-class registration functions for granular control
+```dart
+void registerAllFactories(DeclarativeDatabase database) {
+  RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, database));
+  RecordMapFactoryRegistry.register<Post>((data) => PostGenerated.fromMap(data, database));
+}
+```
 
-### 4. Automatic Registration
+### 4. Direct Usage
 
 No more forgetting to register factories or managing registration calls:
+
+```dart
+// Create records directly
+final user = UserGenerated.fromMap(userData, database);
+
+// Or use with automatic registration
+registerAllFactories(database);
+final users = await database.queryTyped<User>((q) => q.from('users'));
+```
 
 ## Usage Examples
 
