@@ -14,20 +14,17 @@ dependencies:
     sdk: flutter
   
   # Core database functionality
-  declarative_sqlite:
-    path: declarative_sqlite
+  declarative_sqlite: ^1.0.1
     
-  # Flutter-specific widgets and utilities
-  declarative_sqlite_flutter:
-    path: declarative_sqlite_flutter
+  # Flutter-specific widgets and utilities  
+  declarative_sqlite_flutter: ^1.0.0
     
   # SQLite driver for Flutter
   sqflite: ^2.3.0
 
 dev_dependencies:
   # Code generation for typed records (recommended)
-  declarative_sqlite_generator:
-    path: declarative_sqlite_generator
+  declarative_sqlite_generator: ^1.0.0
   build_runner: ^2.4.0
 ```
 
@@ -36,16 +33,14 @@ dev_dependencies:
 ```yaml
 dependencies:
   # Core database functionality
-  declarative_sqlite:
-    path: declarative_sqlite
+  declarative_sqlite: ^1.0.1
     
   # SQLite driver for Dart (non-Flutter)
   sqflite_common_ffi: ^2.3.0
 
 dev_dependencies:
   # Code generation for typed records (recommended)
-  declarative_sqlite_generator:
-    path: declarative_sqlite_generator
+  declarative_sqlite_generator: ^1.0.0
   build_runner: ^2.4.0
 ```
 

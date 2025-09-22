@@ -43,13 +43,14 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 part 'user.g.dart'; // Generated code will be here
 
 @GenerateDbRecord('users')
+@RegisterFactory()
 class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
 
-  // The generator creates all getters and setters automatically
+  // Optional: Redirect to generated extension (can be omitted)
   static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return User(data, database);
+    return UserGenerated.fromMap(data, database);
   }
 }
 ```
@@ -60,21 +61,37 @@ class User extends DbRecord {
 dart run build_runner build
 ```
 
-This generates typed properties like:
+This generates a typed extension on your class:
 
 ```dart
-// Generated getters (read-only properties)
-int get id => getIntegerNotNull('id');
-String get name => getTextNotNull('name');
-String? get email => getText('email');
-DateTime? get birthDate => getDateTime('birth_date');
-FilesetField? get avatar => getFilesetField('avatar');
+// Generated extension in user.g.dart
+extension UserGenerated on User {
+  // Generated getters for all table columns
+  int get id => getIntegerNotNull('id');
+  String get name => getTextNotNull('name');
+  String? get email => getText('email');
+  int? get age => getInteger('age');
+  DateTime? get createdAt => getDateTime('created_at');
+  DateTime? get updatedAt => getDateTime('updated_at');
 
-// Generated setters (modifiable properties)
-set name(String value) => setText('name', value);
-set email(String? value) => setText('email', value);
-set birthDate(DateTime? value) => setDateTime('birth_date', value);
-set avatar(FilesetField? value) => setFilesetField('avatar', value);
+  // Generated setters for all table columns
+  set name(String value) => setText('name', value);
+  set email(String? value) => setText('email', value);
+  set age(int? value) => setInteger('age', value);
+  set createdAt(DateTime? value) => setDateTime('created_at', value);
+  set updatedAt(DateTime? value) => setDateTime('updated_at', value);
+
+  // Generated fromMap factory method
+  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
+    return User(data, database);
+  }
+}
+
+// Generated registration function (when using @RegisterFactory)
+void registerAllFactories(DeclarativeDatabase database) {
+  RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, database));
+  // ... other registered classes
+}
 ```
 
 ## Type Conversion
@@ -281,11 +298,26 @@ print(user.systemVersion); // Updated version (automatically incremented)
 
 ### 1. Register Factories at Startup
 
+With the enhanced generator, registration is automated:
+
+```dart
+void main() async {
+  final database = await DeclarativeDatabase.open('app.db', schema: schema);
+  
+  // Automatic registration with one function call
+  registerAllFactories(database);
+  
+  runApp(MyApp());
+}
+```
+
+For manual registration (without @RegisterFactory):
+
 ```dart
 void main() {
-  // Register all record factories once
-  RecordMapFactoryRegistry.register<User>(User.fromMap);
-  RecordMapFactoryRegistry.register<Post>(Post.fromMap);
+  // Manual registration for each class
+  RecordMapFactoryRegistry.register<User>(UserGenerated.fromMap);
+  RecordMapFactoryRegistry.register<Post>(PostGenerated.fromMap);
   
   runApp(MyApp());
 }

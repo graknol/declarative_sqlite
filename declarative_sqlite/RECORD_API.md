@@ -175,10 +175,10 @@ Add the generator to your `pubspec.yaml`:
 ```yaml
 dev_dependencies:
   declarative_sqlite_generator: ^1.0.0
-  build_runner: ^2.0.0
+  build_runner: ^2.4.0
 
 dependencies:
-  declarative_sqlite: ^1.0.0
+  declarative_sqlite: ^1.0.1
 ```
 
 Define your minimal classes with annotations:

@@ -123,7 +123,7 @@ For a typical table with 8 columns:
 | Lines per class | ~60-80 | ~6-8 | **90%+** |
 | Manual getters | 8 | 0 | **100%** |
 | Manual setters | 8 | 0 | **100%** |
-| Factory method | Manual | Generated mixin | **100%** |
+| Factory method | Manual | Generated extension | **100%** |
 | Registration calls | 1 per class | 1 total | **N-1** |
 
 ### 5. Architecture Benefits

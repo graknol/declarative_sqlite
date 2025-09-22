@@ -45,13 +45,14 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 part 'user.g.dart'; // Generated code will be here
 
 @GenerateDbRecord('users')
+@RegisterFactory()
 class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'users', database);
 
-  // The generator creates all getters and setters automatically
+  // Optional: redirect to generated extension
   static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return User(data, database);
+    return UserGenerated.fromMap(data, database);
   }
 }
 
@@ -61,12 +62,14 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 part 'post.g.dart';
 
 @GenerateDbRecord('posts')
+@RegisterFactory()
 class Post extends DbRecord {
   Post(Map<String, Object?> data, DeclarativeDatabase database)
       : super(data, 'posts', database);
 
+  // Optional: redirect to generated extension
   static Post fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return Post(data, database);
+    return PostGenerated.fromMap(data, database);
   }
 }
 ```
@@ -97,15 +100,14 @@ void main() async {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  // Register typed record factories
-  RecordMapFactoryRegistry.register<User>(User.fromMap);
-  RecordMapFactoryRegistry.register<Post>(Post.fromMap);
-
   // Create database instance
   final database = DeclarativeDatabase(
     schema: buildSchema,
     path: 'my_app.db',
   );
+
+  // Register all typed record factories automatically!
+  registerAllFactories(database);
 
   // Schema is automatically created/migrated
   print('Database ready!');
@@ -251,6 +253,10 @@ class MyApp extends StatelessWidget {
       home: DatabaseProvider(
         schema: buildSchema, // Use the same schema from above
         databaseName: 'flutter_app.db',
+        onDatabaseReady: (database) {
+          // Register all typed record factories automatically!
+          registerAllFactories(database);
+        },
         child: UserListScreen(),
       ),
     );
@@ -269,7 +275,7 @@ class UserListScreen extends StatelessWidget {
       body: QueryListView<User>(
         database: DatabaseProvider.of(context),
         query: (q) => q.from('users').orderBy('name'),
-        mapper: User.fromMap,
+        // No mapper needed - uses automatic factory registry
         loadingBuilder: (context) => Center(
           child: CircularProgressIndicator(),
         ),
@@ -328,46 +334,6 @@ class UserListScreen extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('User added!')),
     );
-  }
-}
-```
-
-### Step 3: Create Data Models
-
-```dart
-class User {
-  final String id;
-  final String name;
-  final String email;
-  final int age;
-  final DateTime createdAt;
-
-  User({
-    required this.id,
-    required this.name,
-    required this.email,
-    required this.age,
-    required this.createdAt,
-  });
-
-  static User fromMap(Map<String, Object?> map) {
-    return User(
-      id: map['id'] as String,
-      name: map['name'] as String,
-      email: map['email'] as String,
-      age: map['age'] as int,
-      createdAt: DateTime.parse(map['created_at'] as String),
-    );
-  }
-
-  Map<String, Object?> toMap() {
-    return {
-      'id': id,
-      'name': name,
-      'email': email,
-      'age': age,
-      'created_at': createdAt.toIso8601String(),
-    };
   }
 }
 ```

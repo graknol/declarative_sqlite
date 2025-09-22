@@ -6,12 +6,14 @@
 /// Example:
 /// ```dart
 /// @GenerateDbRecord('users')
+/// @RegisterFactory()  // Optional: for automatic factory registration
 /// class User extends DbRecord {
 ///   User(Map<String, Object?> data, DeclarativeDatabase database)
 ///       : super(data, 'users', database);
 ///
+///   // Optional redirect to generated extension
 ///   static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-///     return User(data, database);
+///     return UserGenerated.fromMap(data, database);
 ///   }
 /// }
 /// ```
