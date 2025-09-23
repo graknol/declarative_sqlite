@@ -189,15 +189,35 @@ The `RecordMapFactoryRegistry` eliminates the need for mapper parameters in quer
 
 ### Registration
 
-Register all your record types during application initialization:
+The easiest way to register factories is using the `@RegisterFactory` annotation:
+
+```dart
+@GenerateDbRecord('users')
+@RegisterFactory()
+class User extends DbRecord {
+  User(Map<String, Object?> data, DeclarativeDatabase database)
+      : super(data, 'users', database);
+}
+
+void main() async {
+  final database = await DeclarativeDatabase.open('app.db', schema: schema);
+  
+  // Single function call registers all @RegisterFactory classes
+  registerAllFactories(database);
+  
+  runApp(MyApp());
+}
+```
+
+For manual registration of individual classes:
 
 ```dart
 void main() {
-  // Register typed record factories
-  RecordMapFactoryRegistry.register<User>(User.fromMap);
-  RecordMapFactoryRegistry.register<Post>(Post.fromMap);
-  RecordMapFactoryRegistry.register<Comment>(Comment.fromMap);
-  RecordMapFactoryRegistry.register<Category>(Category.fromMap);
+  // Register typed record factories manually
+  RecordMapFactoryRegistry.register<User>(UserGenerated.fromMap);
+  RecordMapFactoryRegistry.register<Post>(PostGenerated.fromMap);
+  RecordMapFactoryRegistry.register<Comment>(CommentGenerated.fromMap);
+  RecordMapFactoryRegistry.register<Category>(CategoryGenerated.fromMap);
   
   runApp(MyApp());
 }
@@ -205,17 +225,28 @@ void main() {
 
 ### Batch Registration
 
-For applications with many record types:
+For applications with many record types, you can use either automatic or manual batch registration:
 
 ```dart
-void registerAllFactories() {
+// Automatic batch registration (recommended)
+void main() async {
+  final database = await DeclarativeDatabase.open('app.db', schema: schema);
+  
+  // Registers ALL classes annotated with @RegisterFactory
+  registerAllFactories(database);
+  
+  runApp(MyApp());
+}
+
+// Manual batch registration
+void registerAllFactoriesManually(DeclarativeDatabase database) {
   final factories = <Type, Function>{
-    User: User.fromMap,
-    Post: Post.fromMap,
-    Comment: Comment.fromMap,
-    Category: Category.fromMap,
-    Tag: Tag.fromMap,
-    UserProfile: UserProfile.fromMap,
+    User: (data) => UserGenerated.fromMap(data, database),
+    Post: (data) => PostGenerated.fromMap(data, database),
+    Comment: (data) => CommentGenerated.fromMap(data, database),
+    Category: (data) => CategoryGenerated.fromMap(data, database),
+    Tag: (data) => TagGenerated.fromMap(data, database),
+    UserProfile: (data) => UserProfileGenerated.fromMap(data, database),
     // ... more types
   };
   
@@ -522,9 +553,16 @@ final users = await DatabaseErrorRecovery.withRetry(() =>
 
 ```dart
 // ✅ Good: Register in main() before any database operations
-void main() {
-  RecordMapFactoryRegistry.register<User>(User.fromMap);
-  RecordMapFactoryRegistry.register<Post>(Post.fromMap);
+void main() async {
+  final database = await DeclarativeDatabase.open('app.db', schema: schema);
+  
+  // Automatic registration (recommended)
+  registerAllFactories(database);
+  
+  // OR manual registration
+  RecordMapFactoryRegistry.register<User>(UserGenerated.fromMap);
+  RecordMapFactoryRegistry.register<Post>(PostGenerated.fromMap);
+  
   runApp(MyApp());
 }
 ```
