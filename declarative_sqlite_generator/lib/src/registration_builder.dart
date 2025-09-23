@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:analyzer/dart/constant/value.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:build/build.dart';
 import 'package:glob/glob.dart';
-import 'package:source_gen/source_gen.dart';
-import 'package:analyzer/dart/element/element.dart';
-import 'package:analyzer/dart/constant/value.dart';
 
 /// Builder that collects all @RegisterFactory classes and generates a single registration file
 class RegistrationCollectBuilder implements Builder {
@@ -18,10 +17,10 @@ class RegistrationCollectBuilder implements Builder {
   Future<void> build(BuildStep buildStep) async {
     final registeredClasses = <RegistrationInfo>[];
     final library = await buildStep.inputLibrary;
-    
+
     // Look for classes with @RegisterFactory annotation
-    for (final element in library.allElements) {
-      if (element is ClassElement && _extendsDbRecord(element)) {
+    for (final element in library.topLevelElements.whereType<ClassElement>()) {
+      if (_extendsDbRecord(element)) {
         final dbRecordAnnotation = _getDbRecordAnnotation(element);
         final registerFactoryAnnotation = _getRegisterFactoryAnnotation(element);
         
@@ -50,10 +49,15 @@ class RegistrationCollectBuilder implements Builder {
   bool _extendsDbRecord(ClassElement element) {
     ClassElement? current = element;
     while (current != null) {
-      if (current.supertype?.element?.name == 'DbRecord') {
+      if (current.supertype?.element.name == 'DbRecord') {
         return true;
       }
-      current = current.supertype?.element;
+      final supertypeElement = current.supertype?.element;
+      if (supertypeElement is ClassElement) {
+        current = supertypeElement;
+      } else {
+        current = null;
+      }
     }
     return false;
   }
@@ -90,15 +94,15 @@ class RegistrationCollectBuilder implements Builder {
 class RegistrationAggregateBuilder implements Builder {
   @override
   final buildExtensions = const {
-    r'$lib$': ['lib/generated_registrations.dart']
+    r'$lib$': ['generated_registrations.dart']
   };
 
   @override
   Future<void> build(BuildStep buildStep) async {
-    final allRegistrations = <RegistrationInfo>[];
+    final allRegistrations = <RegistrationInfo>{};
     
-    // Find all registration JSON files
-    await for (final input in buildStep.findAssets(Glob('lib/**.registration.json'))) {
+    // Find all registration JSON files across the entire project
+    await for (final input in buildStep.findAssets(Glob('**/*.registration.json'))) {
       final content = await buildStep.readAsString(input);
       final List<dynamic> registrations = jsonDecode(content);
       
@@ -114,7 +118,7 @@ class RegistrationAggregateBuilder implements Builder {
     }
   }
 
-  String generateRegistrationFile(List<RegistrationInfo> registrations) {
+  String generateRegistrationFile(Set<RegistrationInfo> registrations) {
     final buffer = StringBuffer();
     
     // Add imports
@@ -126,11 +130,14 @@ class RegistrationAggregateBuilder implements Builder {
     // Add imports for each registered class
     final importedLibraries = <String>{};
     for (final reg in registrations) {
-      // Convert library identifier to relative import
+      // Convert library identifier to a package import if possible
       String importPath = reg.libraryUri;
-      if (importPath.startsWith('package:') && importPath.contains('/lib/')) {
-        // Convert to relative path from lib directory
-        importPath = importPath.split('/lib/')[1];
+      if (importPath.startsWith('asset:')) {
+        // Example: asset:my_package/lib/src/models.dart -> package:my_package/src/models.dart
+        final parts = importPath.split('/');
+        if (parts.length > 2 && parts[1] == 'lib') {
+          importPath = 'package:${parts[0].substring('asset:'.length)}/${parts.sublist(2).join('/')}';
+        }
       }
       
       if (importedLibraries.add(importPath)) {
@@ -142,10 +149,10 @@ class RegistrationAggregateBuilder implements Builder {
     // Generate the registration function
     buffer.writeln('/// Auto-generated factory registration function');
     buffer.writeln('/// Call this function to register all annotated record factories');
-    buffer.writeln('void registerAllFactories(DeclarativeDatabase database) {');
+    buffer.writeln('void registerAllGeneratedFactories(DeclarativeDatabase database) {');
     
     for (final reg in registrations) {
-      buffer.writeln('  RecordMapFactoryRegistry.register<${reg.className}>((data) => ${reg.className}Generated.fromMap(data, database));');
+      buffer.writeln('  RecordMapFactoryRegistry.register<${reg.className}>((data, db) => ${reg.className}(data, db));');
     }
     
     buffer.writeln('}');

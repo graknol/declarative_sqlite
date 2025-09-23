@@ -38,7 +38,6 @@ class ViewBuilder {
 
   ViewBuilder selectSubQuery(
       void Function(QueryBuilder) callback, String alias) {
-    assert(callback != null, 'Sub-query callback cannot be null');
     assert(alias.isNotEmpty, 'Sub-query alias cannot be empty');
     assert(!alias.contains(' '), 'Alias cannot contain spaces');
     
@@ -71,7 +70,6 @@ class ViewBuilder {
     void Function(QueryBuilder) build, [
     String? alias,
   ]) {
-    assert(build != null, 'Sub-query builder callback cannot be null');
     assert(!_hasFrom, 'FROM clause already specified');
     assert(_fromClauses.isEmpty, 'FROM clause already specified');
     
@@ -103,7 +101,6 @@ class ViewBuilder {
   /// Inner join with proper condition builder support
   ViewBuilder innerJoin(String table, WhereClause onCondition, [String? alias]) {
     assert(table.isNotEmpty, 'Table name cannot be empty');
-    assert(onCondition != null, 'Join condition cannot be null. Use WhereClause builder: col("table1.id").eq(col("table2.id"))');
     assert(_hasFrom, 'FROM clause must be specified before joins');
     
     final tableWithAlias = alias != null ? '$table AS $alias' : table;
@@ -115,7 +112,6 @@ class ViewBuilder {
   /// Left join with proper condition builder support  
   ViewBuilder leftJoin(String table, WhereClause onCondition, [String? alias]) {
     assert(table.isNotEmpty, 'Table name cannot be empty');
-    assert(onCondition != null, 'Join condition cannot be null. Use WhereClause builder: col("table1.id").eq(col("table2.id"))');
     assert(_hasFrom, 'FROM clause must be specified before joins');
     
     final tableWithAlias = alias != null ? '$table AS $alias' : table;
@@ -127,7 +123,6 @@ class ViewBuilder {
   /// Right join with proper condition builder support
   ViewBuilder rightJoin(String table, WhereClause onCondition, [String? alias]) {
     assert(table.isNotEmpty, 'Table name cannot be empty');
-    assert(onCondition != null, 'Join condition cannot be null. Use WhereClause builder: col("table1.id").eq(col("table2.id"))');
     assert(_hasFrom, 'FROM clause must be specified before joins');
     
     final tableWithAlias = alias != null ? '$table AS $alias' : table;
@@ -139,7 +134,6 @@ class ViewBuilder {
   /// Full outer join with proper condition builder support
   ViewBuilder fullOuterJoin(String table, WhereClause onCondition, [String? alias]) {
     assert(table.isNotEmpty, 'Table name cannot be empty');
-    assert(onCondition != null, 'Join condition cannot be null. Use WhereClause builder: col("table1.id").eq(col("table2.id"))');
     assert(_hasFrom, 'FROM clause must be specified before joins');
     
     final tableWithAlias = alias != null ? '$table AS $alias' : table;
@@ -159,7 +153,6 @@ class ViewBuilder {
   }
 
   ViewBuilder where(WhereClause condition) {
-    assert(condition != null, 'WHERE condition cannot be null. Use WhereClause builder: col("column").eq("value")');
     assert(_hasFrom, 'FROM clause must be specified before WHERE clause');
     
     _whereClauses.add(condition);

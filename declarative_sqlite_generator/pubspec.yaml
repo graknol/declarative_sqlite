@@ -11,14 +11,14 @@ dependencies:
   # Core build system dependencies
   build: ^2.4.1
   build_config: ^1.1.1
-  source_gen: ^1.4.0
-  analyzer: ^6.0.0
+  source_gen: ^1.5.0
+  analyzer: ^6.4.1
   glob: ^2.1.2
-  
+
   # Code generation utilities
-  code_builder: ^4.7.0
-  dart_style: ^2.3.4
-  
+  code_builder: ^4.10.0
+  dart_style: ^2.3.6
+
   # Reference to the main library for schema metadata
   declarative_sqlite:
     path: ../declarative_sqlite
@@ -28,4 +28,4 @@ dev_dependencies:
   test: ^1.24.0
   build_runner: ^2.4.7
   build_test: ^2.2.0
-  sqflite_common_ffi: ^2.3.4+4  # For examples
+  sqflite_common_ffi: ^2.3.4+4 # For examples

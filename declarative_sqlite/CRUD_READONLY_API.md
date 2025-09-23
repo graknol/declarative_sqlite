@@ -21,7 +21,7 @@ The categorization depends on:
 
 ```dart
 // Direct table queries return CRUD-enabled records
-final users = await db.queryTableRecords('users');
+final users = await db.query((q) => q.from('users'));
 final user = users.first;
 
 print(user.isReadOnly);      // false
@@ -39,7 +39,7 @@ await user.delete();  // ✅ Works
 
 ```dart
 // View queries return read-only records
-final userDetails = await db.queryTableRecords('user_details_view');
+final userDetails = await db.query((q) => q.from('user_details_view'));
 final detail = userDetails.first;
 
 print(detail.isReadOnly);      // true
@@ -130,7 +130,7 @@ result.setValue('description', 'New Desc'); // ArgumentError
 CRUD-enabled records can be reloaded to refresh their data from the database:
 
 ```dart
-final user = (await db.queryTableRecords('users')).first;
+final user = (await db.query((q) => q.from('users'))).first;
 
 // Modify in memory
 user.setValue('name', 'Temporary Name');
@@ -151,7 +151,7 @@ print(user.modifiedFields);           // [] (cleared)
 
 ```dart
 // ❌ Read-only records cannot be reloaded
-final viewRecord = (await db.queryTableRecords('some_view')).first;
+final viewRecord = (await db.query((q) => q.from('some_view'))).first;
 await viewRecord.reload(); // StateError
 
 // ❌ Records without system_id cannot be reloaded

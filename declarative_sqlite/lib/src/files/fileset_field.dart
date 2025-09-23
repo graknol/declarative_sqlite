@@ -34,7 +34,7 @@ class FilesetField {
   String? get filesetId => _filesetId;
 
   /// Returns true if this fileset field has a value (is not null or empty).
-  bool get hasValue => _filesetId != null && _filesetId!.isNotEmpty;
+  bool get hasValue => _filesetId != null && _filesetId.isNotEmpty;
 
   /// Adds a file to this fileset.
   ///

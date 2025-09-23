@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:declarative_sqlite/src/builders/query_builder.dart';
+import 'package:declarative_sqlite/src/builders/where_clause.dart';
 import 'package:declarative_sqlite/src/exceptions/db_exception_wrapper.dart';
 import 'package:declarative_sqlite/src/record.dart';
 import 'package:declarative_sqlite/src/record_factory.dart';
@@ -34,7 +35,7 @@ class DeclarativeDatabase {
   /// The schema for the database.
   final Schema schema;
 
-  final DirtyRowStore dirtyRowStore;
+  final DirtyRowStore? dirtyRowStore;
 
   /// The repository for storing and retrieving file content.
   final IFileRepository fileRepository;
@@ -49,6 +50,19 @@ class DeclarativeDatabase {
 
   /// Manager for streaming queries.
   late final QueryStreamManager _streamManager;
+
+  final Map<String, DbRecord> _recordCache = {};
+
+  void registerRecord(DbRecord record) {
+    final systemId = record.systemId;
+    if (systemId != null) {
+      _recordCache[systemId] = record;
+    }
+  }
+
+  DbRecord? getRecordFromCache(String systemId) {
+    return _recordCache[systemId];
+  }
 
   DeclarativeDatabase._internal(
     this._db,
@@ -106,11 +120,12 @@ class DeclarativeDatabase {
         for (final script in scripts) {
           await db.execute(script);
         }
+        await _setSetting(db, 'schema_hash', newSchemaHash);
       }
 
       // Initialize the dirty row store
       dirtyRowStore ??= SqliteDirtyRowStore();
-      await dirtyRowStore.init(db);
+      await dirtyRowStore?.init(db);
 
       // Get or create the persistent HLC node ID
       final nodeId =
@@ -132,8 +147,13 @@ class DeclarativeDatabase {
   Future<void> close() async {
     _streamManager.dispose();
     if (_db is sqflite.Database) {
-      return _db.close();
+      await _db.close();
     }
+  }
+
+  /// Executes a raw SQL statement.
+  Future<void> execute(String sql, [List<Object?>? arguments]) async {
+    await _db.execute(sql, arguments);
   }
 
   /// Executes a raw SQL query and returns a list of the results.
@@ -168,9 +188,6 @@ class DeclarativeDatabase {
     return _db.rawDelete(sql, arguments);
   }
 
-  /// Executes a query built with a [QueryBuilder].
-  /// This is a cleaner way of composing the query,
-  /// rather than having to create the [QueryBuilder]
   /// Executes a query built with a [QueryBuilder] and returns raw Map objects.
   ///
   /// This is a lower-level method. Most code should use query() to get
@@ -192,36 +209,32 @@ class DeclarativeDatabase {
   Future<List<Map<String, Object?>>> queryMapsWith(QueryBuilder builder) async {
     final (sql, params) = builder.build();
     final rawResults = await rawQuery(sql, params);
-    
+
     // Apply fileset transformation if we have table context
     final tableName = builder.tableName;
     if (tableName != null) {
       return _transformFilesetColumns(tableName, rawResults);
     }
-    
-    return rawResults;
-  }
-    }
-    
+
     return rawResults;
   }
 
   /// Creates a streaming query that emits new results whenever the underlying data changes.
-  /// 
+  ///
   /// The [onBuild] callback is used to configure the query using a [QueryBuilder].
   /// The [mapper] function converts raw database rows to typed objects.
-  /// 
+  ///
   /// Returns a [Stream] that emits a list of results whenever the query result changes.
   /// The stream will emit an initial result when subscribed to, and then emit new results
   /// whenever insert, update, delete, or bulkLoad operations affect the query dependencies.
-  /// 
+  ///
   /// Example:
   /// ```dart
   /// final usersStream = db.stream<User>(
   ///   (q) => q.from('users').where(col('age').gt(18)),
   ///   (row) => User.fromMap(row),
   /// );
-  /// 
+  ///
   /// usersStream.listen((users) {
   ///   print('Users updated: ${users.length}');
   /// });
@@ -236,14 +249,14 @@ class DeclarativeDatabase {
   }
 
   /// Creates a streaming query using an existing [QueryBuilder].
-  /// 
+  ///
   /// See [stream] for more details.
   Stream<List<T>> streamMapsWith<T>(
     QueryBuilder builder,
     T Function(Map<String, Object?>) mapper,
   ) {
     final queryId = Uuid().v4();
-    final streamingQuery = StreamingQuery.create<T>(
+    final streamingQuery = StreamingQuery.create(
       id: queryId,
       builder: builder,
       database: this,
@@ -251,7 +264,7 @@ class DeclarativeDatabase {
     );
 
     _streamManager.register(streamingQuery);
-    
+
     // Clean up when stream is disposed
     streamingQuery.stream.listen(
       null,
@@ -262,24 +275,24 @@ class DeclarativeDatabase {
   }
 
   /// Executes a query and returns typed DbRecord objects.
-  /// 
+  ///
   /// This is the main query method that intelligently determines CRUD vs read-only
   /// behavior by inspecting the QueryBuilder:
   /// - Table queries (simple from('table')) → CRUD-enabled
-  /// - View queries → Read-only  
+  /// - View queries → Read-only
   /// - Complex queries with forUpdate('table') → CRUD-enabled for specified table
-  /// 
+  ///
   /// Examples:
   /// ```dart
   /// // Table query - CRUD enabled
   /// final users = await db.query((q) => q.from('users'));
   /// users.first.setValue('name', 'Updated');
   /// await users.first.save(); // ✅ Works
-  /// 
+  ///
   /// // View query - read-only
   /// final details = await db.query((q) => q.from('user_details_view'));
   /// details.first.setValue('name', 'Test'); // ❌ StateError
-  /// 
+  ///
   /// // Complex query with forUpdate - CRUD enabled for target table
   /// final results = await db.query(
   ///   (q) => q.from('user_details_view').forUpdate('users')
@@ -287,8 +300,7 @@ class DeclarativeDatabase {
   /// results.first.setValue('name', 'Updated');
   /// await results.first.save(); // ✅ Updates users table
   /// ```
-  Future<List<DbRecord>> query(
-      void Function(QueryBuilder) onBuild) async {
+  Future<List<DbRecord>> query(void Function(QueryBuilder) onBuild) async {
     final builder = QueryBuilder();
     onBuild(builder);
     return queryWith(builder);
@@ -299,42 +311,48 @@ class DeclarativeDatabase {
     final results = await queryMapsWith(builder);
     final tableName = builder.tableName;
     final updateTableName = builder.updateTableName;
-    
+
     if (tableName == null) {
-      throw ArgumentError('QueryBuilder must specify a table to return DbRecord objects');
+      throw ArgumentError(
+          'QueryBuilder must specify a table to return DbRecord objects');
     }
-    
+
     // If forUpdate was specified, validate the requirements
     if (updateTableName != null) {
       _validateForUpdateQuery(results, updateTableName);
-      
+
       // Return records configured for CRUD with the specified update table
-      return RecordFactory.fromMapList(results, tableName, this, updateTable: updateTableName);
+      return RecordFactory.fromMapList(results, tableName, this,
+          updateTable: updateTableName);
     }
-    
+
     // Determine if this is a table or view query by inspecting the QueryBuilder
     final isSimpleTableQuery = _isSimpleTableQuery(builder);
-    
+
     if (isSimpleTableQuery) {
       // Simple table query - CRUD enabled by default
-      return results.map((data) => RecordFactory.fromTable(data, tableName, this)).toList();
+      return results
+          .map((data) => RecordFactory.fromTable(data, tableName, this))
+          .toList();
     } else {
       // View or complex query - read-only by default
-      return results.map((data) => RecordFactory.fromQuery(data, tableName, this)).toList();
+      return results
+          .map((data) => RecordFactory.fromQuery(data, tableName, this))
+          .toList();
     }
   }
 
   /// Creates a streaming query that returns typed DbRecord objects.
-  /// 
+  ///
   /// Like the query() method, this intelligently determines CRUD vs read-only
   /// behavior by inspecting the QueryBuilder shape.
-  /// 
+  ///
   /// Example:
   /// ```dart
-  /// final usersStream = db.stream(
+  /// final usersStream = db.streamRecords(
   ///   (q) => q.from('users').where(col('age').gt(18)),
   /// );
-  /// 
+  ///
   /// usersStream.listen((users) {
   ///   for (final user in users) {
   ///     print('User: ${user.getValue<String>('name')}');
@@ -343,35 +361,37 @@ class DeclarativeDatabase {
   ///   }
   /// });
   /// ```
-  Stream<List<DbRecord>> stream(
+  Stream<List<DbRecord>> streamRecords(
     void Function(QueryBuilder) onBuild,
   ) {
     final builder = QueryBuilder();
     onBuild(builder);
-    return streamWith(builder);
+    return streamRecordsWith(builder);
   }
 
   /// Creates a streaming query using an existing [QueryBuilder] that returns DbRecord objects.
-  Stream<List<DbRecord>> streamWith(QueryBuilder builder) {
+  Stream<List<DbRecord>> streamRecordsWith(QueryBuilder builder) {
     final tableName = builder.tableName;
     final updateTableName = builder.updateTableName;
-    
+
     if (tableName == null) {
-      throw ArgumentError('QueryBuilder must specify a table to return DbRecord objects');
+      throw ArgumentError(
+          'QueryBuilder must specify a table to return DbRecord objects');
     }
-    
+
     return streamMapsWith(
       builder,
       (row) {
         // Validate forUpdate requirements on each emitted result
         if (updateTableName != null) {
           _validateForUpdateQuery([row], updateTableName);
-          return RecordFactory.fromQuery(row, tableName, this, updateTable: updateTableName);
+          return RecordFactory.fromQuery(row, tableName, this,
+              updateTable: updateTableName);
         }
-        
+
         // Determine if this is a simple table query by inspecting the QueryBuilder
         final isSimpleTableQuery = _isSimpleTableQuery(builder);
-        
+
         if (isSimpleTableQuery) {
           return RecordFactory.fromTable(row, tableName, this);
         } else {
@@ -384,15 +404,15 @@ class DeclarativeDatabase {
   // Typed query methods using RecordMapFactoryRegistry
 
   /// Executes a query and returns typed record objects using registered factories.
-  /// 
+  ///
   /// The record type T must be registered with RecordMapFactoryRegistry.register<T>().
   /// This method uses the same intelligent CRUD vs read-only detection as query().
-  /// 
+  ///
   /// Example:
   /// ```dart
   /// // First register the factory
   /// RecordMapFactoryRegistry.register<User>(User.fromMap);
-  /// 
+  ///
   /// // Then query with automatic typing
   /// final users = await db.queryTyped<User>((q) => q.from('users'));
   /// users.first.name = 'Updated'; // Direct property access
@@ -407,15 +427,16 @@ class DeclarativeDatabase {
   }
 
   /// Executes a query using an existing QueryBuilder and returns typed record objects.
-  Future<List<T>> queryTypedWith<T extends DbRecord>(QueryBuilder builder) async {
+  Future<List<T>> queryTypedWith<T extends DbRecord>(
+      QueryBuilder builder) async {
     final results = await queryMapsWith(builder);
     final factory = RecordMapFactoryRegistry.getFactory<T>();
-    
+
     return results.map((row) => factory(row, this)).toList();
   }
 
   /// Creates a streaming query that returns typed record objects using registered factories.
-  /// 
+  ///
   /// Uses the same intelligent CRUD vs read-only detection as stream().
   Stream<List<T>> streamTyped<T extends DbRecord>(
     void Function(QueryBuilder) onBuild,
@@ -428,7 +449,7 @@ class DeclarativeDatabase {
   /// Creates a streaming query using an existing QueryBuilder that returns typed record objects.
   Stream<List<T>> streamTypedWith<T extends DbRecord>(QueryBuilder builder) {
     final factory = RecordMapFactoryRegistry.getFactory<T>();
-    
+
     return streamMapsWith(
       builder,
       (row) => factory(row, this),
@@ -472,11 +493,11 @@ class DeclarativeDatabase {
     return await DbExceptionWrapper.wrapCreate(() async {
       final now = hlcClock.now();
       final systemId = await _insert(tableName, values, now);
-      await dirtyRowStore.add(tableName, systemId, now);
-      
+      await dirtyRowStore?.add(tableName, systemId, now);
+
       // Notify streaming queries of the change
       await _streamManager.notifyTableChanged(tableName);
-      
+
       return systemId;
     }, tableName: tableName);
   }
@@ -487,7 +508,7 @@ class DeclarativeDatabase {
 
     // Convert FilesetField values to database strings
     final convertedValues = _convertFilesetFieldsToValues(tableName, values);
-    
+
     final valuesToInsert = {...convertedValues};
     valuesToInsert['system_version'] = hlc.toString();
     if (valuesToInsert['system_id'] == null) {
@@ -521,13 +542,13 @@ class DeclarativeDatabase {
     List<Object?>? whereArgs,
   }) async {
     return await DbExceptionWrapper.wrapUpdate(() async {
-      // We need to get the system_ids of the rows being updated so we can
-      // mark them as dirty.
-      final rowsToUpdate = await queryTable(
-        tableName,
-        columns: ['system_id'],
-        where: where,
-        whereArgs: whereArgs,
+      final rowsToUpdate = await query(
+        (q) {
+          q.from(tableName).select('system_id');
+          if (where != null) {
+            q.where(RawSqlWhereClause(where, whereArgs));
+          }
+        },
       );
 
       final now = hlcClock.now();
@@ -539,12 +560,13 @@ class DeclarativeDatabase {
         whereArgs: whereArgs,
       );
 
-      for (final row in rowsToUpdate) {
-        await dirtyRowStore.add(tableName, row['system_id']! as String, now);
+      if (result > 0) {
+        for (final row in rowsToUpdate) {
+          await dirtyRowStore?.add(
+              tableName, row.getValue<String>('system_id')!, now);
+        }
+        await _streamManager.notifyTableChanged(tableName);
       }
-
-      // Notify streaming queries of the change
-      await _streamManager.notifyTableChanged(tableName);
 
       return result;
     }, tableName: tableName);
@@ -571,13 +593,14 @@ class DeclarativeDatabase {
     if (lwwColumns.isNotEmpty) {
       // We need to check the HLCs of the existing rows to see if we can
       // update them.
-      final existingRows = await queryTable(
-        tableName,
-        columns: [
-          ...values.keys.where(lwwColumns.contains).map((c) => '${c}__hlc'),
-        ],
-        where: where,
-        whereArgs: whereArgs,
+      final existingRows = await queryMaps(
+        (q) {
+          q.from(tableName)
+              .select(lwwColumns.map((c) => '${c}__hlc').toList().join(', '));
+          if (where != null) {
+            q.where(RawSqlWhereClause(where, whereArgs));
+          }
+        },
       );
 
       if (existingRows.isNotEmpty) {
@@ -636,13 +659,13 @@ class DeclarativeDatabase {
       // Make sure the table exists or throw an exception
       final _ = _getTableDefinition(tableName);
 
-      final now = hlcClock.now();
-
-      final rowsToDelete = await queryTable(
-        tableName,
-        columns: ['system_id'],
-        where: where,
-        whereArgs: whereArgs,
+      final rowsToDelete = await query(
+        (q) {
+          q.from(tableName).select('system_id');
+          if (where != null) {
+            q.where(RawSqlWhereClause(where, whereArgs));
+          }
+        },
       );
 
       final result = await _db.delete(
@@ -651,12 +674,14 @@ class DeclarativeDatabase {
         whereArgs: whereArgs,
       );
 
-      for (final row in rowsToDelete) {
-        await dirtyRowStore.add(tableName, row['system_id']! as String, now);
+      if (result > 0) {
+        final now = hlcClock.now();
+        for (final row in rowsToDelete) {
+          await dirtyRowStore?.add(
+              tableName, row.getValue<String>('system_id')!, now);
+        }
+        await _streamManager.notifyTableChanged(tableName);
       }
-
-      // Notify streaming queries of the change
-      await _streamManager.notifyTableChanged(tableName);
 
       return result;
     }, tableName: tableName);
@@ -688,9 +713,76 @@ class DeclarativeDatabase {
         limit: limit,
         offset: offset,
       );
-      
+
       return _transformFilesetColumns(table, rawResults);
     }, tableName: table);
+  }
+
+  /// Queries a query and returns a single result, or null if none is found.
+  Future<Map<String, Object?>?> queryFirst(
+    String table, {
+    bool? distinct,
+    List<String>? columns,
+    String? where,
+    List<Object?>? whereArgs,
+    String? groupBy,
+    String? having,
+    String? orderBy,
+    int? offset,
+  }) async {
+    final results = await queryTable(
+      table,
+      distinct: distinct,
+      columns: columns,
+      where: where,
+      whereArgs: whereArgs,
+      groupBy: groupBy,
+      having: having,
+      orderBy: orderBy,
+      limit: 1,
+      offset: offset,
+    );
+    return results.isNotEmpty ? results.first : null;
+  }
+
+  /// Queries an entire table and returns typed record objects using registered factories.
+  ///
+  /// The record type T must be registered with RecordMapFactoryRegistry.register<T>().
+  ///
+  /// Example:
+  /// ```dart
+  /// // First register the factory
+  /// RecordMapFactoryRegistry.register<User>(User.fromMap);
+  ///
+  /// // Then query the whole table
+  /// final allUsers = await db.queryTableTyped<User>('users');
+  /// ```
+  Future<List<T>> queryTableTyped<T extends DbRecord>(
+    String tableName, {
+    bool? distinct,
+    List<String>? columns,
+    String? where,
+    List<Object?>? whereArgs,
+    String? groupBy,
+    String? having,
+    String? orderBy,
+    int? limit,
+    int? offset,
+  }) async {
+    final results = await queryTable(
+      tableName,
+      distinct: distinct,
+      columns: columns,
+      where: where,
+      whereArgs: whereArgs,
+      groupBy: groupBy,
+      having: having,
+      orderBy: orderBy,
+      limit: limit,
+      offset: offset,
+    );
+    final factory = RecordMapFactoryRegistry.getFactory<T>();
+    return results.map((row) => factory(row, this)).toList();
   }
 
   /// Transforms raw query results by converting fileset columns to FilesetField objects.
@@ -699,27 +791,27 @@ class DeclarativeDatabase {
     List<Map<String, Object?>> rawResults,
   ) {
     if (rawResults.isEmpty) return rawResults;
-    
+
     // Get table definition to identify fileset columns
     final tableDef = _getTableDefinition(tableName);
     final filesetColumns = tableDef.columns
         .where((col) => col.logicalType == 'fileset')
         .map((col) => col.name)
         .toSet();
-    
+
     if (filesetColumns.isEmpty) return rawResults;
-    
+
     // Transform each row
     return rawResults.map((row) {
       final transformedRow = <String, Object?>{...row};
-      
+
       for (final columnName in filesetColumns) {
         if (transformedRow.containsKey(columnName)) {
           final value = transformedRow[columnName];
           transformedRow[columnName] = _createFilesetField(value);
         }
       }
-      
+
       return transformedRow;
     }).toList();
   }
@@ -740,11 +832,11 @@ class DeclarativeDatabase {
         .where((col) => col.logicalType == 'fileset')
         .map((col) => col.name)
         .toSet();
-    
+
     if (filesetColumns.isEmpty) return values;
-    
+
     final convertedValues = <String, Object?>{...values};
-    
+
     for (final columnName in filesetColumns) {
       if (convertedValues.containsKey(columnName)) {
         final value = convertedValues[columnName];
@@ -753,7 +845,7 @@ class DeclarativeDatabase {
         }
       }
     }
-    
+
     return convertedValues;
   }
 
@@ -784,11 +876,10 @@ class DeclarativeDatabase {
         final systemId = row['system_id'] as String?;
         if (systemId == null) continue;
 
-        final existing = await db.queryTable(
-          tableName,
-          where: 'system_id = ?',
-          whereArgs: [systemId],
-          limit: 1,
+        final existing = await db.query(
+          (q) => q
+              .from(tableName)
+              .where(RawSqlWhereClause('system_id = ?', [systemId])).limit(1),
         );
 
         if (existing.isNotEmpty) {
@@ -809,7 +900,8 @@ class DeclarativeDatabase {
 
               if (remoteHlcString != null) {
                 // If HLC is provided, do a proper LWW comparison.
-                final localHlcString = existingRow[hlcColName] as String?;
+                final localHlcString =
+                    existingRow.getValue<String?>(hlcColName);
                 final localHlc =
                     localHlcString != null ? Hlc.parse(localHlcString) : null;
                 final remoteHlc = Hlc.parse(remoteHlcString);
@@ -843,104 +935,43 @@ class DeclarativeDatabase {
         }
       }
     });
-    
+
     // Notify streaming queries of the change
     await _streamManager.notifyTableChanged(tableName);
   }
 
-  static Future<bool> _removeSetting(
-    sqflite.DatabaseExecutor db,
-    String key,
-  ) async {
-    final deleteCount = await db.delete(
-      '__settings',
-      where: 'key = ?',
-      whereArgs: [key],
-    );
-    return deleteCount > 0;
-  }
-
   /// Validates that a query result meets the requirements for forUpdate
-  void _validateForUpdateQuery(List<Map<String, Object?>> results, String updateTableName) {
+  void _validateForUpdateQuery(
+      List<Map<String, Object?>> results, String updateTableName) {
     // Check that the update table exists in the schema
-    final updateTable = schema.userTables.firstWhere(
+    schema.userTables.firstWhere(
       (table) => table.name == updateTableName,
-      orElse: () => throw ArgumentError('Update table $updateTableName not found in schema'),
+      orElse: () =>
+          throw ArgumentError('Update table $updateTableName not found in schema'),
     );
 
     if (results.isEmpty) return; // No results to validate
 
     final firstResult = results.first;
-    
+
     // Verify that system_id is present
-    if (!firstResult.containsKey('system_id') || firstResult['system_id'] == null) {
+    if (!firstResult.containsKey('system_id') ||
+        firstResult['system_id'] == null) {
       throw StateError(
-        'Query with forUpdate(\'$updateTableName\') must include system_id column from the target table'
-      );
+          'Query with forUpdate(\'$updateTableName\') must include system_id column from the target table');
     }
 
     // Verify that system_version is present
-    if (!firstResult.containsKey('system_version') || firstResult['system_version'] == null) {
+    if (!firstResult.containsKey('system_version') ||
+        firstResult['system_version'] == null) {
       throw StateError(
-        'Query with forUpdate(\'$updateTableName\') must include system_version column from the target table'
-      );
+          'Query with forUpdate(\'$updateTableName\') must include system_version column from the target table');
     }
-  }
-
-  static Future<String> _setSettingIfNotSet(
-    sqflite.DatabaseExecutor db,
-    String key,
-    String Function() defaultFactory,
-  ) async {
-    var result = await _getSetting(db, key);
-    result ??= await _setSetting(db, key, defaultFactory());
-    return result;
-  }
-
-  static Future<String> _setSetting(
-    sqflite.DatabaseExecutor db,
-    String key,
-    String value,
-  ) async {
-    await db.insert(
-      '__settings',
-      {
-        'key': key,
-        'value': value,
-      },
-      conflictAlgorithm: sqflite.ConflictAlgorithm.replace,
-    );
-    return value;
-  }
-
-  static Future<String?> _getSettingOrDefault(
-    sqflite.DatabaseExecutor db,
-    String key,
-    String Function() defaultFactory,
-  ) async {
-    return (await _getSetting(db, key)) ?? defaultFactory();
-  }
-
-  static Future<String?> _getSetting(
-    sqflite.DatabaseExecutor db,
-    String key,
-  ) async {
-    try {
-      final result = await db.query('__settings',
-          where: 'key = ?', whereArgs: [key], limit: 1, columns: ['value']);
-      if (result.isNotEmpty) {
-        return result.first['value'] as String?;
-      }
-    } on Exception {
-      // Ignore any errors, most likely due to missing table,
-      // in which case, there's nothing to do but to return null
-    }
-    return null;
   }
 
   /// Determines if a QueryBuilder represents a simple table query (CRUD-enabled)
   /// vs a complex query or view query (read-only by default).
-  /// 
+  ///
   /// A simple table query is one that:
   /// - Queries directly from a table (not a view)
   /// - Has no complex joins, subqueries, or aggregations
@@ -948,14 +979,59 @@ class DeclarativeDatabase {
   bool _isSimpleTableQuery(QueryBuilder builder) {
     final tableName = builder.tableName;
     if (tableName == null) return false;
-    
+
     // Check if the table name refers to an actual table (not a view)
-    final isActualTable = schema.userTables.any((table) => table.name == tableName);
+    final isActualTable =
+        schema.userTables.any((table) => table.name == tableName);
     if (!isActualTable) return false;
-    
+
     // For now, we'll consider any direct table reference as "simple"
     // This could be enhanced to check for complex joins, aggregations, etc.
     // based on the QueryBuilder structure
     return true;
   }
+}
+
+// Static helper methods for settings
+Future<String> _setSettingIfNotSet(
+  sqflite.DatabaseExecutor db,
+  String key,
+  String Function() defaultFactory,
+) async {
+  var result = await _getSetting(db, key);
+  result ??= await _setSetting(db, key, defaultFactory());
+  return result;
+}
+
+Future<String> _setSetting(
+  sqflite.DatabaseExecutor db,
+  String key,
+  String value,
+) async {
+  await db.insert(
+    '__settings',
+    {
+      'key': key,
+      'value': value,
+    },
+    conflictAlgorithm: sqflite.ConflictAlgorithm.replace,
+  );
+  return value;
+}
+
+Future<String?> _getSetting(
+  sqflite.DatabaseExecutor db,
+  String key,
+) async {
+  try {
+    final result = await db.query('__settings',
+        where: 'key = ?', whereArgs: [key], limit: 1, columns: ['value']);
+    if (result.isNotEmpty) {
+      return result.first['value'] as String?;
+    }
+  } on Exception {
+    // Ignore any errors, most likely due to missing table,
+    // in which case, there's nothing to do but to return null
+  }
+  return null;
 }

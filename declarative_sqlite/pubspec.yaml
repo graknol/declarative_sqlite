@@ -17,6 +17,9 @@ dependencies:
   path_provider: ">1.0.0 <2.3.0-beta"
   crypto: ^3.0.6
   collection: ^1.19.1
+  async: ^2.11.0
+  pool: ^1.5.1
+  async_locks: ^1.0.0
 
 dev_dependencies:
   flutter_test:
@@ -25,5 +28,8 @@ dev_dependencies:
   test: ^1.24.0
   sqflite: ^2.3.3+1
   sqflite_common_ffi: ^2.3.6
+  build_runner: ^2.4.10
+  declarative_sqlite_generator:
+    path: ../declarative_sqlite_generator
 
 flutter: {}

@@ -1,5 +1,5 @@
+import 'package:collection/collection.dart';
 import 'package:declarative_sqlite/src/database.dart';
-import 'package:declarative_sqlite/src/exceptions/db_exception_wrapper.dart';
 import 'package:declarative_sqlite/src/files/fileset_field.dart';
 import 'package:declarative_sqlite/src/schema/column.dart';
 import 'package:declarative_sqlite/src/schema/table.dart';
@@ -46,13 +46,12 @@ abstract class DbRecord {
         _isReadOnly = updateTable == null;
 
   /// Creates a generic DbRecord (for backward compatibility)
-  DbRecord(this._data, this._tableName, this._database) 
-      : _tableDefinition = _database.schema.userTables.firstWhere(
-          (table) => table.name == _tableName,
-          orElse: () => null, // Don't throw for views
-        ),
+  DbRecord(this._data, this._tableName, this._database)
+      : _tableDefinition = _database.schema.userTables
+            .firstWhereOrNull((table) => table.name == _tableName),
         _updateTableName = _tableName,
-        _isReadOnly = _database.schema.userTables.any((table) => table.name == _tableName) ? false : true;
+        _isReadOnly = !_database.schema.userTables
+            .any((table) => table.name == _tableName);
 
   /// Gets the table name for this record
   String get tableName => _tableName;
@@ -98,7 +97,17 @@ abstract class DbRecord {
     if (rawValue == null) return null;
 
     final column = _getColumn(columnName);
-    
+    if (column == null) {
+      // Fallback for views or complex queries without schema info
+      if (T == DateTime) {
+        return _parseDateTime(rawValue) as T?;
+      }
+      if (T == FilesetField) {
+        return _parseFilesetField(rawValue) as T?;
+      }
+      return rawValue as T?;
+    }
+
     switch (column.logicalType) {
       case 'text':
       case 'guid':
@@ -120,14 +129,14 @@ abstract class DbRecord {
   /// Throws StateError if the record is read-only
   void setValue<T>(String columnName, T? value) {
     if (_isReadOnly) {
-      throw StateError('Cannot modify read-only record from ${_tableName}');
+      throw StateError('Cannot modify read-only record from $_tableName');
     }
 
     // Validate that the column exists in the update table schema
     if (_tableDefinition != null) {
       final column = _getColumn(columnName);
       if (column == null) {
-        throw ArgumentError('Column $columnName does not exist in update table ${_updateTableName}');
+        throw ArgumentError('Column $columnName does not exist in update table $_updateTableName');
       }
     }
 
@@ -256,7 +265,7 @@ abstract class DbRecord {
   /// Throws StateError if the record is read-only
   Future<void> save() async {
     if (_isReadOnly) {
-      throw StateError('Cannot save read-only record from ${_tableName}');
+      throw StateError('Cannot save read-only record from $_tableName');
     }
 
     if (_modifiedFields.isEmpty) return;
@@ -297,7 +306,7 @@ abstract class DbRecord {
   /// Throws StateError if the record is read-only
   Future<void> insert() async {
     if (_isReadOnly) {
-      throw StateError('Cannot insert read-only record from ${_tableName}');
+      throw StateError('Cannot insert read-only record from $_tableName');
     }
 
     // Remove system columns - they'll be added by the database layer
@@ -314,7 +323,7 @@ abstract class DbRecord {
   /// Throws StateError if the record is read-only
   Future<void> delete() async {
     if (_isReadOnly) {
-      throw StateError('Cannot delete read-only record from ${_tableName}');
+      throw StateError('Cannot delete read-only record from $_tableName');
     }
 
     final systemId = this.systemId;
@@ -333,7 +342,7 @@ abstract class DbRecord {
   /// Only available for CRUD-enabled records as views cannot guarantee uniqueness
   Future<void> reload() async {
     if (_isReadOnly) {
-      throw StateError('Cannot reload read-only record from ${_tableName}');
+      throw StateError('Cannot reload read-only record from $_tableName');
     }
 
     final systemId = this.systemId;
@@ -361,13 +370,8 @@ abstract class DbRecord {
 
   /// Gets the column definition for the specified column name
   Column? _getColumn(String columnName) {
-    if (_tableDefinition == null) {
-      return null; // For views or queries without table definitions
-    }
-    
-    return _tableDefinition!.columns.firstWhere(
+    return _tableDefinition?.columns.firstWhereOrNull(
       (col) => col.name == columnName,
-      orElse: () => throw ArgumentError('Column $columnName not found in table ${_updateTableName ?? _tableName}'),
     );
   }
 
@@ -406,4 +410,8 @@ abstract class DbRecord {
 
   @override
   int get hashCode => _tableName.hashCode ^ _data.toString().hashCode;
+
+  Object? operator [](String key) {
+    return data[key];
+  }
 }

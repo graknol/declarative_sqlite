@@ -1,7 +1,8 @@
 import 'dart:async';
+
 import '../builders/query_builder.dart';
+import '../builders/query_dependencies.dart';
 import '../database.dart';
-import 'streaming_query.dart';
 import 'query_dependency_analyzer.dart';
 
 /// Advanced streaming query manager that handles smart lifecycle management
@@ -15,8 +16,7 @@ class AdvancedStreamingQuery<T> {
   
   late final StreamController<List<T>> _controller;
   bool _isActive = false;
-  List<T>? _lastResults;
-  
+
   /// Cache of previously mapped results indexed by their system_id
   final Map<String, _CachedResult<T>> _resultCache = {};
   
@@ -38,8 +38,8 @@ class AdvancedStreamingQuery<T> {
     _lastMapper = mapper;
     
     // Analyze dependencies
-    final analyzer = QueryDependencyAnalyzer(database.schema);
-    _dependencies = analyzer.analyze(builder);
+    final analyzer = QueryDependencyAnalyzer();
+    _dependencies = analyzer.analyzeQuery(builder);
     
     _controller = StreamController<List<T>>.broadcast(
       onListen: _onListen,
@@ -87,8 +87,8 @@ class AdvancedStreamingQuery<T> {
       _builder = newBuilder;
       
       // Re-analyze dependencies for the new query
-      final analyzer = QueryDependencyAnalyzer(_database.schema);
-      _dependencies = analyzer.analyze(newBuilder);
+      final analyzer = QueryDependencyAnalyzer();
+      _dependencies = analyzer.analyzeQuery(newBuilder);
       
       needsRefresh = true;
     }
@@ -115,21 +115,23 @@ class AdvancedStreamingQuery<T> {
 
   /// Returns true if this query might be affected by changes to the given table
   bool isAffectedByTable(String tableName) {
-    return _dependencies.isAffectedByTable(tableName);
+    return _dependencies.tables.contains(tableName) ||
+           _dependencies.tables.any((table) => table.split(' ').first == tableName);
   }
 
   /// Returns true if this query might be affected by changes to the given column
   bool isAffectedByColumn(String tableName, String columnName) {
-    return _dependencies.isAffectedByColumn(tableName, columnName);
+    return _dependencies.usesWildcard && _dependencies.tables.any((table) => table.split(' ').first == tableName) ||
+           _dependencies.columns.any((col) => col.table == tableName && col.column == columnName);
   }
 
   /// Manually trigger a refresh of this query with hash-based optimization
   Future<void> refresh() async {
     if (!_isActive) return;
-    
+
     try {
-      final rawResults = await _database.queryWith(_builder);
-      
+      final rawResults = await _database.queryMapsWith(_builder);
+
       // Extract system IDs and versions for all raw results
       final newResultSystemIds = <String>[];
       final systemIdToVersion = <String, String>{};
@@ -137,7 +139,7 @@ class AdvancedStreamingQuery<T> {
       for (final rawRow in rawResults) {
         final systemId = rawRow['system_id'] as String?;
         final systemVersion = rawRow['system_version'] as String?;
-        
+
         if (systemId != null && systemVersion != null) {
           newResultSystemIds.add(systemId);
           systemIdToVersion[systemId] = systemVersion;
@@ -174,7 +176,7 @@ class AdvancedStreamingQuery<T> {
         final rawRow = rawResults[i];
         final systemId = newResultSystemIds[i];
         final systemVersion = systemIdToVersion[systemId]!;
-        
+
         // Check if we have this row cached with same version
         final cached = _resultCache[systemId];
         if (cached != null && cached.systemVersion == systemVersion) {
@@ -183,18 +185,17 @@ class AdvancedStreamingQuery<T> {
         } else {
           // Map new row and cache it
           final mappedRow = _mapper(rawRow);
-          final cachedResult = _CachedResult(mappedRow, systemVersion);
+          final cachedResult =
+              _CachedResult(mappedRow, systemVersion);
           _resultCache[systemId] = cachedResult;
           mappedResults.add(mappedRow);
         }
       }
-      
+
       // Clean up cache: remove entries not in current result set
       _cleanupCache(newResultSystemIds.toSet());
       
       // Update cached state and emit
-      _lastResults = mappedResults;
-      _lastResultSystemIds = newResultSystemIds;
       _controller.add(mappedResults);
       
     } catch (error) {
@@ -227,11 +228,10 @@ class AdvancedStreamingQuery<T> {
     await refresh();
   }
 
-  /// Called when the last listener unsubscribes  
+  /// Called when the last listener unsubscribes
   void _onCancel() {
     _isActive = false;
-    _lastResults = null;
-    _lastResultHashes = null;
+    _lastResultSystemIds = null;
     _resultCache.clear();
   }
 
@@ -251,7 +251,7 @@ class AdvancedStreamingQuery<T> {
 /// A cached result entry containing the mapped object and its hash
 class _CachedResult<T> {
   final T object;
-  final int hashCode;
-  
-  const _CachedResult(this.object, this.hashCode);
+  final String systemVersion;
+
+  const _CachedResult(this.object, this.systemVersion);
 }

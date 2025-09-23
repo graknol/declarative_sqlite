@@ -1,4 +1,5 @@
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 

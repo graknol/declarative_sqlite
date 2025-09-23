@@ -43,11 +43,11 @@ class ServerSyncManager {
 
     try {
       // 1. Send pending operations
-      final pendingOperations = await _db.dirtyRowStore.getAll();
-      if (pendingOperations.isNotEmpty) {
+      final pendingOperations = await _db.dirtyRowStore?.getAll();
+      if (pendingOperations != null && pendingOperations.isNotEmpty) {
         final success = await onSend(pendingOperations);
         if (success) {
-          await _db.dirtyRowStore.remove(pendingOperations);
+          await _db.dirtyRowStore?.remove(pendingOperations);
         }
       }
 
@@ -100,22 +100,21 @@ class ServerSyncManager {
   /// to track the latest server timestamp received.
   Future<void> updateTableTimestamp(String tableName, Hlc serverTimestamp) async {
     await _ensureTimestampTableExists();
-    
-    await _db.upsert(
-      'sync_server_timestamps',
-      {
-        'table_name': tableName,
-        'server_timestamp': serverTimestamp.toString(),
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      conflictFields: ['table_name'],
+
+    await _db.rawInsert(
+      'INSERT OR REPLACE INTO sync_server_timestamps (table_name, server_timestamp, updated_at) VALUES (?, ?, ?)',
+      [
+        tableName,
+        serverTimestamp.toString(),
+        DateTime.now().toIso8601String(),
+      ],
     );
   }
 
   /// Ensures the sync_server_timestamps table exists.
   Future<void> _ensureTimestampTableExists() async {
     try {
-      await _db.execute('''
+      await _db.rawUpdate('''
         CREATE TABLE IF NOT EXISTS sync_server_timestamps (
           table_name TEXT PRIMARY KEY,
           server_timestamp TEXT NOT NULL,

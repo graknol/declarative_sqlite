@@ -1,8 +1,13 @@
 // lib/src/builders/where_clause.dart
+import 'analysis_context.dart';
 import 'query_builder.dart';
+import 'query_dependencies.dart';
 
 abstract class WhereClause {
   BuiltWhereClause build();
+  
+  /// Analyzes this WHERE clause to extract table and column dependencies
+  QueryDependencies analyzeDependencies(AnalysisContext context);
 }
 
 class BuiltWhereClause {
@@ -55,6 +60,49 @@ class Comparison extends WhereClause {
     
     return BuiltWhereClause('$column $operator ?', [value]);
   }
+
+  @override
+  QueryDependencies analyzeDependencies(AnalysisContext context) {
+    final columns = <QueryDependencyColumn>{};
+    
+    // Add the left-hand column
+    if (column.contains('.')) {
+      // Already qualified (table.column or alias.column)
+      final parts = column.split('.');
+      final tableOrAlias = parts[0];
+      final columnName = parts[1];
+      
+      // Resolve the table/alias to get the full table name
+      final resolvedTable = context.resolveTable(tableOrAlias) ?? tableOrAlias;
+      columns.add(QueryDependencyColumn(resolvedTable, columnName));
+    } else {
+      // Unqualified column - use primary table from context
+      final primaryTable = context.primaryTable ?? '';
+      columns.add(QueryDependencyColumn(primaryTable, column));
+    }
+    
+    // Add the right-hand column if it's a column reference
+    if (value is Condition) {
+      final rightColumn = (value as Condition).column;
+      if (rightColumn.contains('.')) {
+        final parts = rightColumn.split('.');
+        final tableOrAlias = parts[0];
+        final columnName = parts[1];
+        
+        final resolvedTable = context.resolveTable(tableOrAlias) ?? tableOrAlias;
+        columns.add(QueryDependencyColumn(resolvedTable, columnName));
+      } else {
+        final primaryTable = context.primaryTable ?? '';
+        columns.add(QueryDependencyColumn(primaryTable, rightColumn));
+      }
+    }
+    
+    return QueryDependencies(
+      tables: <String>{}, // Tables will be inferred from columns
+      columns: columns,
+      usesWildcard: false,
+    );
+  }
 }
 
 class LogicalOperator extends WhereClause {
@@ -72,6 +120,18 @@ class LogicalOperator extends WhereClause {
     final sql = '(${builtClauses.map((c) => c.sql).join(' $operator ')})';
     final parameters = builtClauses.expand((c) => c.parameters).toList();
     return BuiltWhereClause(sql, parameters);
+  }
+
+  @override
+  QueryDependencies analyzeDependencies(AnalysisContext context) {
+    var result = QueryDependencies.empty();
+    
+    // Merge dependencies from all child clauses
+    for (final clause in clauses) {
+      result = result.merge(clause.analyzeDependencies(context));
+    }
+    
+    return result;
   }
 }
 
@@ -95,6 +155,16 @@ class Exists extends WhereClause {
     return BuiltWhereClause(
         '$operator ($subQuerySql)', subQueryParameters);
   }
+
+  @override
+  QueryDependencies analyzeDependencies(AnalysisContext context) {
+    // Create a new context level for the subquery
+    final subqueryContext = context.copy();
+    subqueryContext.pushLevel();
+    
+    // Delegate to the subquery's dependency analysis
+    return _subQuery.analyzeDependencies(subqueryContext);
+  }
 }
 
 Exists exists(void Function(QueryBuilder) build) {
@@ -107,4 +177,23 @@ Exists notExists(void Function(QueryBuilder) build) {
   final builder = QueryBuilder();
   build(builder);
   return Exists(builder, true);
+}
+
+class RawSqlWhereClause extends WhereClause {
+  final String sql;
+  final List<Object?>? parameters;
+
+  RawSqlWhereClause(this.sql, [this.parameters]);
+
+  @override
+  BuiltWhereClause build() {
+    return BuiltWhereClause(sql, parameters ?? []);
+  }
+
+  @override
+  QueryDependencies analyzeDependencies(AnalysisContext context) {
+    // For raw SQL, we can't analyze dependencies without parsing
+    // This is a limitation that encourages use of structured queries
+    return QueryDependencies.empty();
+  }
 }

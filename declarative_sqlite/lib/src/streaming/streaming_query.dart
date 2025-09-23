@@ -1,6 +1,7 @@
 import 'dart:async';
-import 'dart:collection';
+
 import '../builders/query_builder.dart';
+import '../builders/query_dependencies.dart';
 import '../database.dart';
 import 'query_dependency_analyzer.dart';
 
@@ -22,7 +23,6 @@ class StreamingQuery<T> {
   
   late final StreamController<List<T>> _controller;
   bool _isActive = false;
-  List<T>? _lastResults;
   
   /// Cache of previously mapped results indexed by their system_id
   final Map<String, _CachedResult<T>> _resultCache = {};
@@ -55,8 +55,8 @@ class StreamingQuery<T> {
     required T Function(Map<String, Object?>) mapper,
   }) {
     // Use schema-aware dependency analysis
-    final analyzer = QueryDependencyAnalyzer(database.schema);
-    final dependencies = analyzer.analyze(builder);
+    final analyzer = QueryDependencyAnalyzer();
+    final dependencies = analyzer.analyzeQuery(builder);
     return StreamingQuery._(
       id: id,
       builder: builder,
@@ -80,12 +80,14 @@ class StreamingQuery<T> {
 
   /// Returns true if this query might be affected by changes to the given table
   bool isAffectedByTable(String tableName) {
-    return _dependencies.isAffectedByTable(tableName);
+    return _dependencies.tables.contains(tableName) ||
+           _dependencies.tables.any((table) => table.split(' ').first == tableName);
   }
 
   /// Returns true if this query might be affected by changes to the given column
   bool isAffectedByColumn(String tableName, String columnName) {
-    return _dependencies.isAffectedByColumn(tableName, columnName);
+    return _dependencies.usesWildcard && _dependencies.tables.any((table) => table.split(' ').first == tableName) ||
+           _dependencies.columns.any((col) => col.table == tableName && col.column == columnName);
   }
 
   /// Manually trigger a refresh of this query with hash-based optimization
@@ -93,7 +95,7 @@ class StreamingQuery<T> {
     if (!_isActive) return;
     
     try {
-      final rawResults = await _database.queryWith(_builder);
+      final rawResults = await _database.queryMapsWith(_builder);
       
       // Extract system IDs and versions for all raw results
       final newResultSystemIds = <String>[];
@@ -158,7 +160,6 @@ class StreamingQuery<T> {
       _cleanupCache(newResultSystemIds.toSet());
       
       // Update cached state and emit
-      _lastResults = mappedResults;
       _lastResultSystemIds = newResultSystemIds;
       _controller.add(mappedResults);
       
@@ -195,8 +196,7 @@ class StreamingQuery<T> {
   /// Called when the last listener unsubscribes  
   void _onCancel() {
     _isActive = false;
-    _lastResults = null;
-    _lastResultHashes = null;
+    _lastResultSystemIds = null;
     _resultCache.clear();
   }
 

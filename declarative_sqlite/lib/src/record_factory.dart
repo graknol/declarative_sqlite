@@ -47,24 +47,24 @@ class RecordFactory {
 /// Generic implementation of DbRecord for any table
 class _GenericRecord extends DbRecord {
   _GenericRecord(
-    Map<String, Object?> data,
-    String tableName,
-    DeclarativeDatabase database, {
-    String? updateTable,
-  }) : super.fromQuery(data, tableName, database, updateTable: updateTable);
+    super.data,
+    super.tableName,
+    super.database, {
+    super.updateTable,
+  }) : super.fromQuery();
 
   _GenericRecord.fromTable(
-    Map<String, Object?> data,
-    String tableName,
-    DeclarativeDatabase database,
-  ) : super.fromTable(data, tableName, database);
+    super.data,
+    super.tableName,
+    super.database,
+  ) : super.fromTable();
 
   _GenericRecord.fromQuery(
-    Map<String, Object?> data,
-    String tableName,
-    DeclarativeDatabase database, {
-    String? updateTable,
-  }) : super.fromQuery(data, tableName, database, updateTable: updateTable);
+    super.data,
+    super.tableName,
+    super.database, {
+    super.updateTable,
+  }) : super.fromQuery();
 
   /// Provides dynamic property access via noSuchMethod
   @override
