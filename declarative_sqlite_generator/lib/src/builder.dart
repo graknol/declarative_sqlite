@@ -2,42 +2,35 @@ import 'package:build/build.dart';
 import 'package:source_gen/source_gen.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/constant/value.dart';
+import 'registration_builder.dart';
 
 Builder declarativeSqliteGenerator(BuilderOptions options) =>
     SharedPartBuilder([DeclarativeSqliteGenerator()], 'declarative_sqlite');
+
+Builder registrationCollectBuilder(BuilderOptions options) =>
+    RegistrationCollectBuilder();
+
+Builder registrationAggregateBuilder(BuilderOptions options) =>
+    RegistrationAggregateBuilder();
 
 class DeclarativeSqliteGenerator extends Generator {
   @override
   String generate(LibraryReader library, BuildStep buildStep) {
     final buffer = StringBuffer();
-    final registrationBuffer = StringBuffer();
     
-    final classesWithRegistration = <String>[];
-    
-    // Look for classes extending DbRecord with annotations
+    // Look for classes extending DbRecord with @GenerateDbRecord annotation
     for (final element in library.allElements) {
       if (element is ClassElement && _extendsDbRecord(element)) {
         final dbRecordAnnotation = _getDbRecordAnnotation(element);
-        final registerFactoryAnnotation = _getRegisterFactoryAnnotation(element);
         
         if (dbRecordAnnotation != null) {
           final tableName = _getTableNameFromAnnotation(dbRecordAnnotation);
           if (tableName != null) {
             buffer.writeln(_generateRecordClass(element, tableName));
             buffer.writeln();
-            
-            // If also has RegisterFactory annotation, add to registration list
-            if (registerFactoryAnnotation != null) {
-              classesWithRegistration.add(element.name);
-            }
           }
         }
       }
-    }
-    
-    // Generate factory registration function if we have classes to register
-    if (classesWithRegistration.isNotEmpty) {
-      buffer.writeln(_generateFactoryRegistration(classesWithRegistration));
     }
     
     return buffer.toString();
@@ -65,17 +58,6 @@ class DeclarativeSqliteGenerator extends Generator {
     for (final metadata in element.metadata) {
       final annotation = metadata.computeConstantValue();
       if (annotation?.type?.element?.name == 'GenerateDbRecord') {
-        return annotation;
-      }
-    }
-    return null;
-  }
-
-  /// Checks if the class has a @RegisterFactory annotation
-  DartObject? _getRegisterFactoryAnnotation(ClassElement element) {
-    for (final metadata in element.metadata) {
-      final annotation = metadata.computeConstantValue();
-      if (annotation?.type?.element?.name == 'RegisterFactory') {
         return annotation;
       }
     }
@@ -196,23 +178,6 @@ class DeclarativeSqliteGenerator extends Generator {
       'fileset' => 'setFilesetField',
       _ => 'setValue',
     };
-  }
-
-  /// Generates factory registration function
-  String _generateFactoryRegistration(List<String> classNames) {
-    final buffer = StringBuffer();
-    
-    buffer.writeln('/// Auto-generated factory registration function');
-    buffer.writeln('/// Call this function to register all annotated record factories');
-    buffer.writeln('void registerAllFactories(DeclarativeDatabase database) {');
-    
-    for (final className in classNames) {
-      buffer.writeln('  RecordMapFactoryRegistry.register<$className>((data) => ${className}Generated.fromMap(data, database));');
-    }
-    
-    buffer.writeln('}');
-    
-    return buffer.toString();
   }
 
   /// Converts snake_case to camelCase

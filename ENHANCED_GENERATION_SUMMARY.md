@@ -27,7 +27,7 @@ class User extends DbRecord {
 
 ### 2. Enhanced Generator Architecture
 
-The generator produces a clean, single-extension architecture that provides everything needed:
+The generator now uses a two-phase approach that produces a clean, centralized registration system:
 
 #### Single Extension with Everything
 ```dart
@@ -54,9 +54,10 @@ extension UserGenerated on User {
 }
 ```
 
-#### Simple Registration Function
+#### Centralized Registration Function
+A single `lib/generated_registrations.dart` file contains all factory registrations:
 ```dart
-// Auto-generated registration function
+// Auto-generated centralized registration file
 void registerAllFactories(DeclarativeDatabase database) {
   RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, database));
   RecordMapFactoryRegistry.register<Post>((data) => PostGenerated.fromMap(data, database));
@@ -64,39 +65,9 @@ void registerAllFactories(DeclarativeDatabase database) {
 }
 ```
 
-### 3. Developer Experience Transformation
+### 3. Developer Experience
 
-#### Before (Manual Implementation)
-```dart
-class User extends DbRecord {
-  User(Map<String, Object?> data, DeclarativeDatabase database)
-      : super(data, 'users', database);
-      
-  // Manual getters (20+ lines for typical table)
-  int get id => getIntegerNotNull('id');
-  String get name => getTextNotNull('name');
-  String? get email => getText('email');
-  // ... many more
-  
-  // Manual setters (20+ lines for typical table)  
-  set name(String value) => setText('name', value);
-  set email(String? value) => setText('email', value);
-  // ... many more
-  
-  // Manual factory
-  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return User(data, database);
-  }
-}
-
-// Manual registration (in main())
-RecordMapFactoryRegistry.register<User>(User.fromMap);
-RecordMapFactoryRegistry.register<Post>(Post.fromMap);
-RecordMapFactoryRegistry.register<Comment>(Comment.fromMap);
-// ... many more
-```
-
-#### After (Generated Implementation)
+#### Simple Usage Pattern
 ```dart
 @GenerateDbRecord('users')
 @RegisterFactory()
@@ -110,21 +81,19 @@ class User extends DbRecord {
   // - Registration function for automatic factory setup
 }
 
-// One-line registration (in main())
+// Simple registration (in main())
+import 'generated_registrations.dart';
 registerAllFactories(database);
 ```
 
-### 4. Code Reduction Metrics
+### 4. Key Benefits
 
-For a typical table with 8 columns:
-
-| Aspect | Before | After | Reduction |
-|--------|---------|-------|-----------|
-| Lines per class | ~60-80 | ~6-8 | **90%+** |
-| Manual getters | 8 | 0 | **100%** |
-| Manual setters | 8 | 0 | **100%** |
-| Factory method | Manual | Generated extension | **100%** |
-| Registration calls | 1 per class | 1 total | **N-1** |
+#### Code Reduction
+The generator dramatically reduces boilerplate code:
+- **90%+ reduction** in lines per class
+- **100% elimination** of manual getters and setters
+- **100% elimination** of manual factory methods
+- **Centralized registration** - single function call instead of multiple individual calls
 
 ### 5. Architecture Benefits
 

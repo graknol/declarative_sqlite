@@ -4,8 +4,10 @@
 /// need to write with the enhanced code generation.
 
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+// Import the centralized registration file (generated automatically)
+import 'generated_registrations.dart';
 
-part 'ultra_minimal_example.g.dart'; // Generated code will go here
+part 'ultra_minimal_example.g.dart'; // Generated extensions will go here
 
 // Schema definition (could even be generated from database in the future!)
 Schema createSchema() {
@@ -95,12 +97,12 @@ void demonstrateUltraMinimalUsage() async {
 }
 
 // ============================================================================
-// What the generator produces (for reference - this is all automatic):
+// What the generator now produces (for reference - this is all automatic):
 // ============================================================================
 
 /* Generated code (automatic):
 
-// Single extension with everything
+// Extensions are generated in ultra_minimal_example.g.dart
 extension UserGenerated on User {
   // Typed getters
   int get id => getIntegerNotNull('id');
@@ -127,7 +129,7 @@ extension PostGenerated on Post {
   // Similar extension for Post class...
 }
 
-// Registration function
+// Single registration function is generated in lib/generated_registrations.dart
 void registerAllFactories(DeclarativeDatabase database) {
   RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, database));
   RecordMapFactoryRegistry.register<Post>((data) => PostGenerated.fromMap(data, database));

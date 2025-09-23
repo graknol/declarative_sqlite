@@ -4,6 +4,8 @@
 /// for generating typed record properties.
 
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+// Import the centralized registration file (generated automatically)
+import 'generated_registrations.dart';
 
 // First, define your schema as usual
 Schema createExampleSchema() {
