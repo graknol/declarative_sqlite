@@ -2,6 +2,8 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:test/test.dart';
 
 import 'test_helper.dart';
+// Import the generated registration file
+import '../lib/generated_registrations.dart';
 
 // Mock generated code to test the new structure
 part 'enhanced_generator_test.g.dart';
@@ -234,7 +236,5 @@ extension PostGenerated on Post {
   }
 }
 
-void registerAllFactories(DeclarativeDatabase database) {
-  RecordMapFactoryRegistry.register<User>((data) => UserGenerated.fromMap(data, database));
-  RecordMapFactoryRegistry.register<Post>((data) => PostGenerated.fromMap(data, database));
-}
+// NOTE: registerAllFactories is now imported from generated_registrations.dart
+// instead of being defined here
