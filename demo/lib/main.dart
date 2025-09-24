@@ -33,21 +33,21 @@ class DeclarativeSqliteDemo extends StatelessWidget {
   void _buildDatabaseSchema(SchemaBuilder builder) {
     // Users table
     builder.table('users', (table) {
-      table.guid('id').notNull('');
+      table.guid('id').notNull().defaultCallback(() => const Uuid().v4());
       table.text('name').notNull('');
       table.text('email').notNull('');
       table.integer('age').notNull(0);
-      table.date('created_at').notNull('');
+      table.date('created_at').notNull().defaultCallback(() => DateTime.now());
       table.key(['id']).primary();
     });
 
     // Posts table
     builder.table('posts', (table) {
-      table.guid('id').notNull('');
+      table.guid('id').notNull('').defaultCallback(() => const Uuid().v4());
       table.guid('user_id').notNull('');
       table.text('title').notNull('');
       table.text('content').notNull('');
-      table.date('created_at').notNull('');
+      table.date('created_at').notNull().defaultCallback(() => DateTime.now());
       table.text('user_name').notNull(''); // Denormalized for demo simplicity
       table.key(['id']).primary();
     });
@@ -89,13 +89,10 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
         final now = DateTime.now();
         final users = [
           {
-            'id': _generateGuid(),
+            // ID and created_at will be auto-generated via callbacks!
             'name': 'Alice Johnson',
             'email': 'alice.johnson@example.com',
             'age': 28,
-            'created_at': now
-                .subtract(const Duration(days: 30))
-                .toIso8601String(),
           },
           {
             'id': _generateGuid(),
@@ -360,6 +357,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
   Widget _buildUsersList() {
     return QueryListView<User>(
       key: const ValueKey('users'),
+      database: DatabaseProvider.of(context),
       query: (q) {
         q.from('users');
 
@@ -379,6 +377,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
 
         q.orderBy(['created_at DESC']);
       },
+      mapper: (data, db) => User(data, db),
       loadingBuilder: (context) => const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

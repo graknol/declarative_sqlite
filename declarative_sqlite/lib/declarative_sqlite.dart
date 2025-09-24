@@ -10,6 +10,7 @@ export 'src/annotations/generate_registration.dart';
 
 // Query builders
 export 'src/builders/analysis_context.dart';
+export 'src/builders/column_builder.dart';
 export 'src/builders/query_column.dart';
 export 'src/builders/schema_builder.dart';
 export 'src/builders/query_builder.dart';

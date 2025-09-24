@@ -6,6 +6,7 @@ import 'package:declarative_sqlite/src/exceptions/db_exception_wrapper.dart';
 import 'package:declarative_sqlite/src/db_record.dart';
 import 'package:declarative_sqlite/src/record_factory.dart';
 import 'package:declarative_sqlite/src/record_map_factory_registry.dart';
+import 'package:declarative_sqlite/src/schema/db_column.dart';
 import 'package:declarative_sqlite/src/schema/db_table.dart';
 import 'package:declarative_sqlite/src/sync/sqlite_dirty_row_store.dart';
 import 'package:sqflite_common/sqlite_api.dart' as sqflite;
@@ -325,8 +326,7 @@ class DeclarativeDatabase {
       _validateForUpdateQuery(results, updateTableName);
 
       // Return records configured for CRUD with the specified update table
-      return RecordFactory.fromMapList(results, tableName, this,
-          updateTable: updateTableName);
+      return RecordFactory.fromMapList(results, tableName, this);
     }
 
     // Determine if this is a table or view query by inspecting the QueryBuilder
@@ -334,14 +334,10 @@ class DeclarativeDatabase {
 
     if (isSimpleTableQuery) {
       // Simple table query - CRUD enabled by default
-      return results
-          .map((data) => RecordFactory.fromTable(data, tableName, this))
-          .toList();
+      return RecordFactory.fromMapList(results, tableName, this);
     } else {
       // View or complex query - read-only by default
-      return results
-          .map((data) => RecordFactory.fromQuery(data, tableName, this))
-          .toList();
+      return RecordFactory.fromMapList(results, tableName, this);
     }
   }
 
@@ -388,17 +384,16 @@ class DeclarativeDatabase {
         // Validate forUpdate requirements on each emitted result
         if (updateTableName != null) {
           _validateForUpdateQuery([row], updateTableName);
-          return RecordFactory.fromQuery(row, tableName, this,
-              updateTable: updateTableName);
+          return RecordFactory.fromMap(row, tableName, this);
         }
 
         // Determine if this is a simple table query by inspecting the QueryBuilder
         final isSimpleTableQuery = _isSimpleTableQuery(builder);
 
         if (isSimpleTableQuery) {
-          return RecordFactory.fromTable(row, tableName, this);
+          return RecordFactory.fromMap(row, tableName, this);
         } else {
-          return RecordFactory.fromQuery(row, tableName, this);
+          return RecordFactory.fromMap(row, tableName, this);
         }
       },
     );
@@ -526,6 +521,34 @@ class DeclarativeDatabase {
     }, tableName: tableName);
   }
 
+  /// Converts a value for database storage using the same logic as DbRecord.setValue
+  Object? _serializeValueForColumn(Object? value, DbColumn column) {
+    if (value == null) return null;
+    
+    switch (column.logicalType) {
+      case 'text':
+      case 'guid':
+      case 'integer':
+      case 'real':
+        return value;
+      case 'date':
+        if (value is DateTime) {
+          return value.toIso8601String();
+        } else if (value is String) {
+          return value; // Assume already serialized
+        } else {
+          return value.toString();
+        }
+      case 'fileset':
+        if (value is FilesetField) {
+          return value.toDatabaseValue();
+        }
+        return value;
+      default:
+        return value;
+    }
+  }
+
   Future<String> _insert(
       String tableName, Map<String, Object?> values, Hlc hlc) async {
     final tableDef = _getTableDefinition(tableName);
@@ -534,6 +557,28 @@ class DeclarativeDatabase {
     final convertedValues = _convertFilesetFieldsToValues(tableName, values);
 
     final valuesToInsert = {...convertedValues};
+    
+    // Generate default values for missing columns using callbacks and static defaults
+    for (final col in tableDef.columns) {
+      // Skip system columns - they're handled separately
+      if (col.name.startsWith('system_')) continue;
+      
+      // If column value is not provided and has a default callback, call it
+      if (!valuesToInsert.containsKey(col.name) && col.defaultValueCallback != null) {
+        final defaultValue = col.defaultValueCallback!();
+        if (defaultValue != null) {
+          // Apply the same serialization logic as DbRecord.setValue
+          final serializedValue = _serializeValueForColumn(defaultValue, col);
+          valuesToInsert[col.name] = serializedValue;
+        }
+      }
+      // If still no value and has a static default value, use it
+      else if (!valuesToInsert.containsKey(col.name) && col.defaultValue != null) {
+        // Apply the same serialization logic as DbRecord.setValue
+        final serializedValue = _serializeValueForColumn(col.defaultValue, col);
+        valuesToInsert[col.name] = serializedValue;
+      }
+    }
     valuesToInsert['system_version'] = hlc.toString();
     if (valuesToInsert['system_id'] == null) {
       valuesToInsert['system_id'] = Uuid().v4();

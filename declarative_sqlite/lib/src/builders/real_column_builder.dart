@@ -25,6 +25,7 @@ class RealColumnBuilder extends ColumnBuilder {
       type: dbType,
       isNotNull: isNotNull,
       defaultValue: defaultValue,
+      defaultValueCallback: defaultValueCallback,
       isParent: isParent,
       isLww: isLww,
       minValue: _minValue,

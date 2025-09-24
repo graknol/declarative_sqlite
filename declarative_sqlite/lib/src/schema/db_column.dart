@@ -1,5 +1,8 @@
 import 'package:declarative_sqlite/src/utils/sql_escaping_utils.dart';
 
+/// Callback function type for generating default values dynamically
+typedef DefaultValueCallback = Object? Function();
+
 class DbColumn {
   final String name;
   final String logicalType;
@@ -13,6 +16,7 @@ class DbColumn {
   final bool sequencePerParent;
   final bool isLww;
   final Object? defaultValue;
+  final DefaultValueCallback? defaultValueCallback;
 
   const DbColumn({
     required this.name,
@@ -27,6 +31,7 @@ class DbColumn {
     this.sequencePerParent = false,
     this.isLww = false,
     this.defaultValue,
+    this.defaultValueCallback,
   });
 
   String toSql() {

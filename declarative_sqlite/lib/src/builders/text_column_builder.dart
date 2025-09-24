@@ -19,6 +19,7 @@ class TextColumnBuilder extends ColumnBuilder {
       type: dbType,
       isNotNull: isNotNull,
       defaultValue: defaultValue,
+      defaultValueCallback: defaultValueCallback,
       isParent: isParent,
       isLww: isLww,
       maxLength: _maxLength,

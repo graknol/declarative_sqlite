@@ -6,7 +6,7 @@ import 'package:declarative_sqlite/src/schema/db_table.dart';
 import 'package:declarative_sqlite/src/sync/hlc.dart';
 
 /// Base class for typed database records.
-/// 
+///
 /// Provides typed getters and setters with automatic conversion between
 /// database values and Dart types, including special handling for:
 /// - DateTime serialization/deserialization
@@ -20,38 +20,15 @@ abstract class DbRecord {
   final DeclarativeDatabase _database;
   final DbTable? _tableDefinition;
   final String? _updateTableName; // Table to target for CRUD operations
-  final bool _isReadOnly;
-  
+
   /// Map to track which fields have been modified since creation
   final Set<String> _modifiedFields = <String>{};
-  
-  /// Creates a DbRecord from a table (CRUD-enabled by default)
-  DbRecord.fromTable(this._data, this._tableName, this._database) 
-      : _tableDefinition = _database.schema.userTables.firstWhere(
-          (table) => table.name == _tableName,
-          orElse: () => throw ArgumentError('Table $_tableName not found in schema'),
-        ),
-        _updateTableName = _tableName,
-        _isReadOnly = false;
 
-  /// Creates a DbRecord from a view or query (read-only by default)
-  DbRecord.fromQuery(this._data, this._tableName, this._database, {String? updateTable}) 
-      : _tableDefinition = updateTable != null 
-          ? _database.schema.userTables.firstWhere(
-              (table) => table.name == updateTable,
-              orElse: () => throw ArgumentError('Update table $updateTable not found in schema'),
-            )
-          : null,
-        _updateTableName = updateTable,
-        _isReadOnly = updateTable == null;
-
-  /// Creates a generic DbRecord (for backward compatibility)
   DbRecord(this._data, this._tableName, this._database)
-      : _tableDefinition = _database.schema.userTables
-            .firstWhereOrNull((table) => table.name == _tableName),
-        _updateTableName = _tableName,
-        _isReadOnly = !_database.schema.userTables
-            .any((table) => table.name == _tableName);
+    : _tableDefinition = _database.schema.userTables.firstWhereOrNull(
+        (table) => table.name == _tableName,
+      ),
+      _updateTableName = _tableName;
 
   /// Gets the table name for this record
   String get tableName => _tableName;
@@ -59,11 +36,24 @@ abstract class DbRecord {
   /// Gets the table name that will be used for CRUD operations
   String? get updateTableName => _updateTableName;
 
-  /// Whether this record is read-only (cannot be updated/deleted)
-  bool get isReadOnly => _isReadOnly;
+  /// Checks if CRUD operations are allowed on this record's target table
+  /// Returns true if the table is in the user tables list (not a view)
+  bool get isCrudEnabled {
+    final targetTable = _updateTableName ?? _tableName;
+    return _database.schema.userTables.any((table) => table.name == targetTable);
+  }
 
-  /// Whether this record supports CRUD operations
-  bool get isCrudEnabled => !_isReadOnly && _updateTableName != null;
+  /// Internal method to check CRUD permissions and throw if not allowed
+  void _checkCrudPermission(String operation) {
+    final targetTable = _updateTableName ?? _tableName;
+    final isUserTable = _database.schema.userTables.any((table) => table.name == targetTable);
+    
+    if (!isUserTable) {
+      throw StateError(
+        'Cannot $operation record: table "$targetTable" is not a user table (may be a view or system table). Available user tables: ${_database.schema.userTables.map((t) => t.name).join(", ")}'
+      );
+    }
+  }
 
   /// Gets the underlying data map (read-only copy)
   Map<String, Object?> get data => Map.unmodifiable(_data);
@@ -125,24 +115,24 @@ abstract class DbRecord {
     }
   }
 
-  /// Sets a value with automatic conversion and LWW handling
-  /// Throws StateError if the record is read-only
+  /// Sets a value with automatic conversion and LWW handling  
+  /// Throws StateError if the target table doesn't support CRUD operations
   void setValue<T>(String columnName, T? value) {
-    if (_isReadOnly) {
-      throw StateError('Cannot modify read-only record from $_tableName');
-    }
+    _checkCrudPermission('modify');
 
     // Validate that the column exists in the update table schema
     if (_tableDefinition != null) {
       final column = _getColumn(columnName);
       if (column == null) {
-        throw ArgumentError('Column $columnName does not exist in update table $_updateTableName');
+        throw ArgumentError(
+          'Column $columnName does not exist in update table $_updateTableName',
+        );
       }
     }
 
     final column = _getColumn(columnName);
     Object? databaseValue;
-    
+
     switch (column?.logicalType ?? 'unknown') {
       case 'text':
       case 'guid':
@@ -151,10 +141,14 @@ abstract class DbRecord {
         databaseValue = value;
         break;
       case 'date':
-        databaseValue = value != null ? _serializeDateTime(value as DateTime) : null;
+        databaseValue = value != null
+            ? _serializeDateTime(value as DateTime)
+            : null;
         break;
       case 'fileset':
-        databaseValue = value != null ? (value as FilesetField).toDatabaseValue() : null;
+        databaseValue = value != null
+            ? (value as FilesetField).toDatabaseValue()
+            : null;
         break;
       default:
         databaseValue = value;
@@ -183,7 +177,9 @@ abstract class DbRecord {
   String getTextNotNull(String columnName) {
     final value = getText(columnName);
     if (value == null) {
-      throw StateError('Column $columnName is null but expected to be non-null');
+      throw StateError(
+        'Column $columnName is null but expected to be non-null',
+      );
     }
     return value;
   }
@@ -197,7 +193,9 @@ abstract class DbRecord {
   int getIntegerNotNull(String columnName) {
     final value = getInteger(columnName);
     if (value == null) {
-      throw StateError('Column $columnName is null but expected to be non-null');
+      throw StateError(
+        'Column $columnName is null but expected to be non-null',
+      );
     }
     return value;
   }
@@ -211,7 +209,9 @@ abstract class DbRecord {
   double getRealNotNull(String columnName) {
     final value = getReal(columnName);
     if (value == null) {
-      throw StateError('Column $columnName is null but expected to be non-null');
+      throw StateError(
+        'Column $columnName is null but expected to be non-null',
+      );
     }
     return value;
   }
@@ -225,21 +225,26 @@ abstract class DbRecord {
   DateTime getDateTimeNotNull(String columnName) {
     final value = getDateTime(columnName);
     if (value == null) {
-      throw StateError('Column $columnName is null but expected to be non-null');
+      throw StateError(
+        'Column $columnName is null but expected to be non-null',
+      );
     }
     return value;
   }
 
   /// Gets a FilesetField value from the specified column.
   /// Returns null if the column value is null.
-  FilesetField? getFilesetField(String columnName) => getValue<FilesetField>(columnName);
+  FilesetField? getFilesetField(String columnName) =>
+      getValue<FilesetField>(columnName);
 
   /// Gets a non-null FilesetField value from the specified column.
   /// Throws if the column value is null.
   FilesetField getFilesetFieldNotNull(String columnName) {
     final value = getFilesetField(columnName);
     if (value == null) {
-      throw StateError('Column $columnName is null but expected to be non-null');
+      throw StateError(
+        'Column $columnName is null but expected to be non-null',
+      );
     }
     return value;
   }
@@ -256,17 +261,17 @@ abstract class DbRecord {
   void setReal(String columnName, double? value) => setValue(columnName, value);
 
   /// Sets a DateTime value for the specified column.
-  void setDateTime(String columnName, DateTime? value) => setValue(columnName, value);
+  void setDateTime(String columnName, DateTime? value) =>
+      setValue(columnName, value);
 
   /// Sets a FilesetField value for the specified column.
-  void setFilesetField(String columnName, FilesetField? value) => setValue(columnName, value);
+  void setFilesetField(String columnName, FilesetField? value) =>
+      setValue(columnName, value);
 
   /// Saves any modified fields back to the database
-  /// Throws StateError if the record is read-only
+  /// Throws StateError if the target table doesn't support CRUD operations
   Future<void> save() async {
-    if (_isReadOnly) {
-      throw StateError('Cannot save read-only record from $_tableName');
-    }
+    _checkCrudPermission('save');
 
     if (_modifiedFields.isEmpty) return;
 
@@ -303,28 +308,24 @@ abstract class DbRecord {
   }
 
   /// Creates a new record in the database with the current data
-  /// Throws StateError if the record is read-only
+  /// Throws StateError if the target table doesn't support CRUD operations
   Future<void> insert() async {
-    if (_isReadOnly) {
-      throw StateError('Cannot insert read-only record from $_tableName');
-    }
+    _checkCrudPermission('insert');
 
     // Remove system columns - they'll be added by the database layer
     final insertData = Map<String, Object?>.from(_data);
     insertData.removeWhere((key, value) => key.startsWith('system_'));
 
     await _database.insert(_updateTableName ?? _tableName, insertData);
-    
+
     // Clear modified fields since this is a new record
     _modifiedFields.clear();
   }
 
   /// Deletes this record from the database
-  /// Throws StateError if the record is read-only
+  /// Throws StateError if the target table doesn't support CRUD operations
   Future<void> delete() async {
-    if (_isReadOnly) {
-      throw StateError('Cannot delete read-only record from $_tableName');
-    }
+    _checkCrudPermission('delete');
 
     final systemId = this.systemId;
     if (systemId == null) {
@@ -341,9 +342,7 @@ abstract class DbRecord {
   /// Reloads this record from the database
   /// Only available for CRUD-enabled records as views cannot guarantee uniqueness
   Future<void> reload() async {
-    if (_isReadOnly) {
-      throw StateError('Cannot reload read-only record from $_tableName');
-    }
+    _checkCrudPermission('reload');
 
     final systemId = this.systemId;
     if (systemId == null) {
@@ -357,13 +356,15 @@ abstract class DbRecord {
     );
 
     if (results.isEmpty) {
-      throw StateError('Record with system_id $systemId not found in table ${_updateTableName ?? _tableName}');
+      throw StateError(
+        'Record with system_id $systemId not found in table ${_updateTableName ?? _tableName}',
+      );
     }
 
     // Update the data map with fresh data
     _data.clear();
     _data.addAll(results.first);
-    
+
     // Clear modified fields since we have fresh data
     _modifiedFields.clear();
   }

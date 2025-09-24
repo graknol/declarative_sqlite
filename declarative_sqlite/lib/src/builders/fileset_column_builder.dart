@@ -12,6 +12,9 @@ class FilesetColumnBuilder extends ColumnBuilder {
       type: dbType,
       isNotNull: isNotNull,
       defaultValue: defaultValue,
+      defaultValueCallback: defaultValueCallback,
+      isParent: isParent,
+      isLww: isLww,
     );
   }
 }

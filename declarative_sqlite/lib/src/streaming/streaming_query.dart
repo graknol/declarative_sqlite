@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import '../builders/query_builder.dart';
 import '../builders/query_dependencies.dart';
@@ -65,9 +66,14 @@ class StreamingQuery<T> {
     required DeclarativeDatabase database,
     required T Function(Map<String, Object?>) mapper,
   }) {
+    developer.log('StreamingQuery.create: Creating query with id="$id"', name: 'StreamingQuery');
+    
     // Use schema-aware dependency analysis
     final analyzer = QueryDependencyAnalyzer(database.schema);
     final dependencies = analyzer.analyzeQuery(builder);
+    
+    developer.log('StreamingQuery.create: Dependencies analyzed - tables: ${dependencies.tables}, columns: ${dependencies.columns.length}, usesWildcard: ${dependencies.usesWildcard}', name: 'StreamingQuery');
+    
     return StreamingQuery._(
       id: id,
       builder: builder,
@@ -161,10 +167,17 @@ class StreamingQuery<T> {
   /// Requires that all queried tables have system_id and system_version columns
   /// for proper change detection and caching optimization.
   Future<void> refresh() async {
-    if (!_isActive) return;
+    developer.log('StreamingQuery.refresh: Starting refresh for query id="$_id", isActive=$_isActive', name: 'StreamingQuery');
+    
+    if (!_isActive) {
+      developer.log('StreamingQuery.refresh: Skipping refresh - query not active for id="$_id"', name: 'StreamingQuery');
+      return;
+    }
     
     try {
+      developer.log('StreamingQuery.refresh: Executing database query for id="$_id"', name: 'StreamingQuery');
       final rawResults = await _database.queryMapsWith(_builder);
+      developer.log('StreamingQuery.refresh: Database query returned ${rawResults.length} raw results for id="$_id"', name: 'StreamingQuery');
       
       // Extract system IDs and versions for all raw results
       final newResultSystemIds = <String>[];
@@ -193,8 +206,11 @@ class StreamingQuery<T> {
       }
       
       if (!hasChanges) {
+        developer.log('StreamingQuery.refresh: No changes detected, skipping emission for id="$_id"', name: 'StreamingQuery');
         return; // No changes, no emission needed
       }
+      
+      developer.log('StreamingQuery.refresh: Changes detected, proceeding with mapping and emission for id="$_id"', name: 'StreamingQuery');
       
       // Build the new result list using cache optimization
       final mappedResults = <T>[];
@@ -223,9 +239,12 @@ class StreamingQuery<T> {
       
       // Update cached state and emit
       _lastResultSystemIds = newResultSystemIds;
+      developer.log('StreamingQuery.refresh: Emitting ${mappedResults.length} mapped results for id="$_id"', name: 'StreamingQuery');
       _controller.add(mappedResults);
+      developer.log('StreamingQuery.refresh: Successfully emitted results for id="$_id"', name: 'StreamingQuery');
       
-    } catch (error) {
+    } catch (error, stackTrace) {
+      developer.log('StreamingQuery.refresh: Error during refresh for id="$_id"', error: error, stackTrace: stackTrace, name: 'StreamingQuery');
       _controller.addError(error);
     }
   }
@@ -251,12 +270,22 @@ class StreamingQuery<T> {
 
   /// Called when the first listener subscribes
   Future<void> _onListen() async {
+    developer.log('StreamingQuery._onListen: First listener subscribed to query id="$_id"', name: 'StreamingQuery');
     _isActive = true;
-    await refresh();
+    
+    try {
+      developer.log('StreamingQuery._onListen: Starting initial refresh for query id="$_id"', name: 'StreamingQuery');
+      await refresh();
+      developer.log('StreamingQuery._onListen: Initial refresh completed successfully for query id="$_id"', name: 'StreamingQuery');
+    } catch (error, stackTrace) {
+      developer.log('StreamingQuery._onListen: Error during initial refresh for query id="$_id"', error: error, stackTrace: stackTrace, name: 'StreamingQuery');
+      rethrow;
+    }
   }
 
   /// Called when the last listener unsubscribes  
   void _onCancel() {
+    developer.log('StreamingQuery._onCancel: Last listener unsubscribed from query id="$_id"', name: 'StreamingQuery');
     _isActive = false;
     _lastResultSystemIds = null;
     _resultCache.clear();
@@ -264,6 +293,7 @@ class StreamingQuery<T> {
 
   /// Dispose of this streaming query
   void dispose() {
+    developer.log('StreamingQuery.dispose: Disposing query id="$_id"', name: 'StreamingQuery');
     _isActive = false;
     _resultCache.clear();
     _controller.close();
