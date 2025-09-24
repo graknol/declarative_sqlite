@@ -38,6 +38,9 @@ class DeclarativeDatabase {
 
   final DirtyRowStore? dirtyRowStore;
 
+  /// The query stream manager for this database instance
+  QueryStreamManager get streamManager => _streamManager;
+
   /// The repository for storing and retrieving file content.
   final IFileRepository fileRepository;
 
@@ -149,7 +152,7 @@ class DeclarativeDatabase {
 
   /// Closes the database.
   Future<void> close() async {
-    _streamManager.dispose();
+    await _streamManager.dispose();
     if (_db is sqflite.Database) {
       await _db.close();
     }
@@ -267,14 +270,8 @@ class DeclarativeDatabase {
       mapper: mapper,
     );
 
-    _streamManager.register(streamingQuery);
-
-    // Clean up when stream is disposed
-    streamingQuery.stream.listen(
-      null,
-      onDone: () => _streamManager.unregister(queryId),
-    );
-
+    // StreamingQuery will automatically register/unregister itself with the
+    // QueryStreamManager when listeners subscribe/unsubscribe via _onListen/_onCancel
     return streamingQuery.stream;
   }
 

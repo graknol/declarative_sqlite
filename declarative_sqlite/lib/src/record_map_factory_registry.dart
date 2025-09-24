@@ -60,6 +60,8 @@ class RecordMapFactoryRegistry {
   static T create<T extends DbRecord>(
       Map<String, Object?> data, DeclarativeDatabase database) {
     final factory = getFactory<T>();
-    return factory(data, database);
+    // Create a mutable copy since SQLite returns read-only maps
+    final mutableData = Map<String, Object?>.from(data);
+    return factory(mutableData, database);
   }
 }

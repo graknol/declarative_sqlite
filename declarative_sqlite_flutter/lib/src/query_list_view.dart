@@ -1,7 +1,8 @@
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'dart:async';
+
+import 'database_provider.dart';
 
 class QueryListView<T extends DbRecord> extends StatefulWidget {
   final DeclarativeDatabase? database;
@@ -66,109 +67,147 @@ class QueryListView<T extends DbRecord> extends StatefulWidget {
 
 class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
   StreamingQuery<T>? _streamingQuery;
-  StreamSubscription<List<T>>? _subscription;
-  List<T>? _currentData;
-  Object? _currentError;
-  bool _isLoading = true;
+  DeclarativeDatabase? _currentDatabase;
 
   @override
   void initState() {
     super.initState();
-    _initializeStream();
+    // Initialize streaming query in initState
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeStreamingQuery();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Check if database changed due to InheritedWidget changes
+    _handleDatabaseChanges();
   }
 
   @override
   void didUpdateWidget(QueryListView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Handle widget property changes
+    _handleWidgetChanges(oldWidget);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Get database from widget parameter or DatabaseProvider
+    final database = _getDatabase(context);
     
-    // Check if database changed
-    if (_hasDatabaseChanged(oldWidget)) {
-      _handleDatabaseChange();
-      return;
+    // If no database is available, show loading state
+    if (database == null) {
+      return widget.loadingBuilder(context);
+    }
+
+    // If no streaming query is ready, show loading state
+    if (_streamingQuery == null) {
+      return widget.loadingBuilder(context);
     }
     
-    // Update query if we have an active streaming query
-    _updateQueryIfNeeded();
-  }
+    // Use StreamBuilder to handle all stream lifecycle management
+    return StreamBuilder<List<T>>(
+      stream: _streamingQuery!.stream,
+      builder: (context, snapshot) {
+        // Handle error state
+        if (snapshot.hasError) {
+          return widget.errorBuilder(context, snapshot.error!);
+        }
 
-  bool _hasDatabaseChanged(QueryListView<T> oldWidget) {
-    return widget.database != oldWidget.database;
-  }
+        // Handle loading state (waiting for first data or no data yet)
+        if (!snapshot.hasData) {
+          return widget.loadingBuilder(context);
+        }
 
-  void _handleDatabaseChange() {
-    _disposeStream();
-    _initializeStream();
-  }
-
-  void _updateQueryIfNeeded() {
-    if (_streamingQuery != null && widget.database != null) {
-      final newBuilder = _buildNewQuery();
-      _updateStreamingQuery(newBuilder);
-    }
-  }
-
-  QueryBuilder _buildNewQuery() {
-    final newBuilder = QueryBuilder();
-    widget.query(newBuilder);
-    return newBuilder;
-  }
-
-  void _updateStreamingQuery(QueryBuilder newBuilder) {
-    // Use provided mapper or get from registry (same logic as _createStreamingQuery)
-    final T Function(Map<String, Object?>) effectiveMapper;
-    
-    if (widget.mapper != null) {
-      effectiveMapper = (data) => widget.mapper!(data, widget.database!);
-    } else {
-      if (!RecordMapFactoryRegistry.hasFactory<T>()) {
-        throw ArgumentError(
-          'No mapper provided and no factory registered for type $T. '
-          'Either provide a mapper parameter or register a factory using '
-          'RecordMapFactoryRegistry.register<$T>(factory).'
-        );
-      }
-      effectiveMapper = (data) => RecordMapFactoryRegistry.create<T>(data, widget.database!);
-    }
-    
-    _streamingQuery!.updateQuery(
-      newBuilder: newBuilder,
-      newMapper: effectiveMapper,
+        // Build the list with current data
+        return _buildListView(snapshot.data!);
+      },
     );
   }
 
-  void _initializeStream() {
-    if (!_canInitializeStream()) {
-      _setLoadingComplete();
-      return;
+  /// Gets the database from widget parameter or DatabaseProvider context
+  DeclarativeDatabase? _getDatabase(BuildContext context) {
+    // First try the explicitly provided database
+    if (widget.database != null) {
+      return widget.database;
     }
-
-    final builder = _buildQuery();
-    _createStreamingQuery(builder);
-    _subscribeToStream();
+    
+    // Fall back to DatabaseProvider context
+    return DatabaseProvider.maybeOf(context);
   }
 
-  bool _canInitializeStream() {
-    return widget.database != null;
+  void _initializeStreamingQuery() {
+    final database = _getDatabase(context);
+    if (database != null) {
+      _currentDatabase = database;
+      _createStreamingQuery(database);
+    }
   }
 
-  void _setLoadingComplete() {
-    setState(() {
-      _isLoading = false;
-    });
+  void _handleDatabaseChanges() {
+    final newDatabase = _getDatabase(context);
+    if (newDatabase != _currentDatabase) {
+      _currentDatabase = newDatabase;
+      if (newDatabase != null) {
+        _createStreamingQuery(newDatabase);
+      } else {
+        _disposeStreamingQuery();
+      }
+    }
   }
 
-  QueryBuilder _buildQuery() {
+  void _handleWidgetChanges(QueryListView<T> oldWidget) {
+    // Check if query function changed (this is a simple reference check)
+    // In a more sophisticated implementation, you could do deeper comparison
+    final database = _currentDatabase;
+    if (database != null && (widget.query != oldWidget.query || widget.mapper != oldWidget.mapper)) {
+      _createStreamingQuery(database);
+    }
+  }
+
+  void _disposeStreamingQuery() {
+    if (_streamingQuery != null) {
+      print('QueryListView: Disposing StreamingQuery id="${_streamingQuery!.id}"');
+      // Fire and forget the async dispose - we don't want to block the UI
+      _streamingQuery?.dispose().catchError((error) {
+        print('QueryListView: Error during StreamingQuery dispose: $error');
+      });
+      _streamingQuery = null;
+    }
+  }
+
+
+
+  void _createStreamingQuery(DeclarativeDatabase database) {
+    // Dispose of existing query if any
+    _disposeStreamingQuery();
+
+    // Build the query
     final builder = QueryBuilder();
     widget.query(builder);
-    return builder;
+
+    // Create the effective mapper
+    final T Function(Map<String, Object?>) effectiveMapper = _createEffectiveMapper(database);
+    
+    final queryId = 'query_list_view_${DateTime.now().millisecondsSinceEpoch}';
+    print('QueryListView: Creating new StreamingQuery id="$queryId"');
+    
+    // Create new streaming query
+    _streamingQuery = StreamingQuery.create(
+      id: queryId,
+      builder: builder,
+      database: database,
+      mapper: effectiveMapper,
+    );
+    
+    print('QueryListView: StreamingQuery created id="$queryId" (will register when StreamBuilder listens)');
   }
 
-  void _createStreamingQuery(QueryBuilder builder) {
-    // Use provided mapper or get from registry
-    final T Function(Map<String, Object?>, DeclarativeDatabase) effectiveMapper;
-    
+  T Function(Map<String, Object?>) _createEffectiveMapper(DeclarativeDatabase database) {
     if (widget.mapper != null) {
-      effectiveMapper = widget.mapper!;
+      return (data) => widget.mapper!(data, database);
     } else {
       // Try to get mapper from registry
       if (!RecordMapFactoryRegistry.hasFactory<T>()) {
@@ -178,87 +217,19 @@ class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
           'RecordMapFactoryRegistry.register<$T>(factory).'
         );
       }
-      effectiveMapper = (data, database) => RecordMapFactoryRegistry.create<T>(data, database);
+      return (data) => RecordMapFactoryRegistry.create<T>(data, database);
     }
-    
-    _streamingQuery = StreamingQuery.create(
-      id: 'query_list_view_${DateTime.now().millisecondsSinceEpoch}',
-      builder: builder,
-      database: widget.database!,
-      mapper: (data) => effectiveMapper(data, widget.database!),
-    );
-  }
-
-  void _subscribeToStream() {
-    _subscription = _streamingQuery!.stream.listen(
-      _handleStreamData,
-      onError: _handleStreamError,
-    );
-  }
-
-  void _handleStreamData(List<T> data) {
-    if (mounted) {
-      setState(() {
-        _currentData = data;
-        _currentError = null;
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _handleStreamError(Object error) {
-    if (mounted) {
-      setState(() {
-        _currentData = null;
-        _currentError = error;
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _disposeStream() {
-    _subscription?.cancel();
-    _subscription = null;
-    _streamingQuery?.dispose();
-    _streamingQuery = null;
-    _currentData = null;
-    _currentError = null;
-    _isLoading = true;
   }
 
   @override
   void dispose() {
-    _disposeStream();
+    // StreamBuilder handles stream subscription lifecycle automatically
+    // We only need to dispose of our StreamingQuery
+    _disposeStreamingQuery();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return _buildStateBasedWidget(context);
-  }
-
-  Widget _buildStateBasedWidget(BuildContext context) {
-    // If no database is provided, show loading state
-    if (widget.database == null) {
-      return widget.loadingBuilder(context);
-    }
-
-    // Handle error state
-    if (_currentError != null) {
-      return widget.errorBuilder(context, _currentError!);
-    }
-
-    // Handle loading state
-    if (_isLoading || _currentData == null) {
-      return widget.loadingBuilder(context);
-    }
-
-    // Build the list with current data
-    return _buildListView();
-  }
-
-  Widget _buildListView() {
-    final items = _currentData!;
+  Widget _buildListView(List<T> items) {
     return ListView.builder(
       // Core ListView.builder properties
       itemCount: items.length,

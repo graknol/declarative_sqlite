@@ -5,8 +5,7 @@
 library;
 
 // Core annotations
-export 'src/annotations/db_record.dart';
-export 'src/annotations/generate_registration.dart';
+export 'src/annotations/generate_db_record.dart';
 
 // Query builders
 export 'src/builders/analysis_context.dart';

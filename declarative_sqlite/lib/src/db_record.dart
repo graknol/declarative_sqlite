@@ -24,8 +24,9 @@ abstract class DbRecord {
   /// Map to track which fields have been modified since creation
   final Set<String> _modifiedFields = <String>{};
 
-  DbRecord(this._data, this._tableName, this._database)
-    : _tableDefinition = _database.schema.userTables.firstWhereOrNull(
+  DbRecord(Map<String, Object?> data, this._tableName, this._database)
+    : _data = Map<String, Object?>.from(data), 
+    _tableDefinition = _database.schema.userTables.firstWhereOrNull(
         (table) => table.name == _tableName,
       ),
       _updateTableName = _tableName;

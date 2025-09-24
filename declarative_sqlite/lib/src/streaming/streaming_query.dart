@@ -31,6 +31,11 @@ class StreamingQuery<T> {
   
   late final StreamController<List<T>> _controller;
   bool _isActive = false;
+  bool _isDisposed = false;
+  
+  // TODO: Consider using RxDart's BehaviorSubject or ReplaySubject for better 
+  // stream lifecycle management, automatic replay of last value for new subscribers,
+  // and more robust handling of subscribe/unsubscribe patterns
   
   /// Cache of previously mapped results indexed by their system_id
   final Map<String, _CachedResult<T>> _resultCache = {};
@@ -40,6 +45,9 @@ class StreamingQuery<T> {
   
   /// Reference to the last mapper function for change detection
   T Function(Map<String, Object?>)? _lastMapper;
+  
+  /// Completer to track ongoing refresh operations
+  Completer<void>? _ongoingRefresh;
 
   StreamingQuery._({
     required String id,
@@ -53,6 +61,7 @@ class StreamingQuery<T> {
         _database = database,
         _mapper = mapper,
         _lastMapper = mapper {
+    developer.log('StreamingQuery._: Created query id="$_id" (not yet active)', name: 'StreamingQuery');
     _controller = StreamController<List<T>>.broadcast(
       onListen: _onListen,
       onCancel: _onCancel,
@@ -167,12 +176,21 @@ class StreamingQuery<T> {
   /// Requires that all queried tables have system_id and system_version columns
   /// for proper change detection and caching optimization.
   Future<void> refresh() async {
-    developer.log('StreamingQuery.refresh: Starting refresh for query id="$_id", isActive=$_isActive', name: 'StreamingQuery');
+    developer.log('StreamingQuery.refresh: Starting refresh for query id="$_id", isActive=$_isActive, isDisposed=$_isDisposed', name: 'StreamingQuery');
+    
+    // Check if disposed before starting
+    if (_isDisposed) {
+      developer.log('StreamingQuery.refresh: Skipping refresh - query disposed for id="$_id"', name: 'StreamingQuery');
+      return;
+    }
     
     if (!_isActive) {
       developer.log('StreamingQuery.refresh: Skipping refresh - query not active for id="$_id"', name: 'StreamingQuery');
       return;
     }
+    
+    // Track this refresh operation
+    _ongoingRefresh = Completer<void>();
     
     try {
       developer.log('StreamingQuery.refresh: Executing database query for id="$_id"', name: 'StreamingQuery');
@@ -237,15 +255,36 @@ class StreamingQuery<T> {
       // Clean up cache: remove entries not in current result set
       _cleanupCache(newResultSystemIds.toSet());
       
-      // Update cached state and emit
+      // Update cached state and emit (only if not disposed)
       _lastResultSystemIds = newResultSystemIds;
+      
+      // Check if query was disposed during the async operation
+      if (_isDisposed) {
+        developer.log('StreamingQuery.refresh: Query disposed during refresh, skipping emission for id="$_id"', name: 'StreamingQuery');
+        return;
+      }
+      
       developer.log('StreamingQuery.refresh: Emitting ${mappedResults.length} mapped results for id="$_id"', name: 'StreamingQuery');
-      _controller.add(mappedResults);
-      developer.log('StreamingQuery.refresh: Successfully emitted results for id="$_id"', name: 'StreamingQuery');
+      
+      // Only add to controller if it's not closed
+      if (!_controller.isClosed) {
+        _controller.add(mappedResults);
+        developer.log('StreamingQuery.refresh: Successfully emitted results for id="$_id"', name: 'StreamingQuery');
+      } else {
+        developer.log('StreamingQuery.refresh: Controller closed, skipping emission for id="$_id"', name: 'StreamingQuery');
+      }
       
     } catch (error, stackTrace) {
       developer.log('StreamingQuery.refresh: Error during refresh for id="$_id"', error: error, stackTrace: stackTrace, name: 'StreamingQuery');
-      _controller.addError(error);
+      
+      // Only add error if not disposed and controller is open
+      if (!_isDisposed && !_controller.isClosed) {
+        _controller.addError(error);
+      }
+    } finally {
+      // Mark refresh as completed
+      _ongoingRefresh?.complete();
+      _ongoingRefresh = null;
     }
   }
 
@@ -273,6 +312,10 @@ class StreamingQuery<T> {
     developer.log('StreamingQuery._onListen: First listener subscribed to query id="$_id"', name: 'StreamingQuery');
     _isActive = true;
     
+    // Auto-register with the database's QueryStreamManager
+    _database.streamManager.register(this);
+    developer.log('StreamingQuery._onListen: Registered with QueryStreamManager, query id="$_id"', name: 'StreamingQuery');
+    
     try {
       developer.log('StreamingQuery._onListen: Starting initial refresh for query id="$_id"', name: 'StreamingQuery');
       await refresh();
@@ -288,15 +331,42 @@ class StreamingQuery<T> {
     developer.log('StreamingQuery._onCancel: Last listener unsubscribed from query id="$_id"', name: 'StreamingQuery');
     _isActive = false;
     _lastResultSystemIds = null;
+    
+    // Auto-unregister from the database's QueryStreamManager (without disposal to avoid circular calls)
+    _database.streamManager.unregisterOnly(_id);
+    developer.log('StreamingQuery._onCancel: Unregistered from QueryStreamManager, query id="$_id"', name: 'StreamingQuery');
     _resultCache.clear();
   }
 
   /// Dispose of this streaming query
-  void dispose() {
+  Future<void> dispose() async {
     developer.log('StreamingQuery.dispose: Disposing query id="$_id"', name: 'StreamingQuery');
+    
+    if (_isDisposed) {
+      developer.log('StreamingQuery.dispose: Already disposed, skipping for id="$_id"', name: 'StreamingQuery');
+      return;
+    }
+    
+    _isDisposed = true;
     _isActive = false;
+    
+    // Wait for any ongoing refresh to complete
+    if (_ongoingRefresh != null && !_ongoingRefresh!.isCompleted) {
+      developer.log('StreamingQuery.dispose: Waiting for ongoing refresh to complete for id="$_id"', name: 'StreamingQuery');
+      try {
+        await _ongoingRefresh!.future.timeout(Duration(seconds: 5));
+      } catch (e) {
+        developer.log('StreamingQuery.dispose: Timeout waiting for refresh completion for id="$_id"', name: 'StreamingQuery');
+      }
+    }
+    
     _resultCache.clear();
-    _controller.close();
+    
+    if (!_controller.isClosed) {
+      _controller.close();
+    }
+    
+    developer.log('StreamingQuery.dispose: Successfully disposed query id="$_id"', name: 'StreamingQuery');
   }
 
   @override
