@@ -30,7 +30,7 @@ export 'src/schema/schema.dart';
 // Streaming queries
 export 'src/streaming/query_dependency_analyzer.dart';
 export 'src/streaming/streaming_query.dart';
-export 'src/streaming/advanced_streaming_query.dart';
+export 'src/streaming/query_stream_manager.dart';
 
 // Synchronization
 export 'src/sync/server_sync_manager.dart';

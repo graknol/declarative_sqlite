@@ -8,6 +8,10 @@ import '../builders/where_clause.dart';
 /// This analyzer uses the self-reporting pattern where QueryBuilder and WhereClause
 /// objects analyze their own dependencies rather than external SQL parsing.
 /// Requires a schema provider to accurately resolve unqualified column references.
+/// 
+/// For complex queries with subqueries, joins, or intricate WHERE clauses, the analyzer
+/// may fall back to table-level dependencies to ensure reliability. This conservative
+/// approach prevents missed updates when column-level analysis might be incomplete.
 class QueryDependencyAnalyzer {
   final SchemaProvider _schema;
 
@@ -30,7 +34,9 @@ class QueryDependencyAnalyzer {
   /// - Whether wildcard selection (*) is used
   ///
   /// Uses schema information to accurately resolve unqualified column references
-  /// to their correct tables, providing more precise dependency tracking.
+  /// to their correct tables. For complex queries where column-level analysis
+  /// might miss dependencies, the system falls back to table-level tracking
+  /// to ensure streaming queries update reliably when underlying data changes.
   QueryDependencies analyzeQuery(QueryBuilder builder) {
     final context = AnalysisContext(_schema);
     return builder.analyzeDependencies(context);

@@ -13,13 +13,20 @@ class _CachedResult<T> {
   const _CachedResult(this.object, this.systemVersion);
 }
 
-/// A streaming query that emits new results whenever the underlying data changes
+/// A streaming query that emits new results whenever the underlying data changes.
+/// 
+/// Uses sophisticated dependency analysis to track exactly which tables and columns
+/// this query depends on, ensuring updates only occur when relevant data changes.
+/// For complex queries, falls back to table-level dependencies for reliability.
+/// 
+/// Requires that all queried tables have system_id and system_version columns
+/// for proper change detection and object caching optimization.
 class StreamingQuery<T> {
   final String _id;
-  final QueryBuilder _builder;
-  final QueryDependencies _dependencies;
+  late QueryBuilder _builder;
+  late QueryDependencies _dependencies;
   final DeclarativeDatabase _database;
-  final T Function(Map<String, Object?>) _mapper;
+  late T Function(Map<String, Object?>) _mapper;
   
   late final StreamController<List<T>> _controller;
   bool _isActive = false;
@@ -29,6 +36,9 @@ class StreamingQuery<T> {
   
   /// System IDs of the last emitted result set for fast comparison
   List<String>? _lastResultSystemIds;
+  
+  /// Reference to the last mapper function for change detection
+  T Function(Map<String, Object?>)? _lastMapper;
 
   StreamingQuery._({
     required String id,
@@ -40,7 +50,8 @@ class StreamingQuery<T> {
         _builder = builder,
         _dependencies = dependencies,
         _database = database,
-        _mapper = mapper {
+        _mapper = mapper,
+        _lastMapper = mapper {
     _controller = StreamController<List<T>>.broadcast(
       onListen: _onListen,
       onCancel: _onCancel,
@@ -78,19 +89,77 @@ class StreamingQuery<T> {
   /// Whether this query is currently active (has listeners)
   bool get isActive => _isActive;
 
-  /// Returns true if this query might be affected by changes to the given table
+  /// Updates the query builder and mapper with smart lifecycle management.
+  /// 
+  /// Re-analyzes dependencies when the query changes to ensure accurate
+  /// dependency tracking. Invalidates cache when mapper changes.
+  Future<void> updateQuery({
+    QueryBuilder? newBuilder,
+    T Function(Map<String, Object?>)? newMapper,
+  }) async {
+    bool needsRefresh = false;
+    bool needsCacheInvalidation = false;
+
+    // Check if query builder changed (using Equatable value equality)
+    if (newBuilder != null && newBuilder != _builder) {
+      _builder = newBuilder;
+      
+      // Re-analyze dependencies for the new query
+      final analyzer = QueryDependencyAnalyzer(_database.schema);
+      _dependencies = analyzer.analyzeQuery(newBuilder);
+      
+      needsRefresh = true;
+    }
+
+    // Check if mapper function changed (using reference equality)
+    if (newMapper != null && !identical(newMapper, _lastMapper)) {
+      _mapper = newMapper;
+      _lastMapper = newMapper;
+      needsCacheInvalidation = true;
+      needsRefresh = true;
+    }
+
+    // Invalidate cache if mapper changed
+    if (needsCacheInvalidation) {
+      _resultCache.clear();
+      _lastResultSystemIds = null;
+    }
+
+    // Execute new query if needed
+    if (needsRefresh && _isActive) {
+      await refresh();
+    }
+  }
+
+  /// Returns true if this query might be affected by changes to the given table.
+  /// 
+  /// For complex queries, dependency analysis falls back to table-level tracking
+  /// to ensure reliability when column-level analysis might miss edge cases.
   bool isAffectedByTable(String tableName) {
     return _dependencies.tables.contains(tableName) ||
            _dependencies.tables.any((table) => table.split(' ').first == tableName);
   }
 
-  /// Returns true if this query might be affected by changes to the given column
+  /// Returns true if this query might be affected by changes to the given column.
+  /// 
+  /// Uses precise column-level dependency tracking when possible. For wildcard
+  /// queries or complex cases, falls back to table-level dependencies.
   bool isAffectedByColumn(String tableName, String columnName) {
-    return _dependencies.usesWildcard && _dependencies.tables.any((table) => table.split(' ').first == tableName) ||
-           _dependencies.columns.any((col) => col.table == tableName && col.column == columnName);
+    // If using wildcard selection, any column in referenced tables affects the query
+    if (_dependencies.usesWildcard && 
+        _dependencies.tables.any((table) => table.split(' ').first == tableName)) {
+      return true;
+    }
+    
+    // Check for specific column dependencies
+    return _dependencies.columns.any((col) => 
+        col.table == tableName && col.column == columnName);
   }
 
-  /// Manually trigger a refresh of this query with hash-based optimization
+  /// Manually trigger a refresh of this query with system column optimization.
+  /// 
+  /// Requires that all queried tables have system_id and system_version columns
+  /// for proper change detection and caching optimization.
   Future<void> refresh() async {
     if (!_isActive) return;
     
@@ -102,18 +171,11 @@ class StreamingQuery<T> {
       final systemIdToVersion = <String, String>{};
       
       for (final rawRow in rawResults) {
-        final systemId = rawRow['system_id'] as String?;
-        final systemVersion = rawRow['system_version'] as String?;
+        final systemId = rawRow['system_id'] as String;
+        final systemVersion = rawRow['system_version'] as String;
         
-        if (systemId != null && systemVersion != null) {
-          newResultSystemIds.add(systemId);
-          systemIdToVersion[systemId] = systemVersion;
-        } else {
-          // Fallback for rows without system columns: generate unique identifier
-          final fallbackId = 'fallback_${newResultSystemIds.length}';
-          newResultSystemIds.add(fallbackId);
-          systemIdToVersion[fallbackId] = DateTime.now().millisecondsSinceEpoch.toString();
-        }
+        newResultSystemIds.add(systemId);
+        systemIdToVersion[systemId] = systemVersion;
       }
       
       // Quick check: if system ID sequence is identical, check for version changes

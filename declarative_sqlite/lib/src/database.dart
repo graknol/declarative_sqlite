@@ -51,6 +51,9 @@ class DeclarativeDatabase {
   /// Manager for streaming queries.
   late final QueryStreamManager _streamManager;
 
+  /// Tracks table names that need notifications (used in transactions)
+  final Set<String> _pendingNotifications = <String>{};
+
   final Map<String, DbRecord> _recordCache = {};
 
   void registerRecord(DbRecord record) {
@@ -81,10 +84,10 @@ class DeclarativeDatabase {
     this.dirtyRowStore,
     this.hlcClock,
     this.fileRepository,
-    this.transactionId,
-  ) {
+    this.transactionId, {
+    QueryStreamManager? sharedStreamManager,
+  }) : _streamManager = sharedStreamManager ?? QueryStreamManager() {
     files = FileSet(this);
-    _streamManager = QueryStreamManager();
   }
 
   /// Opens the database at the given [path].
@@ -478,8 +481,25 @@ class DeclarativeDatabase {
             hlcClock,
             fileRepository,
             txnId,
+            sharedStreamManager: _streamManager,
           );
-          return await action(db);
+          
+          try {
+            final result = await action(db);
+            
+            // Transaction succeeded - notify for all pending changes
+            await Future.wait(
+              db._pendingNotifications.map(
+                (tableName) => _streamManager.notifyTableChanged(tableName)
+              )
+            );
+            
+            return result;
+          } catch (e) {
+            // Transaction failed - clear pending notifications without sending
+            db._pendingNotifications.clear();
+            rethrow;
+          }
         },
         exclusive: exclusive,
       );
@@ -495,8 +515,12 @@ class DeclarativeDatabase {
       final systemId = await _insert(tableName, values, now);
       await dirtyRowStore?.add(tableName, systemId, now);
 
-      // Notify streaming queries of the change
-      await _streamManager.notifyTableChanged(tableName);
+      // Notify streaming queries of the change (or defer if in transaction)
+      if (transactionId != null) {
+        _pendingNotifications.add(tableName);
+      } else {
+        await _streamManager.notifyTableChanged(tableName);
+      }
 
       return systemId;
     }, tableName: tableName);
@@ -565,7 +589,12 @@ class DeclarativeDatabase {
           await dirtyRowStore?.add(
               tableName, row.getValue<String>('system_id')!, now);
         }
-        await _streamManager.notifyTableChanged(tableName);
+        // Notify streaming queries of the change (or defer if in transaction)
+        if (transactionId != null) {
+          _pendingNotifications.add(tableName);
+        } else {
+          await _streamManager.notifyTableChanged(tableName);
+        }
       }
 
       return result;
@@ -680,7 +709,12 @@ class DeclarativeDatabase {
           await dirtyRowStore?.add(
               tableName, row.getValue<String>('system_id')!, now);
         }
-        await _streamManager.notifyTableChanged(tableName);
+        // Notify streaming queries of the change (or defer if in transaction)
+        if (transactionId != null) {
+          _pendingNotifications.add(tableName);
+        } else {
+          await _streamManager.notifyTableChanged(tableName);
+        }
       }
 
       return result;
@@ -936,8 +970,12 @@ class DeclarativeDatabase {
       }
     });
 
-    // Notify streaming queries of the change
-    await _streamManager.notifyTableChanged(tableName);
+    // Notify streaming queries of the change (or defer if in transaction)
+    if (transactionId != null) {
+      _pendingNotifications.add(tableName);
+    } else {
+      await _streamManager.notifyTableChanged(tableName);
+    }
   }
 
   /// Validates that a query result meets the requirements for forUpdate

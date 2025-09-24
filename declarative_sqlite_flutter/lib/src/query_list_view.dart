@@ -65,7 +65,7 @@ class QueryListView<T> extends StatefulWidget {
 }
 
 class _QueryListViewState<T> extends State<QueryListView<T>> {
-  AdvancedStreamingQuery<T>? _streamingQuery;
+  StreamingQuery<T>? _streamingQuery;
   StreamSubscription<List<T>>? _subscription;
   List<T>? _currentData;
   Object? _currentError;
@@ -148,7 +148,7 @@ class _QueryListViewState<T> extends State<QueryListView<T>> {
   }
 
   void _createStreamingQuery(QueryBuilder builder) {
-    _streamingQuery = AdvancedStreamingQuery.create(
+    _streamingQuery = StreamingQuery.create(
       id: 'query_list_view_${DateTime.now().millisecondsSinceEpoch}',
       builder: builder,
       database: widget.database!,
