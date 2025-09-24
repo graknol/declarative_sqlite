@@ -1,4 +1,4 @@
-import 'package:declarative_sqlite/src/schema/key.dart';
+import 'package:declarative_sqlite/src/schema/db_key.dart';
 
 class KeyBuilder {
   final List<String> columns;
@@ -26,8 +26,8 @@ class KeyBuilder {
     _foreignColumns = columns;
   }
 
-  Key build() {
-    return Key(
+  DbKey build() {
+    return DbKey(
       columns: columns,
       type: _type,
       foreignTable: _foreignTable,

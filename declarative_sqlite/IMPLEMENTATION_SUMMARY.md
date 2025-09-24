@@ -109,7 +109,7 @@ print('Cleaned ${result['filesets']} filesets, ${result['files']} files');
 ## 📁 Files Added/Modified
 
 ### Core Implementation
-- `lib/src/record.dart` - DbRecord abstract class
+- `lib/src/db_record.dart` - DbRecord abstract class
 - `lib/src/record_factory.dart` - Factory utilities
 - `lib/src/record_map_factory_registry.dart` - Type registry
 - `lib/src/exceptions/` - Exception handling system

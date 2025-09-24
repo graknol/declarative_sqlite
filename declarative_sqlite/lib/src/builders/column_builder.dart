@@ -1,4 +1,4 @@
-import 'package:declarative_sqlite/src/schema/column.dart';
+import 'package:declarative_sqlite/src/schema/db_column.dart';
 import 'package:meta/meta.dart';
 
 /// Base class for all column builders.
@@ -39,8 +39,8 @@ abstract class ColumnBuilder {
     return this;
   }
 
-  Column build() {
-    return Column(
+  DbColumn build() {
+    return DbColumn(
       name: name,
       logicalType: logicalType,
       type: dbType,

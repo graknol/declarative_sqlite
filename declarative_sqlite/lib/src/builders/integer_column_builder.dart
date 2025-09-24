@@ -1,5 +1,5 @@
 import 'package:declarative_sqlite/src/builders/column_builder.dart';
-import 'package:declarative_sqlite/src/schema/column.dart';
+import 'package:declarative_sqlite/src/schema/db_column.dart';
 
 class IntegerColumnBuilder extends ColumnBuilder {
   num? _minValue;
@@ -18,8 +18,8 @@ class IntegerColumnBuilder extends ColumnBuilder {
   }
 
   @override
-  Column build() {
-    return Column(
+  DbColumn build() {
+    return DbColumn(
       name: name,
       logicalType: logicalType,
       type: dbType,

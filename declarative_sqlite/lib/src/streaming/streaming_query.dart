@@ -2,7 +2,7 @@ import 'dart:async';
 
 import '../builders/query_builder.dart';
 import '../builders/query_dependencies.dart';
-import '../database.dart';
+import '../declarative_database.dart';
 import 'query_dependency_analyzer.dart';
 
 /// A cached result entry containing the mapped object and its system version

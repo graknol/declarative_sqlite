@@ -1,4 +1,4 @@
-import 'package:declarative_sqlite/src/schema/table.dart';
+import 'package:declarative_sqlite/src/schema/db_table.dart';
 import 'package:declarative_sqlite/src/schema/schema.dart';
 import 'package:declarative_sqlite/src/builders/table_builder.dart';
 import 'package:declarative_sqlite/src/builders/view_builder.dart';
@@ -77,7 +77,7 @@ class SchemaBuilder {
     );
   }
 
-  Table _buildSystemTableSettings() {
+  DbTable _buildSystemTableSettings() {
     final builder = TableBuilder('__settings');
     builder.text('key').notNull('_');
     builder.text('value');
@@ -85,7 +85,7 @@ class SchemaBuilder {
     return builder.build();
   }
 
-  Table _buildSystemTableFiles() {
+  DbTable _buildSystemTableFiles() {
     final builder = TableBuilder('__files');
     builder.guid('id').notNull('00000000-0000-0000-0000-000000000000');
     builder.guid('owner_id').notNull('00000000-0000-0000-0000-000000000000');
@@ -98,7 +98,7 @@ class SchemaBuilder {
     return builder.build();
   }
 
-  Table _buildSystemTableDirtyRows() {
+  DbTable _buildSystemTableDirtyRows() {
     final builder = TableBuilder('__dirty_rows');
     builder.text('table_name').notNull('default');
     builder.guid('row_id').notNull('00000000-0000-0000-0000-000000000000');

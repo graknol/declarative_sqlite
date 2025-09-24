@@ -1,5 +1,5 @@
-import 'package:declarative_sqlite/src/database.dart';
-import 'package:declarative_sqlite/src/record.dart';
+import 'package:declarative_sqlite/src/declarative_database.dart';
+import 'package:declarative_sqlite/src/db_record.dart';
 
 /// Factory for creating DbRecord instances from database query results.
 class RecordFactory {

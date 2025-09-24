@@ -43,7 +43,7 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
   }
 
   /// Generates typed properties extension and simple fromMap method
-  String _generateRecordClass(ClassElement element, Table schemaTable) {
+  String _generateRecordClass(ClassElement element, DbTable schemaTable) {
     final className = element.name;
     final buffer = StringBuffer();
 
@@ -67,7 +67,7 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
   }
 
   /// Generates getters and setters based on the actual schema table
-  void _generateGettersAndSetters(StringBuffer buffer, Table table) {
+  void _generateGettersAndSetters(StringBuffer buffer, DbTable table) {
     final primaryKeyColumns =
         table.keys.where((k) => k.isPrimary).expand((k) => k.columns).toSet();
 

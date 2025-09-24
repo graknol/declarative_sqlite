@@ -9,22 +9,22 @@ export 'src/annotations/db_record.dart';
 
 // Query builders
 export 'src/builders/analysis_context.dart';
-export 'src/builders/column.dart';
+export 'src/builders/query_column.dart';
 export 'src/builders/schema_builder.dart';
 export 'src/builders/query_builder.dart';
 export 'src/builders/query_dependencies.dart';
 export 'src/builders/where_clause.dart';
 
 // Core database classes
-export 'src/database.dart';
+export 'src/declarative_database.dart';
 export 'src/data_mapping.dart';
-export 'src/record.dart';
+export 'src/db_record.dart';
 export 'src/record_factory.dart';
 export 'src/record_map_factory_registry.dart';
 export 'src/files/filesystem_file_repository.dart';
 
 // Schema classes
-export 'src/schema/table.dart';
+export 'src/schema/db_table.dart';
 export 'src/schema/schema.dart';
 
 // Streaming queries

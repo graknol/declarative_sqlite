@@ -1,12 +1,12 @@
 import 'column_builder.dart';
-import '../schema/column.dart';
+import '../schema/db_column.dart';
 
 class FilesetColumnBuilder extends ColumnBuilder {
   FilesetColumnBuilder(String name) : super(name, 'fileset', 'TEXT');
 
   @override
-  Column build() {
-    return Column(
+  DbColumn build() {
+    return DbColumn(
       name: name,
       logicalType: logicalType,
       type: dbType,

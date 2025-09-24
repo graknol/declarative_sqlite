@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:collection/collection.dart';
 import 'package:crypto/crypto.dart';
 import 'package:declarative_sqlite/src/migration/schema_diff.dart';
-import 'package:declarative_sqlite/src/schema/key.dart';
+import 'package:declarative_sqlite/src/schema/db_key.dart';
 
 List<String> generateMigrationScripts(List<SchemaChange> changes) {
   final scripts = <String>[];

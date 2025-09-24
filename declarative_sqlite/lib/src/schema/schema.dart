@@ -1,15 +1,15 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import 'package:declarative_sqlite/src/schema/table.dart';
-import 'package:declarative_sqlite/src/schema/view.dart';
+import 'package:declarative_sqlite/src/schema/db_table.dart';
+import 'package:declarative_sqlite/src/schema/db_view.dart';
 import '../builders/analysis_context.dart';
 
 class Schema implements SchemaProvider {
-  final List<Table> tables;
-  final List<View> views;
+  final List<DbTable> tables;
+  final List<DbView> views;
 
-  Iterable<Table> get userTables => tables.where((t) => !t.isSystem);
-  Iterable<Table> get systemTables => tables.where((t) => t.isSystem);
+  Iterable<DbTable> get userTables => tables.where((t) => !t.isSystem);
+  Iterable<DbTable> get systemTables => tables.where((t) => t.isSystem);
 
 
   const Schema({

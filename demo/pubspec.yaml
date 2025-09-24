@@ -1,0 +1,25 @@
+name: demo
+description: "A new Flutter project."
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  declarative_sqlite:
+    path: ../declarative_sqlite
+  declarative_sqlite_flutter:
+    path: ../declarative_sqlite_flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  declarative_sqlite_generator:
+    path: ../declarative_sqlite_generator
+
+flutter:
+  uses-material-design: true

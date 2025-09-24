@@ -1,4 +1,4 @@
-import 'package:declarative_sqlite/src/database.dart';
+import 'package:declarative_sqlite/src/declarative_database.dart';
 import 'package:declarative_sqlite/src/sync/hlc.dart';
 
 import 'dirty_row.dart';

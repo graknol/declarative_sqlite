@@ -1,22 +1,22 @@
 import 'aliased.dart';
 import 'analysis_context.dart';
-import 'column.dart';
+import 'query_column.dart';
 import 'join_clause.dart';
 import 'query_dependencies.dart';
 import 'where_clause.dart';
 
 class QueryBuilder {
   Aliased<String>? _from;
-  final List<Aliased<Column>> _columns = [];
+  final List<Aliased<QueryColumn>> _columns = [];
   WhereClause? _where;
-  final List<Column> _orderBy = [];
-  final List<Column> _groupBy = [];
+  final List<QueryColumn> _orderBy = [];
+  final List<QueryColumn> _groupBy = [];
   final List<JoinClause> _joins = [];
   String? _having;
   String? _updateTable; // Table to target for CRUD operations
 
   QueryBuilder select(String column, [String? alias]) {
-    _columns.add(Aliased(Column.parse(column), alias));
+    _columns.add(Aliased(QueryColumn.parse(column), alias));
     return this;
   }
 
@@ -31,12 +31,12 @@ class QueryBuilder {
   }
 
   QueryBuilder orderBy(List<String> columns) {
-    _orderBy.addAll(columns.map((col) => Column.parse(col)));
+    _orderBy.addAll(columns.map((col) => QueryColumn.parse(col)));
     return this;
   }
 
   QueryBuilder groupBy(List<String> columns) {
-    _groupBy.addAll(columns.map((col) => Column.parse(col)));
+    _groupBy.addAll(columns.map((col) => QueryColumn.parse(col)));
     return this;
   }
 
@@ -105,7 +105,7 @@ class QueryBuilder {
     build(subQueryBuilder);
     final built = subQueryBuilder.build();
     final subQuery = built.$1;
-    _columns.add(Aliased(Column.parse('($subQuery)'), alias));
+    _columns.add(Aliased(QueryColumn.parse('($subQuery)'), alias));
     return this;
   }
 

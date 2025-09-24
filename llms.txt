@@ -437,11 +437,11 @@ export 'src/builders/text_column_builder.dart';
 export 'src/builders/view_builder.dart';
 export 'src/builders/where_clause.dart';
 export 'src/data_mapping.dart';
-export 'src/database.dart' show DeclarativeDatabase;
+export 'src/declarative_database.dart' show DeclarativeDatabase;
 export 'src/files/file_repository.dart';
 export 'src/files/fileset_field.dart';
 export 'src/files/filesystem_file_repository.dart';
-export 'src/record.dart' show DbRecord;
+export 'src/db_record.dart' show DbRecord;
 export 'src/record_factory.dart';
 export 'src/record_map_factory_registry.dart';
 export 'src/exceptions/db_exceptions.dart';
@@ -1584,7 +1584,7 @@ class RawSqlWhereClause extends WhereClause {
 <!-- END FILE: declarative_sqlite/lib/src/builders/where_clause.dart -->
 
 <!-- BEGIN FILE: declarative_sqlite/lib/src/data_mapping.dart -->
-import 'package:declarative_sqlite/src/database.dart';
+import 'package:declarative_sqlite/src/declarative_database.dart';
 import 'package:declarative_sqlite/src/files/fileset_field.dart';
 
 /// Base class for mapping database rows to typed objects.
@@ -1627,7 +1627,7 @@ import 'dart:async';
 import 'package:declarative_sqlite/src/builders/query_builder.dart';
 import 'package:declarative_sqlite/src/builders/where_clause.dart';
 import 'package:declarative_sqlite/src/exceptions/db_exception_wrapper.dart';
-import 'package:declarative_sqlite/src/record.dart';
+import 'package:declarative_sqlite/src/db_record.dart';
 import 'package:declarative_sqlite/src/record_factory.dart';
 import 'package:declarative_sqlite/src/record_map_factory_registry.dart';
 import 'package:declarative_sqlite/src/schema/table.dart';
@@ -3778,7 +3778,7 @@ abstract class IFileRepository {
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:declarative_sqlite/src/database.dart';
+import 'package:declarative_sqlite/src/declarative_database.dart';
 import 'package:uuid/uuid.dart';
 
 /// Orchestrates file storage and metadata for fileset columns.
@@ -3983,7 +3983,7 @@ class FileSet {
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:declarative_sqlite/src/database.dart';
+import 'package:declarative_sqlite/src/declarative_database.dart';
 import 'package:declarative_sqlite/src/files/fileset.dart';
 
 /// Represents a fileset column value with convenient access to file operations.
@@ -4639,9 +4639,9 @@ class DropView extends ViewChange {
 }
 <!-- END FILE: declarative_sqlite/lib/src/migration/schema_diff.dart -->
 
-<!-- BEGIN FILE: declarative_sqlite/lib/src/record.dart -->
+<!-- BEGIN FILE: declarative_sqlite/lib/src/db_record.dart -->
 import 'package:collection/collection.dart';
-import 'package:declarative_sqlite/src/database.dart';
+import 'package:declarative_sqlite/src/declarative_database.dart';
 import 'package:declarative_sqlite/src/files/fileset_field.dart';
 import 'package:declarative_sqlite/src/schema/column.dart';
 import 'package:declarative_sqlite/src/schema/table.dart';
@@ -5057,11 +5057,11 @@ abstract class DbRecord {
     return data[key];
   }
 }
-<!-- END FILE: declarative_sqlite/lib/src/record.dart -->
+<!-- END FILE: declarative_sqlite/lib/src/db_record.dart -->
 
 <!-- BEGIN FILE: declarative_sqlite/lib/src/record_factory.dart -->
-import 'package:declarative_sqlite/src/database.dart';
-import 'package:declarative_sqlite/src/record.dart';
+import 'package:declarative_sqlite/src/declarative_database.dart';
+import 'package:declarative_sqlite/src/db_record.dart';
 
 /// Factory for creating DbRecord instances from database query results.
 class RecordFactory {
@@ -5189,8 +5189,8 @@ class _GenericRecord extends DbRecord {
 <!-- END FILE: declarative_sqlite/lib/src/record_factory.dart -->
 
 <!-- BEGIN FILE: declarative_sqlite/lib/src/record_map_factory_registry.dart -->
-import 'package:declarative_sqlite/src/database.dart';
-import 'package:declarative_sqlite/src/record.dart';
+import 'package:declarative_sqlite/src/declarative_database.dart';
+import 'package:declarative_sqlite/src/db_record.dart';
 
 typedef RecordFactoryFunction<T extends DbRecord> = T Function(
     Map<String, Object?> data, DeclarativeDatabase database);
@@ -6247,7 +6247,7 @@ class View {
 <!-- BEGIN FILE: declarative_sqlite/lib/src/streaming/advanced_streaming_query.dart -->
 import 'dart:async';
 import '../builders/query_builder.dart';
-import '../database.dart';
+import '../declarative_database.dart';
 import 'query_dependency_analyzer.dart';
 
 /// Advanced streaming query manager that handles smart lifecycle management
@@ -7041,7 +7041,7 @@ class QueryStreamManager {
 <!-- BEGIN FILE: declarative_sqlite/lib/src/streaming/streaming_query.dart -->
 import 'dart:async';
 import '../builders/query_builder.dart';
-import '../database.dart';
+import '../declarative_database.dart';
 import 'query_dependency_analyzer.dart';
 
 /// A cached result entry containing the mapped object and its system version
@@ -7448,7 +7448,7 @@ class HlcClock {
 <!-- END FILE: declarative_sqlite/lib/src/sync/hlc.dart -->
 
 <!-- BEGIN FILE: declarative_sqlite/lib/src/sync/server_sync_manager.dart -->
-import 'package:declarative_sqlite/src/database.dart';
+import 'package:declarative_sqlite/src/declarative_database.dart';
 import 'package:declarative_sqlite/src/sync/hlc.dart';
 
 import 'dirty_row.dart';

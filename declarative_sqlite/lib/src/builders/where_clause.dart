@@ -1,6 +1,6 @@
 // lib/src/builders/where_clause.dart
 import 'analysis_context.dart';
-import 'column.dart';
+import 'query_column.dart';
 import 'query_builder.dart';
 import 'query_dependencies.dart';
 
@@ -19,11 +19,11 @@ class BuiltWhereClause {
 }
 
 class Condition {
-  final Column _column;
+  final QueryColumn _column;
 
-  Condition(String columnExpression) : _column = Column.parse(columnExpression);
+  Condition(String columnExpression) : _column = QueryColumn.parse(columnExpression);
   
-  Column get column => _column;
+  QueryColumn get column => _column;
 
   Comparison eq(Object value) => _compare('=', value);
   Comparison neq(Object value) => _compare('!=', value);
@@ -43,7 +43,7 @@ class Condition {
 }
 
 class InSubQueryComparsion extends WhereClause {
-  final Column column;
+  final QueryColumn column;
   final QueryBuilder subQuery;
 
   InSubQueryComparsion(this.column, this.subQuery);
@@ -77,7 +77,7 @@ class InSubQueryComparsion extends WhereClause {
 }
 
 class InListComparison extends WhereClause {
-  final Column column;
+  final QueryColumn column;
   final List<Object> list;
 
   InListComparison(this.column, this.list);
@@ -100,7 +100,7 @@ class InListComparison extends WhereClause {
 }
 
 class Comparison extends WhereClause {
-  final Column column;
+  final QueryColumn column;
   final String operator;
   final Object? value;
 

@@ -1,6 +1,6 @@
 import 'query_builder.dart';
 import 'where_clause.dart';
-import '../schema/view.dart';
+import '../schema/db_view.dart';
 
 class ViewBuilder {
   final String name;
@@ -186,7 +186,7 @@ class ViewBuilder {
     return this;
   }
 
-  View build() {
+  DbView build() {
     assert(_selectColumns.isNotEmpty, 'At least one SELECT column must be specified');
     assert(_hasFrom, 'FROM clause must be specified');
     
@@ -253,7 +253,7 @@ class ViewBuilder {
       return built.sql;
     }).toList();
     
-    return View(
+    return DbView(
       name: name,
       columns: columns,
       fromTables: fromTables,
