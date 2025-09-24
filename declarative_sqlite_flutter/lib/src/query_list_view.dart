@@ -3,10 +3,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 
-class QueryListView<T> extends StatefulWidget {
+class QueryListView<T extends DbRecord> extends StatefulWidget {
   final DeclarativeDatabase? database;
   final void Function(QueryBuilder query) query;
-  final T Function(Map<String, Object?>) mapper;
+  final T Function(Map<String, Object?>, DeclarativeDatabase)? mapper;
   final Widget Function(BuildContext context) loadingBuilder;
   final Widget Function(BuildContext context, Object error) errorBuilder;
   final Widget Function(BuildContext context, T record) itemBuilder;
@@ -35,7 +35,7 @@ class QueryListView<T> extends StatefulWidget {
     super.key,
     this.database,
     required this.query,
-    required this.mapper,
+    this.mapper,
     required this.loadingBuilder,
     required this.errorBuilder,
     required this.itemBuilder,
@@ -64,7 +64,7 @@ class QueryListView<T> extends StatefulWidget {
   State<QueryListView<T>> createState() => _QueryListViewState<T>();
 }
 
-class _QueryListViewState<T> extends State<QueryListView<T>> {
+class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
   StreamingQuery<T>? _streamingQuery;
   StreamSubscription<List<T>>? _subscription;
   List<T>? _currentData;
@@ -114,9 +114,25 @@ class _QueryListViewState<T> extends State<QueryListView<T>> {
   }
 
   void _updateStreamingQuery(QueryBuilder newBuilder) {
+    // Use provided mapper or get from registry (same logic as _createStreamingQuery)
+    final T Function(Map<String, Object?>) effectiveMapper;
+    
+    if (widget.mapper != null) {
+      effectiveMapper = (data) => widget.mapper!(data, widget.database!);
+    } else {
+      if (!RecordMapFactoryRegistry.hasFactory<T>()) {
+        throw ArgumentError(
+          'No mapper provided and no factory registered for type $T. '
+          'Either provide a mapper parameter or register a factory using '
+          'RecordMapFactoryRegistry.register<$T>(factory).'
+        );
+      }
+      effectiveMapper = (data) => RecordMapFactoryRegistry.create<T>(data, widget.database!);
+    }
+    
     _streamingQuery!.updateQuery(
       newBuilder: newBuilder,
-      newMapper: widget.mapper,
+      newMapper: effectiveMapper,
     );
   }
 
@@ -148,11 +164,28 @@ class _QueryListViewState<T> extends State<QueryListView<T>> {
   }
 
   void _createStreamingQuery(QueryBuilder builder) {
+    // Use provided mapper or get from registry
+    final T Function(Map<String, Object?>, DeclarativeDatabase) effectiveMapper;
+    
+    if (widget.mapper != null) {
+      effectiveMapper = widget.mapper!;
+    } else {
+      // Try to get mapper from registry
+      if (!RecordMapFactoryRegistry.hasFactory<T>()) {
+        throw ArgumentError(
+          'No mapper provided and no factory registered for type $T. '
+          'Either provide a mapper parameter or register a factory using '
+          'RecordMapFactoryRegistry.register<$T>(factory).'
+        );
+      }
+      effectiveMapper = (data, database) => RecordMapFactoryRegistry.create<T>(data, database);
+    }
+    
     _streamingQuery = StreamingQuery.create(
       id: 'query_list_view_${DateTime.now().millisecondsSinceEpoch}',
       builder: builder,
       database: widget.database!,
-      mapper: widget.mapper,
+      mapper: (data) => effectiveMapper(data, widget.database!),
     );
   }
 

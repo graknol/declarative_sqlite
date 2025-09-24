@@ -49,60 +49,7 @@ class DeclarativeSqliteDemo extends StatelessWidget {
   }
 }
 
-class User {
-  final String id;
-  final String name;
-  final String email;
-  final int age;
-  final DateTime createdAt;
 
-  User({
-    required this.id,
-    required this.name,
-    required this.email,
-    required this.age,
-    required this.createdAt,
-  });
-
-  static User fromMap(Map<String, Object?> map) {
-    return User(
-      id: map['id'] as String,
-      name: map['name'] as String,
-      email: map['email'] as String,
-      age: map['age'] as int,
-      createdAt: DateTime.parse(map['created_at'] as String),
-    );
-  }
-}
-
-class Post {
-  final String id;
-  final String userId;
-  final String title;
-  final String content;
-  final String userName;
-  final DateTime createdAt;
-
-  Post({
-    required this.id,
-    required this.userId,
-    required this.title,
-    required this.content,
-    required this.userName,
-    required this.createdAt,
-  });
-
-  static Post fromMap(Map<String, Object?> map) {
-    return Post(
-      id: map['id'] as String,
-      userId: map['user_id'] as String,
-      title: map['title'] as String,
-      content: map['content'] as String,
-      userName: map['user_name'] as String,
-      createdAt: DateTime.parse(map['created_at'] as String),
-    );
-  }
-}
 
 class DemoHomeScreen extends StatefulWidget {
   const DemoHomeScreen({super.key});
@@ -114,6 +61,143 @@ class DemoHomeScreen extends StatefulWidget {
 class _DemoHomeScreenState extends State<DemoHomeScreen> {
   bool _showPostsOnly = false;
   String _currentFilter = 'all'; // 'all', 'young', 'old'
+
+  @override
+  void initState() {
+    super.initState();
+    // Add initial data after the widget is built and database is available
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _populateInitialData();
+    });
+  }
+
+  Future<void> _populateInitialData() async {
+    try {
+      final db = DatabaseProvider.of(context);
+      
+      // Register the factory functions for automatic mapping
+      RecordMapFactoryRegistry.register<User>((data, database) => User.fromMap(data, database));
+      RecordMapFactoryRegistry.register<Post>((data, database) => Post.fromMap(data, database));
+      
+      // Check if users table is empty
+      final existingUsers = await db.rawQuery('SELECT COUNT(*) as count FROM users');
+      final userCount = existingUsers.first['count'] as int;
+      
+      if (userCount == 0) {
+        // Add initial users
+        final now = DateTime.now();
+        final users = [
+          {
+            'id': _generateGuid(),
+            'name': 'Alice Johnson',
+            'email': 'alice.johnson@example.com',
+            'age': 28,
+            'created_at': now.subtract(const Duration(days: 30)).toIso8601String(),
+          },
+          {
+            'id': _generateGuid(),
+            'name': 'Bob Smith',
+            'email': 'bob.smith@example.com',
+            'age': 22,
+            'created_at': now.subtract(const Duration(days: 25)).toIso8601String(),
+          },
+          {
+            'id': _generateGuid(),
+            'name': 'Charlie Brown',
+            'email': 'charlie.brown@example.com',
+            'age': 35,
+            'created_at': now.subtract(const Duration(days: 20)).toIso8601String(),
+          },
+          {
+            'id': _generateGuid(),
+            'name': 'Diana Prince',
+            'email': 'diana.prince@example.com',
+            'age': 24,
+            'created_at': now.subtract(const Duration(days: 15)).toIso8601String(),
+          },
+          {
+            'id': _generateGuid(),
+            'name': 'Edward Wilson',
+            'email': 'edward.wilson@example.com',
+            'age': 45,
+            'created_at': now.subtract(const Duration(days: 10)).toIso8601String(),
+          },
+        ];
+
+        // Insert users
+        for (final user in users) {
+          await db.insert('users', user);
+        }
+
+        // Add initial posts
+        final posts = [
+          {
+            'id': _generateGuid(),
+            'user_id': users[0]['id'],
+            'title': 'Welcome to Declarative SQLite!',
+            'content': 'This is my first post using the new declarative SQLite library. It makes database operations so much easier!',
+            'user_name': users[0]['name'],
+            'created_at': now.subtract(const Duration(days: 5)).toIso8601String(),
+          },
+          {
+            'id': _generateGuid(),
+            'user_id': users[1]['id'],
+            'title': 'Learning Flutter Development',
+            'content': 'Just started learning Flutter and I\'m amazed by how quickly you can build beautiful apps.',
+            'user_name': users[1]['name'],
+            'created_at': now.subtract(const Duration(days: 4)).toIso8601String(),
+          },
+          {
+            'id': _generateGuid(),
+            'user_id': users[0]['id'],
+            'title': 'Database Reactivity is Amazing',
+            'content': 'The way the UI automatically updates when data changes is incredible. No more manual refreshes!',
+            'user_name': users[0]['name'],
+            'created_at': now.subtract(const Duration(days: 3)).toIso8601String(),
+          },
+          {
+            'id': _generateGuid(),
+            'user_id': users[2]['id'],
+            'title': 'Building Better Apps',
+            'content': 'With declarative SQLite, building data-driven apps has never been easier. The reactive queries are a game changer.',
+            'user_name': users[2]['name'],
+            'created_at': now.subtract(const Duration(days: 2)).toIso8601String(),
+          },
+          {
+            'id': _generateGuid(),
+            'user_id': users[3]['id'],
+            'title': 'Tips for Mobile Development',
+            'content': 'Here are some tips I\'ve learned while developing mobile apps with Flutter and SQLite.',
+            'user_name': users[3]['name'],
+            'created_at': now.subtract(const Duration(days: 1)).toIso8601String(),
+          },
+        ];
+
+        // Insert posts
+        for (final post in posts) {
+          await db.insert('posts', post);
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Initial demo data loaded successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading initial data: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -198,16 +282,41 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             ],
           ),
           const Divider(),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          Column(
             children: [
-              ElevatedButton(
-                onPressed: _updateRandomUser,
-                child: const Text('Update Random User Age'),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _updateRandomUser,
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Update User Age'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _updateUserOutsideFilter,
+                      icon: const Icon(Icons.logout, size: 16),
+                      label: const Text('Move Outside Filter'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              ElevatedButton(
-                onPressed: _updateUserOutsideFilter,
-                child: const Text('Update User (Outside Filter)'),
+              const SizedBox(height: 4),
+              Text(
+                'Test reactive updates: First button updates within filter, second moves user outside current filter',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.grey[600],
+                  fontSize: 11,
+                ),
+                textAlign: TextAlign.center,
               ),
             ],
           ),
@@ -218,6 +327,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
 
   Widget _buildUsersList() {
     return QueryListView<User>(
+      key: ValueKey(_currentFilter), // Force rebuild when filter changes
       database: DatabaseProvider.of(context),
       query: (q) {
         q.from('users');
@@ -238,7 +348,6 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
         
         q.orderBy(['created_at DESC']);
       },
-      mapper: User.fromMap,
       loadingBuilder: (context) => const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -288,9 +397,9 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
 
   Widget _buildPostsList() {
     return QueryListView<Post>(
+      key: const ValueKey('posts'), // Consistent key for posts view
       database: DatabaseProvider.of(context),
       query: (q) => q.from('posts').orderBy(['created_at DESC']),
-      mapper: Post.fromMap,
       loadingBuilder: (context) => const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
