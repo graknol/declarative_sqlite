@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:flutter/widgets.dart';
 import 'package:sqflite/sqflite.dart';
@@ -140,16 +142,20 @@ class _DatabaseProviderState extends State<DatabaseProvider> {
   }
 
   Future<DeclarativeDatabase> _createDatabaseInstance(Schema schema) async {
-    final libraryDirectory = await getLibraryDirectory();
-    final fileRepositoryPath =
-        path.join(libraryDirectory.path, 'file_repository');
-
+    final fileRepositoryPath = await _getFileRepositoryPath();
     return await DeclarativeDatabase.open(
       widget.databasePath ?? widget.databaseName,
       databaseFactory: databaseFactory,
       schema: schema,
       fileRepository: FilesystemFileRepository(fileRepositoryPath),
     );
+  }
+
+  Future<String> _getFileRepositoryPath() async {
+    final rootDirectory = Platform.isMacOS || Platform.isIOS
+        ? await getLibraryDirectory()
+        : await getApplicationSupportDirectory();
+    return path.join(rootDirectory.path, 'file_repository');
   }
 
   void _setInitializationState({
