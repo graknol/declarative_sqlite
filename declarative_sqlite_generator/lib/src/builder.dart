@@ -8,11 +8,8 @@ import 'registration_builder.dart';
 Builder declarativeSqliteGenerator(BuilderOptions options) =>
     PartBuilder([DeclarativeSqliteGenerator()], '.g.dart');
 
-Builder registrationCollectBuilder(BuilderOptions options) =>
-    RegistrationCollectBuilder();
-
-Builder registrationAggregateBuilder(BuilderOptions options) =>
-    RegistrationAggregateBuilder();
+Builder registrationBuilder(BuilderOptions options) =>
+    RegistrationBuilder();
 
 class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord> {
   @override

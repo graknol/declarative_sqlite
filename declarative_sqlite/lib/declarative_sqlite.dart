@@ -6,7 +6,6 @@ library declarative_sqlite;
 
 // Core annotations
 export 'src/annotations/db_record.dart';
-export 'src/annotations/register_factory.dart';
 
 // Query builders
 export 'src/builders/analysis_context.dart';
@@ -30,6 +29,7 @@ export 'src/schema/schema.dart';
 
 // Streaming queries
 export 'src/streaming/query_dependency_analyzer.dart';
+export 'src/streaming/streaming_query.dart';
 export 'src/streaming/advanced_streaming_query.dart';
 
 // Synchronization

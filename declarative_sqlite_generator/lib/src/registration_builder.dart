@@ -1,47 +1,54 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:build/build.dart';
 import 'package:glob/glob.dart';
 
-/// Builder that collects all @RegisterFactory classes and generates a single registration file
-class RegistrationCollectBuilder implements Builder {
+/// Builder that collects all DbRecord classes with @GenerateDbRecord annotation and generates a registration file
+class RegistrationBuilder implements Builder {
   @override
   final buildExtensions = const {
-    '.dart': ['.registration.json']
+    r'$lib$': ['generated_registrations.dart']
   };
 
   @override
   Future<void> build(BuildStep buildStep) async {
-    final registeredClasses = <RegistrationInfo>[];
-    final library = await buildStep.inputLibrary;
+    final registeredClasses = <RegistrationInfo>{};
 
-    // Look for classes with @RegisterFactory annotation
-    for (final element in library.topLevelElements.whereType<ClassElement>()) {
-      if (_extendsDbRecord(element)) {
-        final dbRecordAnnotation = _getDbRecordAnnotation(element);
-        final registerFactoryAnnotation = _getRegisterFactoryAnnotation(element);
-        
-        if (dbRecordAnnotation != null && registerFactoryAnnotation != null) {
-          final tableName = _getTableNameFromAnnotation(dbRecordAnnotation);
-          if (tableName != null) {
-            registeredClasses.add(RegistrationInfo(
-              className: element.name,
-              tableName: tableName,
-              libraryUri: library.identifier,
-            ));
+    // Find all Dart files and scan for eligible classes
+    await for (final input in buildStep.findAssets(Glob('lib/**/*.dart'))) {
+      try {
+        final library = await buildStep.resolver.libraryFor(input);
+
+        // Look for classes that extend DbRecord and have @GenerateDbRecord annotation
+        for (final element in library.topLevelElements.whereType<ClassElement>()) {
+          if (_extendsDbRecord(element)) {
+            final dbRecordAnnotation = _getDbRecordAnnotation(element);
+            
+            if (dbRecordAnnotation != null) {
+              final tableName = _getTableNameFromAnnotation(dbRecordAnnotation);
+              if (tableName != null) {
+                registeredClasses.add(RegistrationInfo(
+                  className: element.name,
+                  tableName: tableName,
+                  libraryUri: library.identifier,
+                ));
+              }
+            }
           }
         }
+      } catch (e) {
+        // Skip files that can't be analyzed (e.g., generated files, part files)
+        continue;
       }
     }
     
-    // Only create output if we found registered classes
+    // Generate the registration file if we found any classes
     if (registeredClasses.isNotEmpty) {
-      final output = registeredClasses.map((info) => info.toJson()).toList();
-      final outputId = buildStep.inputId.changeExtension('.registration.json');
-      await buildStep.writeAsString(outputId, jsonEncode(output));
+      final generatedContent = _generateRegistrationFile(registeredClasses);
+      final outputId = AssetId(buildStep.inputId.package, 'lib/generated_registrations.dart');
+      await buildStep.writeAsString(outputId, generatedContent);
     }
   }
 
@@ -73,52 +80,13 @@ class RegistrationCollectBuilder implements Builder {
     return null;
   }
 
-  /// Gets the @RegisterFactory annotation
-  DartObject? _getRegisterFactoryAnnotation(ClassElement element) {
-    for (final metadata in element.metadata) {
-      final annotation = metadata.computeConstantValue();
-      if (annotation?.type?.element?.name == 'RegisterFactory') {
-        return annotation;
-      }
-    }
-    return null;
-  }
-
   /// Extracts the table name from @GenerateDbRecord annotation
   String? _getTableNameFromAnnotation(DartObject annotation) {
     return annotation.getField('tableName')?.toStringValue();
   }
-}
 
-/// Builder that aggregates all registration info and generates a single registration file
-class RegistrationAggregateBuilder implements Builder {
-  @override
-  final buildExtensions = const {
-    r'$lib$': ['generated_registrations.dart']
-  };
-
-  @override
-  Future<void> build(BuildStep buildStep) async {
-    final allRegistrations = <RegistrationInfo>{};
-    
-    // Find all registration JSON files across the entire project
-    await for (final input in buildStep.findAssets(Glob('**/*.registration.json'))) {
-      final content = await buildStep.readAsString(input);
-      final List<dynamic> registrations = jsonDecode(content);
-      
-      for (final reg in registrations) {
-        allRegistrations.add(RegistrationInfo.fromJson(reg));
-      }
-    }
-    
-    if (allRegistrations.isNotEmpty) {
-      final generatedContent = generateRegistrationFile(allRegistrations);
-      final outputId = AssetId(buildStep.inputId.package, 'lib/generated_registrations.dart');
-      await buildStep.writeAsString(outputId, generatedContent);
-    }
-  }
-
-  String generateRegistrationFile(Set<RegistrationInfo> registrations) {
+  /// Generates the registration file content
+  String _generateRegistrationFile(Set<RegistrationInfo> registrations) {
     final buffer = StringBuffer();
     
     // Add imports
@@ -173,15 +141,15 @@ class RegistrationInfo {
     required this.libraryUri,
   });
 
-  Map<String, dynamic> toJson() => {
-    'className': className,
-    'tableName': tableName,
-    'libraryUri': libraryUri,
-  };
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RegistrationInfo &&
+          runtimeType == other.runtimeType &&
+          className == other.className &&
+          tableName == other.tableName &&
+          libraryUri == other.libraryUri;
 
-  factory RegistrationInfo.fromJson(Map<String, dynamic> json) => RegistrationInfo(
-    className: json['className'],
-    tableName: json['tableName'],
-    libraryUri: json['libraryUri'],
-  );
+  @override
+  int get hashCode => className.hashCode ^ tableName.hashCode ^ libraryUri.hashCode;
 }

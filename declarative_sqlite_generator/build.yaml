@@ -6,16 +6,9 @@ builders:
     auto_apply: dependents
     build_to: source
 
-  registration_collect_builder:
+  registration_builder:
     import: "package:declarative_sqlite_generator/src/builder.dart"
-    builder_factories: ["registrationCollectBuilder"]
-    build_extensions: { ".dart": [".registration.json"] }
-    auto_apply: dependents
-    build_to: cache
-
-  registration_aggregate_builder:
-    import: "package:declarative_sqlite_generator/src/builder.dart"
-    builder_factories: ["registrationAggregateBuilder"]
-    build_extensions: { r"$package$": ["lib/generated_registrations.dart"] }
+    builder_factories: ["registrationBuilder"]
+    build_extensions: { r"$lib$": ["generated_registrations.dart"] }
     auto_apply: root_package
     build_to: source
