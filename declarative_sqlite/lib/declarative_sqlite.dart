@@ -2,10 +2,11 @@
 ///
 /// This library provides a fluent, declarative, and type-safe way to define
 /// and interact with a SQLite database.
-library declarative_sqlite;
+library;
 
 // Core annotations
 export 'src/annotations/db_record.dart';
+export 'src/annotations/generate_registration.dart';
 
 // Query builders
 export 'src/builders/analysis_context.dart';

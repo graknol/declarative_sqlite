@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
+import 'user.dart';
+import 'post.dart';
+import 'registration.dart';
+
 void main() {
   runApp(const DeclarativeSqliteDemo());
 }
@@ -75,9 +79,8 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
     try {
       final db = DatabaseProvider.of(context);
       
-      // Register the factory functions for automatic mapping
-      RecordMapFactoryRegistry.register<User>((data, database) => User.fromMap(data, database));
-      RecordMapFactoryRegistry.register<Post>((data, database) => Post.fromMap(data, database));
+      // Register all factory functions using generated registration
+      DemoRegistrationGenerated.registerAllFactories();
       
       // Check if users table is empty
       final existingUsers = await db.rawQuery('SELECT COUNT(*) as count FROM users');

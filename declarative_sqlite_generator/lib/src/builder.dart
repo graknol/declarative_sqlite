@@ -2,19 +2,24 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:build/build.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:source_gen/source_gen.dart';
+import 'package:logging/logging.dart';
 
-import 'registration_builder.dart';
+import 'registration_generator.dart';
 
 Builder declarativeSqliteGenerator(BuilderOptions options) =>
-    PartBuilder([DeclarativeSqliteGenerator()], '.g.dart');
+    PartBuilder([DeclarativeSqliteGenerator()], '.db.dart');
 
 Builder registrationBuilder(BuilderOptions options) =>
-    RegistrationBuilder();
+    PartBuilder([RegistrationGenerator()], '.reg.dart');
 
 class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord> {
+  static final _logger = Logger('DeclarativeSqliteGenerator');
+  
   @override
   String generateForAnnotatedElement(
       Element element, ConstantReader annotation, BuildStep buildStep) {
+    _logger.info('=== DeclarativeSqliteGenerator.generateForAnnotatedElement START ===');
+    _logger.info('Processing element: ${element.name} (${element.runtimeType})');
     if (element is! ClassElement) {
       throw InvalidGenerationSourceError(
         '`@GenerateDbRecord` can only be used on classes.',
@@ -24,33 +29,51 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
 
     final buffer = StringBuffer();
     final tableName = annotation.read('tableName').stringValue;
+    _logger.info('Extracted table name from annotation: "$tableName"');
 
     // This is a placeholder. A real implementation would need a way
     // to access the schema definition. For this example, we'll
     // assume a function `createAppSchema()` exists and can be used.
     // This part of the logic is complex and would require more robust
     // schema discovery.
+    _logger.info('Creating app schema...');
     final schema = createAppSchema();
+    _logger.info('Schema created with ${schema.tables.length} tables: ${schema.tables.map((t) => t.name).join(', ')}');
+    
     final table = schema.tables.firstWhere((t) => t.name == tableName,
-        orElse: () => throw InvalidGenerationSourceError(
-            'Table "$tableName" not found in schema.',
-            element: element));
+        orElse: () {
+          _logger.severe('Table "$tableName" not found in schema. Available tables: ${schema.tables.map((t) => t.name).join(', ')}');
+          throw InvalidGenerationSourceError(
+              'Table "$tableName" not found in schema.',
+              element: element);
+        });
+    
+    _logger.info('Found table "$tableName" with ${table.columns.length} columns');
+    for (final col in table.columns) {
+      _logger.fine('  Column: ${col.name} (${col.logicalType}, notNull: ${col.isNotNull})');
+    }
 
+    _logger.info('Generating record class...');
     buffer.writeln(_generateRecordClass(element, table));
     buffer.writeln();
 
-    return buffer.toString();
+    final result = buffer.toString();
+    _logger.info('Generated ${result.split('\n').length} lines of code');
+    _logger.info('=== DeclarativeSqliteGenerator.generateForAnnotatedElement END ===');
+    return result;
   }
 
   /// Generates typed properties extension and simple fromMap method
   String _generateRecordClass(ClassElement element, DbTable schemaTable) {
     final className = element.name;
+    _logger.info('Generating record class for $className with table ${schemaTable.name}');
     final buffer = StringBuffer();
 
     // Generate extension for typed properties
     buffer.writeln('/// Generated typed properties for $className');
     buffer.writeln('extension ${className}Generated on $className {');
 
+    _logger.info('Generating getters and setters for ${schemaTable.columns.length} columns');
     _generateGettersAndSetters(buffer, schemaTable);
 
     // Add the fromMap method directly in the extension
@@ -63,6 +86,7 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
 
     buffer.writeln('}');
 
+    _logger.info('Completed record class generation for $className');
     return buffer.toString();
   }
 
@@ -153,21 +177,20 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
 Schema createAppSchema() {
   final builder = SchemaBuilder();
   builder.table('users', (table) {
-    table.integer('id').notNull();
-    table.text('name').notNull();
-    table.text('email');
-    table.integer('age');
-    table.date('created_at').notNull();
-    table.date('updated_at').lww();
+    table.guid('id').notNull('');
+    table.text('name').notNull('');
+    table.text('email').notNull('');
+    table.integer('age').notNull(0);
+    table.date('created_at').notNull('');
     table.key(['id']).primary();
   });
   builder.table('posts', (table) {
-    table.integer('id').notNull();
-    table.integer('user_id').notNull();
-    table.text('title').notNull();
-    table.text('content');
-    table.date('published_at');
-    table.integer('is_published').defaultsTo(0);
+    table.guid('id').notNull('');
+    table.guid('user_id').notNull('');
+    table.text('title').notNull('');
+    table.text('content').notNull('');
+    table.date('created_at').notNull('');
+    table.text('user_name').notNull(''); // Denormalized for demo simplicity
     table.key(['id']).primary();
   });
   builder.table('comments', (table) {

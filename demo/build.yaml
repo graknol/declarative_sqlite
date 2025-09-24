@@ -1,0 +1,11 @@
+targets:
+  $default:
+    builders:
+      declarative_sqlite_generator:declarative_sqlite_generator:
+        enabled: true
+        generate_for:
+          - lib/**
+      declarative_sqlite_generator:registration_builder:
+        enabled: true
+        generate_for:
+          - lib/**

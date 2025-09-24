@@ -2,13 +2,13 @@ builders:
   declarative_sqlite_generator:
     import: "package:declarative_sqlite_generator/src/builder.dart"
     builder_factories: ["declarativeSqliteGenerator"]
-    build_extensions: { ".dart": [".g.dart"] }
+    build_extensions: { ".dart": [".db.dart"] }
     auto_apply: dependents
     build_to: source
 
   registration_builder:
     import: "package:declarative_sqlite_generator/src/builder.dart"
     builder_factories: ["registrationBuilder"]
-    build_extensions: { r"$lib$": ["generated_registrations.dart"] }
-    auto_apply: root_package
+    build_extensions: { ".dart": [".reg.dart"] }
+    auto_apply: dependents
     build_to: source

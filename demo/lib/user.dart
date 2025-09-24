@@ -1,7 +1,7 @@
 
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
-part 'user.g.dart';
+part 'user.db.dart';
 
 @GenerateDbRecord('users')
 class User extends DbRecord {

@@ -408,7 +408,7 @@ class DeclarativeDatabase {
 
   /// Executes a query and returns typed record objects using registered factories.
   ///
-  /// The record type T must be registered with RecordMapFactoryRegistry.register<T>().
+  /// The record type T must be registered with `RecordMapFactoryRegistry.register<T>()`.
   /// This method uses the same intelligent CRUD vs read-only detection as query().
   ///
   /// Example:
@@ -781,7 +781,7 @@ class DeclarativeDatabase {
 
   /// Queries an entire table and returns typed record objects using registered factories.
   ///
-  /// The record type T must be registered with RecordMapFactoryRegistry.register<T>().
+  /// The record type T must be registered with `RecordMapFactoryRegistry.register<T>()`.
   ///
   /// Example:
   /// ```dart
