@@ -1,5 +1,6 @@
 // lib/src/builders/where_clause.dart
 import 'analysis_context.dart';
+import 'column.dart';
 import 'query_builder.dart';
 import 'query_dependencies.dart';
 
@@ -18,11 +19,11 @@ class BuiltWhereClause {
 }
 
 class Condition {
-  final String _column;
+  final Column _column;
 
-  Condition(this._column);
+  Condition(String columnExpression) : _column = Column.parse(columnExpression);
   
-  String get column => _column;
+  Column get column => _column;
 
   Comparison eq(Object value) => _compare('=', value);
   Comparison neq(Object value) => _compare('!=', value);
@@ -31,6 +32,8 @@ class Condition {
   Comparison lt(Object value) => _compare('<', value);
   Comparison lte(Object value) => _compare('<=', value);
   Comparison like(String value) => _compare('LIKE', value);
+  InListComparison inList(List<Object> list) => InListComparison(column, list);
+  InSubQueryComparsion inSubQuery(QueryBuilder subQuery) => InSubQueryComparsion(column, subQuery);
   Comparison get nil => _compare('IS NULL', null);
   Comparison get notNil => _compare('IS NOT NULL', null);
 
@@ -39,8 +42,65 @@ class Condition {
   }
 }
 
+class InSubQueryComparsion extends WhereClause {
+  final Column column;
+  final QueryBuilder subQuery;
+
+  InSubQueryComparsion(this.column, this.subQuery);
+  
+  @override
+  QueryDependencies analyzeDependencies(AnalysisContext context) {
+    var dependencies = QueryDependencies.empty();
+    
+    // Analyze the column dependencies
+    dependencies = dependencies.merge(column.analyzeDependencies(context));
+    
+    // Create a new context level for the subquery
+    final subqueryContext = context.copy();
+    subqueryContext.pushLevel();
+    
+    // Analyze the subquery dependencies
+    dependencies = dependencies.merge(subQuery.analyzeDependencies(subqueryContext));
+    
+    return dependencies;
+  }
+  
+  @override
+  BuiltWhereClause build() {
+    final (sql, parameters) = subQuery.build();
+    
+    return BuiltWhereClause(
+      '${column.toSql()} IN ($sql)', 
+      parameters
+    );
+  }
+}
+
+class InListComparison extends WhereClause {
+  final Column column;
+  final List<Object> list;
+
+  InListComparison(this.column, this.list);
+  
+  @override
+  BuiltWhereClause build() {
+    final questionMarks = list.map((_) => '?').join(',');
+    return BuiltWhereClause('${column.toSql()} IN ($questionMarks)', list);
+  }
+
+  @override
+  QueryDependencies analyzeDependencies(AnalysisContext context) {
+    var dependencies = QueryDependencies.empty();
+
+    // Analyze the column dependencies
+    dependencies = dependencies.merge(column.analyzeDependencies(context));
+
+    return dependencies;
+  }
+}
+
 class Comparison extends WhereClause {
-  final String column;
+  final Column column;
   final String operator;
   final Object? value;
 
@@ -49,59 +109,32 @@ class Comparison extends WhereClause {
   @override
   BuiltWhereClause build() {
     if (value == null && (operator == 'IS NULL' || operator == 'IS NOT NULL')) {
-      return BuiltWhereClause('$column $operator', []);
+      return BuiltWhereClause('${column.toSql()} $operator', []);
     }
     
     // Check if value is a column reference (Condition object)
     if (value is Condition) {
       final condition = value as Condition;
-      return BuiltWhereClause('$column $operator ${condition.column}', []);
+      return BuiltWhereClause('${column.toSql()} $operator ${condition.column.toSql()}', []);
     }
     
-    return BuiltWhereClause('$column $operator ?', [value]);
+    return BuiltWhereClause('${column.toSql()} $operator ?', [value]);
   }
 
   @override
   QueryDependencies analyzeDependencies(AnalysisContext context) {
-    final columns = <QueryDependencyColumn>{};
+    var dependencies = QueryDependencies.empty();
     
-    // Add the left-hand column
-    if (column.contains('.')) {
-      // Already qualified (table.column or alias.column)
-      final parts = column.split('.');
-      final tableOrAlias = parts[0];
-      final columnName = parts[1];
-      
-      // Resolve the table/alias to get the full table name
-      final resolvedTable = context.resolveTable(tableOrAlias) ?? tableOrAlias;
-      columns.add(QueryDependencyColumn(resolvedTable, columnName));
-    } else {
-      // Unqualified column - use primary table from context
-      final primaryTable = context.primaryTable ?? '';
-      columns.add(QueryDependencyColumn(primaryTable, column));
-    }
+    // Analyze the left-hand column
+    dependencies = dependencies.merge(column.analyzeDependencies(context));
     
-    // Add the right-hand column if it's a column reference
+    // Analyze the right-hand column if it's a column reference
     if (value is Condition) {
       final rightColumn = (value as Condition).column;
-      if (rightColumn.contains('.')) {
-        final parts = rightColumn.split('.');
-        final tableOrAlias = parts[0];
-        final columnName = parts[1];
-        
-        final resolvedTable = context.resolveTable(tableOrAlias) ?? tableOrAlias;
-        columns.add(QueryDependencyColumn(resolvedTable, columnName));
-      } else {
-        final primaryTable = context.primaryTable ?? '';
-        columns.add(QueryDependencyColumn(primaryTable, rightColumn));
-      }
+      dependencies = dependencies.merge(rightColumn.analyzeDependencies(context));
     }
     
-    return QueryDependencies(
-      tables: <String>{}, // Tables will be inferred from columns
-      columns: columns,
-      usesWildcard: false,
-    );
+    return dependencies;
   }
 }
 

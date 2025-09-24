@@ -1,21 +1,22 @@
 import 'aliased.dart';
 import 'analysis_context.dart';
+import 'column.dart';
 import 'join_clause.dart';
 import 'query_dependencies.dart';
 import 'where_clause.dart';
 
 class QueryBuilder {
   Aliased<String>? _from;
-  final List<Aliased<String>> _columns = [];
+  final List<Aliased<Column>> _columns = [];
   WhereClause? _where;
-  final List<String> _orderBy = [];
-  final List<String> _groupBy = [];
+  final List<Column> _orderBy = [];
+  final List<Column> _groupBy = [];
   final List<JoinClause> _joins = [];
   String? _having;
   String? _updateTable; // Table to target for CRUD operations
 
   QueryBuilder select(String column, [String? alias]) {
-    _columns.add(Aliased(column, alias));
+    _columns.add(Aliased(Column.parse(column), alias));
     return this;
   }
 
@@ -30,12 +31,12 @@ class QueryBuilder {
   }
 
   QueryBuilder orderBy(List<String> columns) {
-    _orderBy.addAll(columns);
+    _orderBy.addAll(columns.map((col) => Column.parse(col)));
     return this;
   }
 
   QueryBuilder groupBy(List<String> columns) {
-    _groupBy.addAll(columns);
+    _groupBy.addAll(columns.map((col) => Column.parse(col)));
     return this;
   }
 
@@ -54,22 +55,13 @@ class QueryBuilder {
     return this;
   }
 
-  QueryBuilder _join(
-    String type,
-    String table,
-    WhereClause onCondition, [
-    String? alias,
-  ]) {
-    _joins.add(JoinClause(type, Aliased<String>(table, alias), onCondition));
-    return this;
-  }
-
   QueryBuilder innerJoin(
     String table,
     WhereClause onCondition, [
     String? alias,
   ]) {
-    return _join('INNER', table, onCondition, alias);
+    _joins.add(JoinClause.inner(table, onCondition, alias));
+    return this;
   }
 
   QueryBuilder leftJoin(
@@ -77,7 +69,8 @@ class QueryBuilder {
     WhereClause onCondition, [
     String? alias,
   ]) {
-    return _join('LEFT', table, onCondition, alias);
+    _joins.add(JoinClause.left(table, onCondition, alias));
+    return this;
   }
 
   QueryBuilder rightJoin(
@@ -85,7 +78,8 @@ class QueryBuilder {
     WhereClause onCondition, [
     String? alias,
   ]) {
-    return _join('RIGHT', table, onCondition, alias);
+    _joins.add(JoinClause.right(table, onCondition, alias));
+    return this;
   }
 
   QueryBuilder fullOuterJoin(
@@ -93,15 +87,16 @@ class QueryBuilder {
     WhereClause onCondition, [
     String? alias,
   ]) {
-    return _join('FULL OUTER', table, onCondition, alias);
+    _joins.add(JoinClause.fullOuter(table, onCondition, alias));
+    return this;
   }
 
   QueryBuilder crossJoin(
-    String table,
-    WhereClause onCondition, [
+    String table,[
     String? alias,
   ]) {
-    return _join('CROSS', table, onCondition, alias);
+    _joins.add(JoinClause.cross(table, alias));
+    return this;
   }
 
   /// Select a subquery with an alias
@@ -110,7 +105,7 @@ class QueryBuilder {
     build(subQueryBuilder);
     final built = subQueryBuilder.build();
     final subQuery = built.$1;
-    _columns.add(Aliased('($subQuery)', alias));
+    _columns.add(Aliased(Column.parse('($subQuery)'), alias));
     return this;
   }
 
@@ -142,7 +137,7 @@ class QueryBuilder {
     }
 
     if (_groupBy.isNotEmpty) {
-      sql += ' GROUP BY ${_groupBy.map((col) => col.toString()).join(', ')}';
+      sql += ' GROUP BY ${_groupBy.map((col) => col.toSql()).join(', ')}';
     }
 
     if (_having != null) {
@@ -150,7 +145,7 @@ class QueryBuilder {
     }
 
     if (_orderBy.isNotEmpty) {
-      sql += ' ORDER BY ${_orderBy.map((col) => col.toString()).join(', ')}';
+      sql += ' ORDER BY ${_orderBy.map((col) => col.toSql()).join(', ')}';
     }
 
     if (_limit != null) {
@@ -216,90 +211,25 @@ class QueryBuilder {
       dependencies = dependencies.merge(joinClause.analyzeDependencies(context));
     }
 
-    // Check for wildcard in SELECT columns
-    bool hasWildcard = _columns
-        .any((col) => col.expression == '*' || col.expression.contains('.*'));
-
-    // Add columns from SELECT clause
-    final selectedColumns = <QueryDependencyColumn>{};
+    // Analyze columns from SELECT clause using Column.analyzeDependencies
     for (final col in _columns) {
-      if (col.expression != '*' && !col.expression.contains('.*')) {
-        final columnExpr = col.expression;
-        if (columnExpr.contains('.')) {
-          // Qualified column (table.column or alias.column)
-          final parts = columnExpr.split('.');
-          final tableOrAlias = parts[0];
-          final columnName = parts[1];
-
-          // Resolve the table/alias to get the full table name
-          final resolvedTable =
-              context.resolveTable(tableOrAlias) ?? tableOrAlias;
-          selectedColumns.add(QueryDependencyColumn(resolvedTable, columnName));
-        } else if (baseTableName != null) {
-          // Unqualified column - use base table
-          selectedColumns.add(QueryDependencyColumn(baseTableName, columnExpr));
-        }
-      }
+      dependencies = dependencies.merge(col.expression.analyzeDependencies(context, baseTableName));
     }
-
-    dependencies = dependencies.merge(QueryDependencies(
-      tables: <String>{},
-      columns: selectedColumns,
-      usesWildcard: hasWildcard,
-    ));
 
     // Add dependencies from WHERE clause
     if (_where != null) {
       dependencies = dependencies.merge(_where!.analyzeDependencies(context));
     }
 
-    // Add columns from ORDER BY clause
-    final orderByColumns = <QueryDependencyColumn>{};
+    // Analyze columns from ORDER BY clause
     for (final columnExpr in _orderBy) {
-      if (columnExpr.contains('.')) {
-        // Qualified column (table.column or alias.column)
-        final parts = columnExpr.split('.');
-        final tableOrAlias = parts[0];
-        final columnName = parts[1];
-
-        final resolvedTable =
-            context.resolveTable(tableOrAlias) ?? tableOrAlias;
-        orderByColumns.add(QueryDependencyColumn(resolvedTable, columnName));
-      } else if (baseTableName != null) {
-        // Unqualified column - use base table
-        orderByColumns.add(QueryDependencyColumn(baseTableName, columnExpr));
-      }
+      dependencies = dependencies.merge(columnExpr.analyzeDependencies(context, baseTableName));
     }
 
-    dependencies = dependencies.merge(QueryDependencies(
-      tables: <String>{},
-      columns: orderByColumns,
-      usesWildcard: false,
-    ));
-
-    // Add columns from GROUP BY clause
-    final groupByColumns = <QueryDependencyColumn>{};
+    // Analyze columns from GROUP BY clause
     for (final columnExpr in _groupBy) {
-      if (columnExpr.contains('.')) {
-        // Qualified column (table.column or alias.column)
-        final parts = columnExpr.split('.');
-        final tableOrAlias = parts[0];
-        final columnName = parts[1];
-
-        final resolvedTable =
-            context.resolveTable(tableOrAlias) ?? tableOrAlias;
-        groupByColumns.add(QueryDependencyColumn(resolvedTable, columnName));
-      } else if (baseTableName != null) {
-        // Unqualified column - use base table
-        groupByColumns.add(QueryDependencyColumn(baseTableName, columnExpr));
-      }
+      dependencies = dependencies.merge(columnExpr.analyzeDependencies(context, baseTableName));
     }
-
-    dependencies = dependencies.merge(QueryDependencies(
-      tables: <String>{},
-      columns: groupByColumns,
-      usesWildcard: false,
-    ));
 
     // Note: HAVING clause analysis would require WhereClause type
     // Currently _having is a String, so we can't analyze it structurally

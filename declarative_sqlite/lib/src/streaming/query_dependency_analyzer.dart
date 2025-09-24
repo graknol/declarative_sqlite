@@ -7,7 +7,21 @@ import '../builders/where_clause.dart';
 /// 
 /// This analyzer uses the self-reporting pattern where QueryBuilder and WhereClause
 /// objects analyze their own dependencies rather than external SQL parsing.
+/// Requires a schema provider to accurately resolve unqualified column references.
 class QueryDependencyAnalyzer {
+  final SchemaProvider _schema;
+
+  /// Creates a query dependency analyzer with the required schema provider.
+  /// 
+  /// The schema enables accurate resolution of unqualified column references
+  /// to their correct tables, which is essential for proper dependency tracking
+  /// in complex queries with multiple tables and subqueries.
+  QueryDependencyAnalyzer(this._schema);
+
+  /// Creates a schema-aware analysis context for use in custom analysis.
+  AnalysisContext createAnalysisContext() {
+    return AnalysisContext(_schema);
+  }
   /// Analyzes a QueryBuilder to extract all database dependencies.
   ///
   /// Returns a [QueryDependencies] object containing:
@@ -15,18 +29,21 @@ class QueryDependencyAnalyzer {
   /// - Columns referenced in the query  
   /// - Whether wildcard selection (*) is used
   ///
-  /// This approach is more reliable than SQL parsing as it uses the structured
-  /// query objects to determine dependencies directly.
+  /// Uses schema information to accurately resolve unqualified column references
+  /// to their correct tables, providing more precise dependency tracking.
   QueryDependencies analyzeQuery(QueryBuilder builder) {
-    return builder.analyzeDependencies();
+    final context = AnalysisContext(_schema);
+    return builder.analyzeDependencies(context);
   }
 
   /// Analyzes a WHERE clause to extract column and table dependencies.
   ///
   /// Useful for analyzing WHERE clauses in isolation, such as for 
   /// conditional updates or filtered queries.
+  /// Uses schema information for accurate column-to-table resolution.
   QueryDependencies analyzeWhereClause(WhereClause whereClause, [AnalysisContext? context]) {
-    return whereClause.analyzeDependencies(context ?? AnalysisContext());
+    final analysisContext = context ?? AnalysisContext(_schema);
+    return whereClause.analyzeDependencies(analysisContext);
   }
 
   /// Checks if a query depends on a specific table.

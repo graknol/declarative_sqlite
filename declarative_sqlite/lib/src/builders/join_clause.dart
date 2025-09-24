@@ -6,50 +6,72 @@ import 'where_clause.dart';
 class JoinClause {
   final String type; // 'INNER', 'LEFT', 'RIGHT', 'FULL OUTER', etc.
   final Aliased<String> table;
-  final WhereClause onCondition;
+  final WhereClause? onCondition;
 
   JoinClause(this.type, this.table, this.onCondition);
 
   /// Factory constructors for common join types
-  factory JoinClause.inner(String table, WhereClause onCondition, [String? alias]) {
+  factory JoinClause.inner(String table, WhereClause onCondition,
+      [String? alias]) {
     return JoinClause('INNER', Aliased(table, alias), onCondition);
   }
 
-  factory JoinClause.left(String table, WhereClause onCondition, [String? alias]) {
+  factory JoinClause.left(String table, WhereClause onCondition,
+      [String? alias]) {
     return JoinClause('LEFT', Aliased(table, alias), onCondition);
   }
 
-  factory JoinClause.right(String table, WhereClause onCondition, [String? alias]) {
+  factory JoinClause.right(String table, WhereClause onCondition,
+      [String? alias]) {
     return JoinClause('RIGHT', Aliased(table, alias), onCondition);
   }
 
-  factory JoinClause.fullOuter(String table, WhereClause onCondition, [String? alias]) {
+  factory JoinClause.fullOuter(String table, WhereClause onCondition,
+      [String? alias]) {
     return JoinClause('FULL OUTER', Aliased(table, alias), onCondition);
+  }
+  factory JoinClause.cross(String table, [String? alias]) {
+    return JoinClause('CROSS', Aliased(table, alias), null);
   }
 
   BuiltJoinClause build() {
-    final builtCondition = onCondition.build();
-    final sql = '$type JOIN ${table.toString()} ON ${builtCondition.sql}';
-    return BuiltJoinClause(sql, builtCondition.parameters);
+    final (sql, parameters) = _buildSql();
+    return BuiltJoinClause(sql, parameters);
+  }
+
+  (String, List<Object?>) _buildSql() {
+    if (type == 'CROSS') {
+      return ('$type JOIN ${table.toString()}', []);
+    }
+    assert(
+        onCondition != null, "onCondition can only be [null] for CROSS JOINs");
+    final builtCondition = onCondition!.build();
+    return (
+      '$type JOIN ${table.toString()} ON ${builtCondition.sql}',
+      builtCondition.parameters
+    );
   }
 
   /// Analyzes this JOIN clause to extract table and column dependencies
   QueryDependencies analyzeDependencies(AnalysisContext context) {
     var dependencies = QueryDependencies.empty();
-    
+
     // Add the joined table to context for proper resolution
     context.addTable(table.expression, alias: table.alias);
-    
+
     // Add the joined table to dependencies
     dependencies = dependencies.merge(QueryDependencies(
       tables: {table.toString()}, // Use toString() to include alias if present
       columns: <QueryDependencyColumn>{},
       usesWildcard: false,
     ));
-    
+
     // Analyze the ON condition dependencies
-    dependencies = dependencies.merge(onCondition.analyzeDependencies(context));
-    
+    if (onCondition != null) {
+      dependencies =
+          dependencies.merge(onCondition!.analyzeDependencies(context));
+    }
+
     return dependencies;
   }
 }

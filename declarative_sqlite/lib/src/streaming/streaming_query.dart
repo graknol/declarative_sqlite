@@ -55,7 +55,7 @@ class StreamingQuery<T> {
     required T Function(Map<String, Object?>) mapper,
   }) {
     // Use schema-aware dependency analysis
-    final analyzer = QueryDependencyAnalyzer();
+    final analyzer = QueryDependencyAnalyzer(database.schema);
     final dependencies = analyzer.analyzeQuery(builder);
     return StreamingQuery._(
       id: id,

@@ -38,7 +38,7 @@ class AdvancedStreamingQuery<T> {
     _lastMapper = mapper;
     
     // Analyze dependencies
-    final analyzer = QueryDependencyAnalyzer();
+    final analyzer = QueryDependencyAnalyzer(_database.schema);
     _dependencies = analyzer.analyzeQuery(builder);
     
     _controller = StreamController<List<T>>.broadcast(
@@ -87,7 +87,7 @@ class AdvancedStreamingQuery<T> {
       _builder = newBuilder;
       
       // Re-analyze dependencies for the new query
-      final analyzer = QueryDependencyAnalyzer();
+      final analyzer = QueryDependencyAnalyzer(_database.schema);
       _dependencies = analyzer.analyzeQuery(newBuilder);
       
       needsRefresh = true;

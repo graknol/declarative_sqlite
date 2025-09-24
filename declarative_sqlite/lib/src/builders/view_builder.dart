@@ -190,41 +190,78 @@ class ViewBuilder {
     assert(_selectColumns.isNotEmpty, 'At least one SELECT column must be specified');
     assert(_hasFrom, 'FROM clause must be specified');
     
-    final definition = StringBuffer();
+    // Parse SELECT columns into ViewColumn objects
+    final columns = _selectColumns.map((colExpr) {
+      // Handle "expression AS alias" format
+      if (colExpr.toUpperCase().contains(' AS ')) {
+        final parts = colExpr.split(RegExp(r'\s+AS\s+', caseSensitive: false));
+        if (parts.length == 2) {
+          return ViewColumn(
+            expression: parts[0].trim(),
+            alias: parts[1].trim(),
+          );
+        }
+      }
+      
+      // Simple column expression
+      return ViewColumn(expression: colExpr.trim());
+    }).toList();
     
-    // SELECT clause
-    definition.write('SELECT ${_selectColumns.join(', ')}');
+    // Parse FROM tables into ViewTable objects
+    final fromTables = _fromClauses.map((fromExpr) {
+      // Handle "table AS alias" format
+      if (fromExpr.toUpperCase().contains(' AS ')) {
+        final parts = fromExpr.split(RegExp(r'\s+AS\s+', caseSensitive: false));
+        if (parts.length == 2) {
+          return ViewTable(
+            name: parts[0].trim(),
+            alias: parts[1].trim(),
+          );
+        }
+      }
+      
+      // Simple table name
+      return ViewTable(name: fromExpr.trim());
+    }).toList();
     
-    // FROM clause
-    definition.write(' FROM ${_fromClauses.join(', ')}');
+    // Parse JOIN clauses into ViewJoin objects
+    final joins = _joinClauses.map((joinExpr) {
+      // Parse join expressions like "INNER JOIN table AS alias ON condition"
+      final joinRegex = RegExp(r'^(\w+(?:\s+\w+)?)\s+JOIN\s+([^\s]+)(?:\s+AS\s+([^\s]+))?(?:\s+ON\s+(.+))?', caseSensitive: false);
+      final match = joinRegex.firstMatch(joinExpr);
+      
+      if (match != null) {
+        return ViewJoin(
+          type: match.group(1)!.toUpperCase(),
+          table: match.group(2)!,
+          alias: match.group(3),
+          onCondition: match.group(4),
+        );
+      }
+      
+      // Fallback for complex join expressions
+      return ViewJoin(
+        type: 'INNER',
+        table: 'unknown',
+        onCondition: joinExpr,
+      );
+    }).toList();
     
-    // JOIN clauses
-    if (_joinClauses.isNotEmpty) {
-      definition.write(' ${_joinClauses.join(' ')}');
-    }
+    // Convert WHERE clauses to strings
+    final whereStrings = _whereClauses.map((whereClause) {
+      final built = whereClause.build();
+      return built.sql;
+    }).toList();
     
-    // WHERE clause
-    if (_whereClauses.isNotEmpty) {
-      final combinedWhere = and(_whereClauses);
-      final built = combinedWhere.build();
-      definition.write(' WHERE ${built.sql}');
-    }
-    
-    // GROUP BY clause
-    if (_groupByColumns.isNotEmpty) {
-      definition.write(' GROUP BY ${_groupByColumns.join(', ')}');
-    }
-    
-    // HAVING clause
-    if (_havingClauses.isNotEmpty) {
-      definition.write(' HAVING ${_havingClauses.join(' AND ')}');
-    }
-    
-    // ORDER BY clause
-    if (_orderByColumns.isNotEmpty) {
-      definition.write(' ORDER BY ${_orderByColumns.join(', ')}');
-    }
-    
-    return View(name: name, definition: definition.toString());
+    return View(
+      name: name,
+      columns: columns,
+      fromTables: fromTables,
+      joins: joins,
+      whereClauses: whereStrings,
+      groupByColumns: List.from(_groupByColumns),
+      havingClauses: List.from(_havingClauses),
+      orderByColumns: List.from(_orderByColumns),
+    );
   }
 }
