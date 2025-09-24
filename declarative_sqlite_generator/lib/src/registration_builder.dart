@@ -22,7 +22,7 @@ class RegistrationBuilder implements Builder {
         final library = await buildStep.resolver.libraryFor(input);
 
         // Look for classes that extend DbRecord and have @GenerateDbRecord annotation
-        for (final element in library.topLevelElements.whereType<ClassElement>()) {
+        for (final element in library.definingCompilationUnit.children.whereType<ClassElement>()) {
           if (_extendsDbRecord(element)) {
             final dbRecordAnnotation = _getDbRecordAnnotation(element);
             
