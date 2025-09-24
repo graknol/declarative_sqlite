@@ -60,9 +60,4 @@ extension PostGenerated on Post {
 
   /// Sets the user_name column value.
   set userName(String value) => setText('user_name', value);
-
-  /// Generated fromMap factory method
-  static Post fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return Post(data, database);
-  }
 }

@@ -54,9 +54,4 @@ extension UserGenerated on User {
 
   /// Sets the created_at column value.
   set createdAt(DateTime value) => setDateTime('created_at', value);
-
-  /// Generated fromMap factory method
-  static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-    return User(data, database);
-  }
 }

@@ -1,16 +1,20 @@
 import 'package:analyzer/dart/element/element.dart';
 import 'package:build/build.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
-import 'package:source_gen/source_gen.dart';
 import 'package:logging/logging.dart';
+import 'package:source_gen/source_gen.dart';
 
-import 'registration_generator.dart';
+import 'registration_aggregator.dart';
+import 'registration_scanner.dart';
 
 Builder declarativeSqliteGenerator(BuilderOptions options) =>
     PartBuilder([DeclarativeSqliteGenerator()], '.db.dart');
 
-Builder registrationBuilder(BuilderOptions options) =>
-    PartBuilder([RegistrationGenerator()], '.reg.dart');
+Builder registrationScanner(BuilderOptions options) =>
+    RegistrationScanner();
+
+Builder registrationAggregator(BuilderOptions options) =>
+    RegistrationAggregator();
 
 class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord> {
   static final _logger = Logger('DeclarativeSqliteGenerator');
@@ -63,7 +67,7 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
     return result;
   }
 
-  /// Generates typed properties extension and simple fromMap method
+  /// Generates typed properties extension
   String _generateRecordClass(ClassElement element, DbTable schemaTable) {
     final className = element.name;
     _logger.info('Generating record class for $className with table ${schemaTable.name}');
@@ -75,14 +79,6 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
 
     _logger.info('Generating getters and setters for ${schemaTable.columns.length} columns');
     _generateGettersAndSetters(buffer, schemaTable);
-
-    // Add the fromMap method directly in the extension
-    buffer.writeln();
-    buffer.writeln('  /// Generated fromMap factory method');
-    buffer.writeln(
-        '  static $className fromMap(Map<String, Object?> data, DeclarativeDatabase database) {');
-    buffer.writeln('    return $className(data, database);');
-    buffer.writeln('  }');
 
     buffer.writeln('}');
 

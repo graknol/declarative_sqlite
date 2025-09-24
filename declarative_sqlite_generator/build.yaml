@@ -6,9 +6,17 @@ builders:
     auto_apply: dependents
     build_to: source
 
-  registration_builder:
+  registration_scanner:
     import: "package:declarative_sqlite_generator/src/builder.dart"
-    builder_factories: ["registrationBuilder"]
-    build_extensions: { ".dart": [".reg.dart"] }
+    builder_factories: ["registrationScanner"]
+    build_extensions: { ".dart": [".dbrecord_meta"] }
+    auto_apply: dependents
+    build_to: cache
+
+  registration_aggregator:
+    import: "package:declarative_sqlite_generator/src/builder.dart"
+    builder_factories: ["registrationAggregator"]
+    build_extensions: { "$lib$": ["sqlite_factory_registration.dart"] }
     auto_apply: dependents
     build_to: source
+    required_inputs: [".dbrecord_meta"]

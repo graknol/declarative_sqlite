@@ -5,7 +5,9 @@ targets:
         enabled: true
         generate_for:
           - lib/**
-      declarative_sqlite_generator:registration_builder:
+      declarative_sqlite_generator:registration_scanner:
         enabled: true
         generate_for:
           - lib/**
+      declarative_sqlite_generator:registration_aggregator:
+        enabled: true

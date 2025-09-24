@@ -7,8 +7,4 @@ part 'user.db.dart';
 class User extends DbRecord {
   User(Map<String, Object?> data, DeclarativeDatabase database) 
       : super(data, 'users', database);
-
-  static User fromMap(Map<String, Object?> map, DeclarativeDatabase database) {
-    return User(map, database);
-  }
 }

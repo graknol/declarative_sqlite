@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'package:uuid/uuid.dart';
 
 import 'user.dart';
 import 'post.dart';
-import 'registration.dart';
+import 'sqlite_factory_registration.dart';
 
 void main() {
+  // Register all factory functions using auto-generated registration
+  SqliteFactoryRegistration.registerAllFactories();
+
   runApp(const DeclarativeSqliteDemo());
 }
 
@@ -17,10 +21,7 @@ class DeclarativeSqliteDemo extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Declarative SQLite Demo',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
+      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
       home: DatabaseProvider(
         schema: _buildDatabaseSchema,
         databaseName: 'demo.db',
@@ -53,8 +54,6 @@ class DeclarativeSqliteDemo extends StatelessWidget {
   }
 }
 
-
-
 class DemoHomeScreen extends StatefulWidget {
   const DemoHomeScreen({super.key});
 
@@ -78,14 +77,13 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
   Future<void> _populateInitialData() async {
     try {
       final db = DatabaseProvider.of(context);
-      
-      // Register all factory functions using generated registration
-      DemoRegistrationGenerated.registerAllFactories();
-      
+
       // Check if users table is empty
-      final existingUsers = await db.rawQuery('SELECT COUNT(*) as count FROM users');
+      final existingUsers = await db.rawQuery(
+        'SELECT COUNT(*) as count FROM users',
+      );
       final userCount = existingUsers.first['count'] as int;
-      
+
       if (userCount == 0) {
         // Add initial users
         final now = DateTime.now();
@@ -95,35 +93,45 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             'name': 'Alice Johnson',
             'email': 'alice.johnson@example.com',
             'age': 28,
-            'created_at': now.subtract(const Duration(days: 30)).toIso8601String(),
+            'created_at': now
+                .subtract(const Duration(days: 30))
+                .toIso8601String(),
           },
           {
             'id': _generateGuid(),
             'name': 'Bob Smith',
             'email': 'bob.smith@example.com',
             'age': 22,
-            'created_at': now.subtract(const Duration(days: 25)).toIso8601String(),
+            'created_at': now
+                .subtract(const Duration(days: 25))
+                .toIso8601String(),
           },
           {
             'id': _generateGuid(),
             'name': 'Charlie Brown',
             'email': 'charlie.brown@example.com',
             'age': 35,
-            'created_at': now.subtract(const Duration(days: 20)).toIso8601String(),
+            'created_at': now
+                .subtract(const Duration(days: 20))
+                .toIso8601String(),
           },
           {
             'id': _generateGuid(),
             'name': 'Diana Prince',
             'email': 'diana.prince@example.com',
             'age': 24,
-            'created_at': now.subtract(const Duration(days: 15)).toIso8601String(),
+            'created_at': now
+                .subtract(const Duration(days: 15))
+                .toIso8601String(),
           },
           {
             'id': _generateGuid(),
             'name': 'Edward Wilson',
             'email': 'edward.wilson@example.com',
             'age': 45,
-            'created_at': now.subtract(const Duration(days: 10)).toIso8601String(),
+            'created_at': now
+                .subtract(const Duration(days: 10))
+                .toIso8601String(),
           },
         ];
 
@@ -138,41 +146,56 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             'id': _generateGuid(),
             'user_id': users[0]['id'],
             'title': 'Welcome to Declarative SQLite!',
-            'content': 'This is my first post using the new declarative SQLite library. It makes database operations so much easier!',
+            'content':
+                'This is my first post using the new declarative SQLite library. It makes database operations so much easier!',
             'user_name': users[0]['name'],
-            'created_at': now.subtract(const Duration(days: 5)).toIso8601String(),
+            'created_at': now
+                .subtract(const Duration(days: 5))
+                .toIso8601String(),
           },
           {
             'id': _generateGuid(),
             'user_id': users[1]['id'],
             'title': 'Learning Flutter Development',
-            'content': 'Just started learning Flutter and I\'m amazed by how quickly you can build beautiful apps.',
+            'content':
+                'Just started learning Flutter and I\'m amazed by how quickly you can build beautiful apps.',
             'user_name': users[1]['name'],
-            'created_at': now.subtract(const Duration(days: 4)).toIso8601String(),
+            'created_at': now
+                .subtract(const Duration(days: 4))
+                .toIso8601String(),
           },
           {
             'id': _generateGuid(),
             'user_id': users[0]['id'],
             'title': 'Database Reactivity is Amazing',
-            'content': 'The way the UI automatically updates when data changes is incredible. No more manual refreshes!',
+            'content':
+                'The way the UI automatically updates when data changes is incredible. No more manual refreshes!',
             'user_name': users[0]['name'],
-            'created_at': now.subtract(const Duration(days: 3)).toIso8601String(),
+            'created_at': now
+                .subtract(const Duration(days: 3))
+                .toIso8601String(),
           },
           {
             'id': _generateGuid(),
             'user_id': users[2]['id'],
             'title': 'Building Better Apps',
-            'content': 'With declarative SQLite, building data-driven apps has never been easier. The reactive queries are a game changer.',
+            'content':
+                'With declarative SQLite, building data-driven apps has never been easier. The reactive queries are a game changer.',
             'user_name': users[2]['name'],
-            'created_at': now.subtract(const Duration(days: 2)).toIso8601String(),
+            'created_at': now
+                .subtract(const Duration(days: 2))
+                .toIso8601String(),
           },
           {
             'id': _generateGuid(),
             'user_id': users[3]['id'],
             'title': 'Tips for Mobile Development',
-            'content': 'Here are some tips I\'ve learned while developing mobile apps with Flutter and SQLite.',
+            'content':
+                'Here are some tips I\'ve learned while developing mobile apps with Flutter and SQLite.',
             'user_name': users[3]['name'],
-            'created_at': now.subtract(const Duration(days: 1)).toIso8601String(),
+            'created_at': now
+                .subtract(const Duration(days: 1))
+                .toIso8601String(),
           },
         ];
 
@@ -295,7 +318,10 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
                       icon: const Icon(Icons.refresh, size: 16),
                       label: const Text('Update User Age'),
                       style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 8,
+                          horizontal: 12,
+                        ),
                       ),
                     ),
                   ),
@@ -306,7 +332,10 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
                       icon: const Icon(Icons.logout, size: 16),
                       label: const Text('Move Outside Filter'),
                       style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 8,
+                          horizontal: 12,
+                        ),
                       ),
                     ),
                   ),
@@ -330,11 +359,10 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
 
   Widget _buildUsersList() {
     return QueryListView<User>(
-      key: ValueKey(_currentFilter), // Force rebuild when filter changes
-      database: DatabaseProvider.of(context),
+      key: const ValueKey('users'),
       query: (q) {
         q.from('users');
-        
+
         // Apply age filter based on current selection
         switch (_currentFilter) {
           case 'young':
@@ -348,7 +376,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             // No filter
             break;
         }
-        
+
         q.orderBy(['created_at DESC']);
       },
       loadingBuilder: (context) => const Center(
@@ -400,8 +428,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
 
   Widget _buildPostsList() {
     return QueryListView<Post>(
-      key: const ValueKey('posts'), // Consistent key for posts view
-      database: DatabaseProvider.of(context),
+      key: const ValueKey('posts'),
       query: (q) => q.from('posts').orderBy(['created_at DESC']),
       loadingBuilder: (context) => const Center(
         child: Column(
@@ -447,10 +474,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
                   ),
                   Text(
                     'by ${post.userName}',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                 ],
               ),
@@ -459,10 +483,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
               const SizedBox(height: 8),
               Text(
                 'Posted ${_formatDate(post.createdAt)}',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
               ),
             ],
           ),
@@ -475,15 +496,24 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
   Future<void> _addSampleUser() async {
     final db = DatabaseProvider.of(context);
     final now = DateTime.now();
-    
+
     // Generate a random user
-    final names = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Henry'];
+    final names = [
+      'Alice',
+      'Bob',
+      'Charlie',
+      'Diana',
+      'Eve',
+      'Frank',
+      'Grace',
+      'Henry',
+    ];
     final domains = ['gmail.com', 'yahoo.com', 'example.com', 'test.org'];
-    
+
     final name = names[DateTime.now().millisecond % names.length];
     final domain = domains[DateTime.now().microsecond % domains.length];
     final age = 18 + (DateTime.now().millisecond % 40); // Age between 18-57
-    
+
     await db.insert('users', {
       'id': _generateGuid(),
       'name': '$name ${DateTime.now().millisecond}',
@@ -493,15 +523,15 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
     });
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Added user: $name (Age: $age)')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Added user: $name (Age: $age)')));
     }
   }
 
   Future<void> _addSamplePost() async {
     final db = DatabaseProvider.of(context);
-    
+
     // First, get a random user
     final users = await db.rawQuery('SELECT * FROM users LIMIT 10');
     if (users.isEmpty) {
@@ -512,10 +542,10 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
       }
       return;
     }
-    
+
     final randomUser = users[DateTime.now().millisecond % users.length];
     final now = DateTime.now();
-    
+
     final postTitles = [
       'My thoughts on Flutter',
       'Learning SQLite',
@@ -523,7 +553,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
       'Building better apps',
       'Database design patterns',
     ];
-    
+
     final postContents = [
       'Flutter makes mobile development so much easier!',
       'Working with databases can be fun when done right.',
@@ -531,10 +561,11 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
       'Always thinking about user experience first.',
       'Good database design is crucial for app performance.',
     ];
-    
+
     final title = postTitles[DateTime.now().millisecond % postTitles.length];
-    final content = postContents[DateTime.now().microsecond % postContents.length];
-    
+    final content =
+        postContents[DateTime.now().microsecond % postContents.length];
+
     await db.insert('posts', {
       'id': _generateGuid(),
       'user_id': randomUser['id'],
@@ -546,29 +577,28 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Added post: "$title" by ${randomUser['name']}')),
+        SnackBar(
+          content: Text('Added post: "$title" by ${randomUser['name']}'),
+        ),
       );
     }
   }
 
   Future<void> _updateRandomUser() async {
     final db = DatabaseProvider.of(context);
-    
+
     // Get users in current filter
-    var query = 'SELECT * FROM users';
-    var whereArgs = <Object?>[];
-    
+    WhereClause? whereClause;
     switch (_currentFilter) {
       case 'young':
-        query += ' WHERE age <= 25';
-        break;
+        whereClause = col('age').lte(25);
       case 'old':
-        query += ' WHERE age > 25';
+        whereClause = col('age').gt(25);
         break;
     }
-    
-    final users = await db.rawQuery(query, whereArgs);
-    
+
+    final users = await db.queryTyped<User>((q) => q.from("users").where(whereClause));
+
     if (users.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -577,16 +607,12 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
       }
       return;
     }
-    
+
     final randomUser = users[DateTime.now().millisecond % users.length];
     final newAge = 20 + (DateTime.now().millisecond % 30); // Age between 20-49
-    
-    await db.update(
-      'users',
-      {'age': newAge},
-      where: 'id = ?',
-      whereArgs: [randomUser['id']],
-    );
+
+    randomUser.age = newAge;
+    await randomUser.save();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -601,36 +627,36 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
 
   Future<void> _updateUserOutsideFilter() async {
     final db = DatabaseProvider.of(context);
-    
+
     // Get users NOT in current filter
-    var query = 'SELECT * FROM users';
-    
+    WhereClause? whereClause;
     switch (_currentFilter) {
       case 'young':
-        query += ' WHERE age > 25'; // Get older users when filter is young
-        break;
+        whereClause = col('age').gt(25);
       case 'old':
-        query += ' WHERE age <= 25'; // Get younger users when filter is old
+        whereClause = col('age').lte(25);
         break;
       case 'all':
         // When showing all, update someone to be very old (outside typical range)
-        query += ' WHERE age < 60';
+        whereClause = col('age').lt(60);
         break;
     }
-    
-    final users = await db.rawQuery(query);
-    
+
+    final users = await db.queryTyped<User>((q) => q.from("users").where(whereClause));
+
     if (users.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No users found outside current filter!')),
+          const SnackBar(
+            content: Text('No users found outside current filter!'),
+          ),
         );
       }
       return;
     }
-    
+
     final randomUser = users[DateTime.now().millisecond % users.length];
-    
+
     // Update age to something that will move them outside current filter
     int newAge;
     switch (_currentFilter) {
@@ -645,13 +671,9 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
         newAge = 65; // Very old
         break;
     }
-    
-    await db.update(
-      'users',
-      {'age': newAge},
-      where: 'id = ?',
-      whereArgs: [randomUser['id']],
-    );
+
+    randomUser.age = newAge;
+    await randomUser.save();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -703,9 +725,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
   }
 
   String _generateGuid() {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final random = (now * 1000 + DateTime.now().microsecond) % 1000000;
-    return 'guid_${now}_$random';
+    return const Uuid().v4();
   }
 }
 
@@ -760,10 +780,7 @@ class _EditUserDialogState extends State<_EditUserDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        ElevatedButton(
-          onPressed: _saveChanges,
-          child: const Text('Save'),
-        ),
+        ElevatedButton(onPressed: _saveChanges, child: const Text('Save')),
       ],
     );
   }
@@ -771,32 +788,25 @@ class _EditUserDialogState extends State<_EditUserDialog> {
   Future<void> _saveChanges() async {
     final name = _nameController.text.trim();
     final ageText = _ageController.text.trim();
-    
+
     if (name.isEmpty || ageText.isEmpty) {
       return;
     }
-    
+
     final age = int.tryParse(ageText);
     if (age == null || age < 0 || age > 120) {
       return;
     }
-    
-    final db = DatabaseProvider.of(context);
-    await db.update(
-      'users',
-      {
-        'name': name,
-        'age': age,
-      },
-      where: 'id = ?',
-      whereArgs: [widget.user.id],
-    );
-    
+
+    widget.user.name = name;
+    widget.user.age = age;
+    await widget.user.save();
+
     if (mounted) {
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Updated ${widget.user.name}')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Updated ${widget.user.name}')));
     }
   }
 }

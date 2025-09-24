@@ -25,7 +25,7 @@ class QueryBuilder {
     return this;
   }
 
-  QueryBuilder where(WhereClause clause) {
+  QueryBuilder where(WhereClause? clause) {
     _where = clause;
     return this;
   }
