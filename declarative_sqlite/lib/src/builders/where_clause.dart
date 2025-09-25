@@ -3,6 +3,7 @@ import 'analysis_context.dart';
 import 'query_column.dart';
 import 'query_builder.dart';
 import 'query_dependencies.dart';
+import '../utils/value_serializer.dart';
 
 abstract class WhereClause {
   BuiltWhereClause build();
@@ -85,7 +86,8 @@ class InListComparison extends WhereClause {
   @override
   BuiltWhereClause build() {
     final questionMarks = list.map((_) => '?').join(',');
-    return BuiltWhereClause('${column.toSql()} IN ($questionMarks)', list);
+    final serializedList = list.map(DatabaseValueSerializer.serialize).toList();
+    return BuiltWhereClause('${column.toSql()} IN ($questionMarks)', serializedList);
   }
 
   @override
@@ -118,7 +120,9 @@ class Comparison extends WhereClause {
       return BuiltWhereClause('${column.toSql()} $operator ${condition.column.toSql()}', []);
     }
     
-    return BuiltWhereClause('${column.toSql()} $operator ?', [value]);
+    // Serialize values using the centralized database serialization logic
+    final serializedValue = DatabaseValueSerializer.serialize(value);
+    return BuiltWhereClause('${column.toSql()} $operator ?', [serializedValue]);
   }
 
   @override

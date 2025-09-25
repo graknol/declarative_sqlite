@@ -361,7 +361,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             q.where(col('age').lte(25));
             break;
           case 'old':
-            q.where(and([col('age').gt(25), col('created_at').gt(DateTime.now().add(const Duration(minutes: -5)).toIso8601String())]));
+            q.where(and([col('age').gt(25), col('created_at').gt(DateTime.now().add(const Duration(minutes: -5)))]));
             break;
           case 'all':
           default:

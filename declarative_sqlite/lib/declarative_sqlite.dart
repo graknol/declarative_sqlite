@@ -16,6 +16,9 @@ export 'src/builders/query_builder.dart';
 export 'src/builders/query_dependencies.dart';
 export 'src/builders/where_clause.dart';
 
+// Utilities
+export 'src/utils/value_serializer.dart';
+
 // Core database classes
 export 'src/declarative_database.dart';
 export 'src/data_mapping.dart';
