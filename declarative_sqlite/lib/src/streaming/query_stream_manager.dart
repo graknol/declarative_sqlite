@@ -13,11 +13,20 @@ class QueryStreamManager {
   late final StreamSubscription _tableChangeSubscription;
   
   QueryStreamManager() {
+    developer.log('QueryStreamManager: Initializing with debounced table change processing (16ms delay)', name: 'QueryStreamManager');
+    
     // Debounce table changes to batch rapid notifications and prevent subscribe/cancel cycles
     _tableChangeSubscription = _tableChangeSubject
         .debounceTime(const Duration(milliseconds: 16)) // Single frame delay
         .distinct() // Only process unique table names
-        .listen(_processTableChange);
+        .listen(
+          _processTableChange,
+          onError: (error, stackTrace) {
+            developer.log('QueryStreamManager: Error in debounced stream processing', error: error, stackTrace: stackTrace, name: 'QueryStreamManager');
+          },
+        );
+        
+    developer.log('QueryStreamManager: Debounced table change subscription established', name: 'QueryStreamManager');
   }
   
   /// Registers a streaming query with the manager
@@ -49,8 +58,16 @@ class QueryStreamManager {
 
   /// Notifies all relevant queries that a table has been modified (debounced to prevent rapid cycles)
   Future<void> notifyTableChanged(String tableName) async {
-    developer.log('QueryStreamManager.notifyTableChanged: Queuing table change notification for table="$tableName" (will be debounced)', name: 'QueryStreamManager');
+    developer.log('QueryStreamManager.notifyTableChanged: Queuing table change notification for table="$tableName" (will be debounced). Currently ${_queries.length} queries registered.', name: 'QueryStreamManager');
+    
+    // Check if we have any queries that would be affected
+    final affectedCount = _queries.values
+        .where((query) => query.isActive && query.isAffectedByTable(tableName))
+        .length;
+    developer.log('QueryStreamManager.notifyTableChanged: $affectedCount queries would be affected by table="$tableName" change', name: 'QueryStreamManager');
+    
     _tableChangeSubject.add(tableName);
+    developer.log('QueryStreamManager.notifyTableChanged: Table change queued for debouncing, table="$tableName"', name: 'QueryStreamManager');
   }
   
   /// Process a table change notification (called after debouncing)
@@ -254,6 +271,28 @@ class QueryStreamManager {
     
     _queries.clear();
     developer.log('QueryStreamManager.dispose: All queries disposed and cleared', name: 'QueryStreamManager');
+  }
+
+  /// Debug method to check the current state of the stream manager
+  void debugState({String? context}) {
+    final contextStr = context != null ? '[$context] ' : '';
+    developer.log('${contextStr}QueryStreamManager.debugState: ${_queries.length} total queries, $activeQueryCount active', name: 'QueryStreamManager');
+    
+    if (_queries.isNotEmpty) {
+      for (final query in _queries.values) {
+        final emoji = getAnimalEmoji(query.id);
+        final tables = query.dependencies.tables.join(', ');
+        developer.log('${contextStr}QueryStreamManager.debugState: $emoji Query "${query.id}" - active: ${query.isActive}, tables: {$tables}', name: 'QueryStreamManager');
+      }
+    } else {
+      developer.log('${contextStr}QueryStreamManager.debugState: No queries currently registered', name: 'QueryStreamManager');
+    }
+  }
+
+  /// Test method to manually trigger table change processing (bypassing debounce)
+  Future<void> debugProcessTableChange(String tableName) async {
+    developer.log('QueryStreamManager.debugProcessTableChange: Manually processing table change for table="$tableName" (bypassing debounce)', name: 'QueryStreamManager');
+    await _processTableChange(tableName);
   }
 
   @override

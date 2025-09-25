@@ -146,9 +146,10 @@ class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
     final database = _getDatabase(context);
     if (database != null) {
       _currentDatabase = database;
-      _createStreamingQuery(database);
-      // Trigger rebuild now that streaming query is ready
-      setState(() {});
+      _createStreamingQuery(database).then((_) {
+        // Trigger rebuild now that streaming query is ready
+        if (mounted) setState(() {});
+      });
     }
   }
 
@@ -157,13 +158,15 @@ class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
     if (newDatabase != _currentDatabase) {
       _currentDatabase = newDatabase;
       if (newDatabase != null) {
-        _createStreamingQuery(newDatabase);
-        // Trigger rebuild now that streaming query is ready
-        setState(() {});
+        _createStreamingQuery(newDatabase).then((_) {
+          // Trigger rebuild now that streaming query is ready
+          if (mounted) setState(() {});
+        });
       } else {
-        _disposeStreamingQuery();
-        // Trigger rebuild to show loading state
-        setState(() {});
+        _disposeStreamingQuery().then((_) {
+          // Trigger rebuild to show loading state
+          if (mounted) setState(() {});
+        });
       }
     }
   }
@@ -178,10 +181,11 @@ class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
     // Only recreate the streaming query if there's a meaningful change
     if (_lastQuerySignature != currentSignature || widget.mapper != oldWidget.mapper) {
       developer.log('QueryListView: Query changed, recreating stream', name: 'QueryListView');
-      _createStreamingQuery(database);
-      _lastQuerySignature = currentSignature;
-      // Trigger rebuild now that streaming query has been recreated
-      setState(() {});
+      _createStreamingQuery(database).then((_) {
+        _lastQuerySignature = currentSignature;
+        // Trigger rebuild now that streaming query has been recreated
+        if (mounted) setState(() {});
+      });
     }
   }
   
@@ -200,22 +204,23 @@ class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
     }
   }
 
-  void _disposeStreamingQuery() {
+  Future<void> _disposeStreamingQuery() async {
     if (_streamingQuery != null) {
       final emoji = getAnimalEmoji(_streamingQuery!.id);
-      // Fire and forget the async dispose - we don't want to block the UI
-      _streamingQuery?.dispose().catchError((error) {
+      try {
+        // Wait for disposal to complete to avoid race conditions
+        await _streamingQuery!.dispose();
+        developer.log('QueryListView: $emoji Successfully disposed streaming query', name: 'QueryListView');
+      } catch (error) {
         developer.log('QueryListView: $emoji Error during dispose: $error', name: 'QueryListView');
-      });
+      }
       _streamingQuery = null;
     }
   }
 
-
-
-  void _createStreamingQuery(DeclarativeDatabase database) {
-    // Dispose of existing query if any
-    _disposeStreamingQuery();
+  Future<void> _createStreamingQuery(DeclarativeDatabase database) async {
+    // Dispose of existing query if any and wait for completion
+    await _disposeStreamingQuery();
 
     // Build the query
     final builder = QueryBuilder();
@@ -257,7 +262,10 @@ class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
   void dispose() {
     // StreamBuilder handles stream subscription lifecycle automatically
     // We only need to dispose of our StreamingQuery
-    _disposeStreamingQuery();
+    // Note: We don't await this since dispose() must be synchronous
+    _disposeStreamingQuery().catchError((error) {
+      developer.log('QueryListView: Error during widget dispose: $error', name: 'QueryListView');
+    });
     super.dispose();
   }
 
