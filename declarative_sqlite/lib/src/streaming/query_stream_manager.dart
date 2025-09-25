@@ -17,7 +17,7 @@ class QueryStreamManager {
     
     // Use buffer with debounce to collect ALL table changes within the time window
     _tableChangeSubscription = _tableChangeSubject
-        .bufferTime(const Duration(milliseconds: 100))
+        .bufferTime(const Duration(milliseconds: 50))
         .where((batch) => batch.isNotEmpty) // Only process non-empty batches
         .listen(
           _processBatchedTableChanges,
