@@ -29,12 +29,16 @@ class DbExceptionWrapper {
         context: context,
       );
       
-      // Log constraint violations for developer debugging
+      // Log constraint violations for developer debugging with severity-based levels
       if (dbException.errorCategory == DbErrorCategory.constraintViolation) {
+        final constraintType = _getConstraintType(dbException.message);
+        final logLevel = _getConstraintLogLevel(constraintType);
+        final emoji = _getConstraintEmoji(constraintType);
+        
         developer.log(
-          'Constraint violation during CREATE: ${dbException.message}${tableName != null ? ' [table: $tableName]' : ''}${columnName != null ? ' [column: $columnName]' : ''}',
-          name: 'DbConstraintViolation',
-          level: 900, // Warning level
+          '$emoji Constraint violation in CREATE: ${dbException.message}${tableName != null ? ' [table: $tableName]' : ''}${columnName != null ? ' [column: $columnName]' : ''} [type: $constraintType]',
+          name: 'DbConstraint${constraintType.name}',
+          level: logLevel,
           error: e,
         );
       }
@@ -64,12 +68,16 @@ class DbExceptionWrapper {
         context: context,
       );
       
-      // Log constraint violations for developer debugging
+      // Log constraint violations for developer debugging with severity-based levels
       if (dbException.errorCategory == DbErrorCategory.constraintViolation) {
+        final constraintType = _getConstraintType(dbException.message);
+        final logLevel = _getConstraintLogLevel(constraintType);
+        final emoji = _getConstraintEmoji(constraintType);
+        
         developer.log(
-          'Constraint violation during READ: ${dbException.message}${tableName != null ? ' [table: $tableName]' : ''}${columnName != null ? ' [column: $columnName]' : ''}',
-          name: 'DbConstraintViolation',
-          level: 900, // Warning level
+          '$emoji Constraint violation in READ: ${dbException.message}${tableName != null ? ' [table: $tableName]' : ''}${columnName != null ? ' [column: $columnName]' : ''} [type: $constraintType]',
+          name: 'DbConstraint${constraintType.name}',
+          level: logLevel,
           error: e,
         );
       }
@@ -99,12 +107,16 @@ class DbExceptionWrapper {
         context: context,
       );
       
-      // Log constraint violations for developer debugging
+      // Log constraint violations for developer debugging with severity-based levels
       if (dbException.errorCategory == DbErrorCategory.constraintViolation) {
+        final constraintType = _getConstraintType(dbException.message);
+        final logLevel = _getConstraintLogLevel(constraintType);
+        final emoji = _getConstraintEmoji(constraintType);
+        
         developer.log(
-          'Constraint violation during UPDATE: ${dbException.message}${tableName != null ? ' [table: $tableName]' : ''}${columnName != null ? ' [column: $columnName]' : ''}',
-          name: 'DbConstraintViolation',
-          level: 900, // Warning level
+          '$emoji Constraint violation in UPDATE: ${dbException.message}${tableName != null ? ' [table: $tableName]' : ''}${columnName != null ? ' [column: $columnName]' : ''} [type: $constraintType]',
+          name: 'DbConstraint${constraintType.name}',
+          level: logLevel,
           error: e,
         );
       }
@@ -132,12 +144,16 @@ class DbExceptionWrapper {
         context: context,
       );
       
-      // Log constraint violations for developer debugging
+      // Log constraint violations for developer debugging with severity-based levels
       if (dbException.errorCategory == DbErrorCategory.constraintViolation) {
+        final constraintType = _getConstraintType(dbException.message);
+        final logLevel = _getConstraintLogLevel(constraintType);
+        final emoji = _getConstraintEmoji(constraintType);
+        
         developer.log(
-          'Constraint violation during DELETE: ${dbException.message}${tableName != null ? ' [table: $tableName]' : ''}',
-          name: 'DbConstraintViolation',
-          level: 900, // Warning level
+          '$emoji Constraint violation in DELETE: ${dbException.message}${tableName != null ? ' [table: $tableName]' : ''} [type: $constraintType]',
+          name: 'DbConstraint${constraintType.name}',
+          level: logLevel,
           error: e,
         );
       }
@@ -163,12 +179,16 @@ class DbExceptionWrapper {
         context: context,
       );
       
-      // Log constraint violations for developer debugging
+      // Log constraint violations for developer debugging with severity-based levels
       if (dbException.errorCategory == DbErrorCategory.constraintViolation) {
+        final constraintType = _getConstraintType(dbException.message);
+        final logLevel = _getConstraintLogLevel(constraintType);
+        final emoji = _getConstraintEmoji(constraintType);
+        
         developer.log(
-          'Constraint violation during TRANSACTION: ${dbException.message}',
-          name: 'DbConstraintViolation',
-          level: 900, // Warning level
+          '$emoji Constraint violation in TRANSACTION: ${dbException.message} [type: $constraintType]',
+          name: 'DbConstraint${constraintType.name}',
+          level: logLevel,
           error: e,
         );
       }
@@ -194,12 +214,16 @@ class DbExceptionWrapper {
         context: context,
       );
       
-      // Log constraint violations for developer debugging
+      // Log constraint violations for developer debugging with severity-based levels
       if (dbException.errorCategory == DbErrorCategory.constraintViolation) {
+        final constraintType = _getConstraintType(dbException.message);
+        final logLevel = _getConstraintLogLevel(constraintType);
+        final emoji = _getConstraintEmoji(constraintType);
+        
         developer.log(
-          'Constraint violation during CONNECTION: ${dbException.message}',
-          name: 'DbConstraintViolation',
-          level: 900, // Warning level
+          '$emoji Constraint violation in CONNECTION: ${dbException.message} [type: $constraintType]',
+          name: 'DbConstraint${constraintType.name}',
+          level: logLevel,
           error: e,
         );
       }
@@ -272,6 +296,88 @@ class DbExceptionWrapper {
         columnName: columnName,
         context: context,
       );
+    }
+  }
+  
+  /// Determines the constraint type from the error message
+  static ConstraintType _getConstraintType(String message) {
+    final lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.contains('unique')) {
+      return ConstraintType.unique;
+    } else if (lowerMessage.contains('foreign key') || lowerMessage.contains('fkey')) {
+      return ConstraintType.foreignKey;
+    } else if (lowerMessage.contains('not null')) {
+      return ConstraintType.notNull;
+    } else if (lowerMessage.contains('check')) {
+      return ConstraintType.check;
+    } else if (lowerMessage.contains('primary key') || lowerMessage.contains('pkey')) {
+      return ConstraintType.primaryKey;
+    } else {
+      return ConstraintType.other;
+    }
+  }
+  
+  /// Gets the appropriate log level based on constraint type
+  static int _getConstraintLogLevel(ConstraintType type) {
+    switch (type) {
+      case ConstraintType.foreignKey:
+      case ConstraintType.primaryKey:
+        return 1000; // SEVERE - Data integrity violations
+      case ConstraintType.unique:
+      case ConstraintType.notNull:
+        return 900; // WARNING - Business logic violations
+      case ConstraintType.check:
+      case ConstraintType.other:
+        return 800; // INFO - General constraint violations
+    }
+  }
+  
+  /// Gets an appropriate emoji based on constraint type for visual identification
+  static String _getConstraintEmoji(ConstraintType type) {
+    switch (type) {
+      case ConstraintType.foreignKey:
+        return '🔗'; // Chain link for foreign key relationships
+      case ConstraintType.primaryKey:
+        return '🔑'; // Key for primary key
+      case ConstraintType.unique:
+        return '⭐'; // Star for uniqueness
+      case ConstraintType.notNull:
+        return '❗'; // Exclamation for required fields
+      case ConstraintType.check:
+        return '✓'; // Check mark for check constraints
+      case ConstraintType.other:
+        return '⚠️'; // Warning for other constraints
+    }
+  }
+}
+
+/// Enum for different constraint violation types
+enum ConstraintType {
+  unique,
+  foreignKey,
+  notNull,
+  check,
+  primaryKey,
+  other,
+}
+
+/// Extension to get readable names for constraint types
+extension ConstraintTypeName on ConstraintType {
+  String get name {
+    switch (this) {
+      case ConstraintType.unique:
+        return 'Unique';
+      case ConstraintType.foreignKey:
+        return 'ForeignKey';
+      case ConstraintType.notNull:
+        return 'NotNull';
+      case ConstraintType.check:
+        return 'Check';
+      case ConstraintType.primaryKey:
+        return 'PrimaryKey';
+      case ConstraintType.other:
+        return 'Other';
     }
   }
 }
