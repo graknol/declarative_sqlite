@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:declarative_sqlite/src/builders/query_builder.dart';
 import 'package:declarative_sqlite/src/builders/where_clause.dart';
@@ -163,13 +164,35 @@ class DeclarativeDatabase {
       final liveSchemaHash = await _getSetting(db, 'schema_hash');
       final newSchemaHash = schema.toHash();
       if (newSchemaHash != liveSchemaHash) {
+        developer.log('🔄 Schema hash mismatch detected. Starting migration...', name: 'Migration');
+        developer.log('  Current hash: $liveSchemaHash', name: 'Migration');
+        developer.log('  Target hash:  $newSchemaHash', name: 'Migration');
+        
         final liveSchema = await introspectSchema(db);
+        developer.log('📊 Introspected current schema: ${liveSchema.tables.length} tables, ${liveSchema.views.length} views', name: 'Migration');
+        
         final changes = diffSchemas(schema, liveSchema);
+        developer.log('🔍 Schema diff complete: ${changes.length} changes identified', name: 'Migration');
+        
         final scripts = generateMigrationScripts(changes);
-        for (final script in scripts) {
-          await db.execute(script);
+        developer.log('⚡ Executing ${scripts.length} migration scripts...', name: 'Migration');
+        
+        for (int i = 0; i < scripts.length; i++) {
+          final script = scripts[i];
+          developer.log('🔧 Executing script ${i + 1}/${scripts.length}: ${script.length > 100 ? '${script.substring(0, 100)}...' : script}', name: 'Migration');
+          try {
+            await db.execute(script);
+            developer.log('  ✅ Script ${i + 1} executed successfully', name: 'Migration');
+          } catch (e) {
+            developer.log('  ❌ Script ${i + 1} failed: $e', name: 'Migration');
+            rethrow;
+          }
         }
+        
         await _setSetting(db, 'schema_hash', newSchemaHash);
+        developer.log('✅ Migration completed successfully! New schema hash: $newSchemaHash', name: 'Migration');
+      } else {
+        developer.log('✨ Schema is up to date (hash: $liveSchemaHash)', name: 'Migration');
       }
 
       // Initialize the dirty row store
