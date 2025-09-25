@@ -7,6 +7,8 @@ import 'user.dart';
 import 'post.dart';
 import 'sqlite_factory_registration.dart';
 
+final uuid = const Uuid();
+
 void main() {
   // Register all factory functions using auto-generated registration
   SqliteFactoryRegistration.registerAllFactories();
@@ -25,6 +27,7 @@ class DeclarativeSqliteDemo extends StatelessWidget {
       home: DatabaseProvider(
         schema: _buildDatabaseSchema,
         databaseName: 'demo.db',
+        recreateDatabase: true,
         child: const DemoHomeScreen(),
       ),
     );
@@ -95,40 +98,36 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             'age': 28,
           },
           {
-            'id': _generateGuid(),
+            'id': uuid.v4(),
             'name': 'Bob Smith',
             'email': 'bob.smith@example.com',
             'age': 22,
             'created_at': now
-                .subtract(const Duration(days: 25))
-                .toIso8601String(),
+                .subtract(const Duration(days: 25)),
           },
           {
-            'id': _generateGuid(),
+            'id': uuid.v4(),
             'name': 'Charlie Brown',
             'email': 'charlie.brown@example.com',
             'age': 35,
             'created_at': now
-                .subtract(const Duration(days: 20))
-                .toIso8601String(),
+                .subtract(const Duration(days: 20)),
           },
           {
-            'id': _generateGuid(),
+            'id': uuid.v4(),
             'name': 'Diana Prince',
             'email': 'diana.prince@example.com',
             'age': 24,
             'created_at': now
-                .subtract(const Duration(days: 15))
-                .toIso8601String(),
+                .subtract(const Duration(days: 15)),
           },
           {
-            'id': _generateGuid(),
+            'id': uuid.v4(),
             'name': 'Edward Wilson',
             'email': 'edward.wilson@example.com',
             'age': 45,
             'created_at': now
-                .subtract(const Duration(days: 10))
-                .toIso8601String(),
+                .subtract(const Duration(days: 10)),
           },
         ];
 
@@ -140,59 +139,54 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
         // Add initial posts
         final posts = [
           {
-            'id': _generateGuid(),
+            'id': uuid.v4(),
             'user_id': users[0]['id'],
             'title': 'Welcome to Declarative SQLite!',
             'content':
                 'This is my first post using the new declarative SQLite library. It makes database operations so much easier!',
             'user_name': users[0]['name'],
             'created_at': now
-                .subtract(const Duration(days: 5))
-                .toIso8601String(),
+                .subtract(const Duration(days: 5)),
           },
           {
-            'id': _generateGuid(),
+            'id': uuid.v4(),
             'user_id': users[1]['id'],
             'title': 'Learning Flutter Development',
             'content':
                 'Just started learning Flutter and I\'m amazed by how quickly you can build beautiful apps.',
             'user_name': users[1]['name'],
             'created_at': now
-                .subtract(const Duration(days: 4))
-                .toIso8601String(),
+                .subtract(const Duration(days: 4)),
           },
           {
-            'id': _generateGuid(),
+            'id': uuid.v4(),
             'user_id': users[0]['id'],
             'title': 'Database Reactivity is Amazing',
             'content':
                 'The way the UI automatically updates when data changes is incredible. No more manual refreshes!',
             'user_name': users[0]['name'],
             'created_at': now
-                .subtract(const Duration(days: 3))
-                .toIso8601String(),
+                .subtract(const Duration(days: 3)),
           },
           {
-            'id': _generateGuid(),
+            'id': uuid.v4(),
             'user_id': users[2]['id'],
             'title': 'Building Better Apps',
             'content':
                 'With declarative SQLite, building data-driven apps has never been easier. The reactive queries are a game changer.',
             'user_name': users[2]['name'],
             'created_at': now
-                .subtract(const Duration(days: 2))
-                .toIso8601String(),
+                .subtract(const Duration(days: 2)),
           },
           {
-            'id': _generateGuid(),
+            'id': uuid.v4(),
             'user_id': users[3]['id'],
             'title': 'Tips for Mobile Development',
             'content':
                 'Here are some tips I\'ve learned while developing mobile apps with Flutter and SQLite.',
             'user_name': users[3]['name'],
             'created_at': now
-                .subtract(const Duration(days: 1))
-                .toIso8601String(),
+                .subtract(const Duration(days: 1)),
           },
         ];
 
@@ -512,7 +506,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
     final age = 18 + (DateTime.now().millisecond % 40); // Age between 18-57
 
     await db.insert('users', {
-      'id': _generateGuid(),
+      'id': uuid.v4(),
       'name': '$name ${DateTime.now().millisecond}',
       'email': '${name.toLowerCase()}${DateTime.now().millisecond}@$domain',
       'age': age,
@@ -564,7 +558,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
         postContents[DateTime.now().microsecond % postContents.length];
 
     await db.insert('posts', {
-      'id': _generateGuid(),
+      'id': uuid.v4(),
       'user_id': randomUser['id'],
       'title': '$title ${DateTime.now().millisecond}',
       'content': content,
@@ -719,10 +713,6 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
 
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-  }
-
-  String _generateGuid() {
-    return const Uuid().v4();
   }
 }
 
