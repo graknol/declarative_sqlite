@@ -99,6 +99,15 @@ class StreamingQuery<T> {
   /// Whether this query is currently active (has listeners)
   bool get isActive => _isActive;
 
+  /// The current size of the result cache
+  int get cacheSize => _resultCache.length;
+
+  /// Cache statistics from the last refresh operation
+  ({int hits, int misses, double hitPercentage})? _lastCacheStats;
+
+  /// Get the cache statistics from the last refresh operation
+  ({int hits, int misses, double hitPercentage})? get lastCacheStats => _lastCacheStats;
+
   /// Updates the query builder and mapper with smart lifecycle management.
   /// 
   /// Re-analyzes dependencies when the query changes to ensure accurate
@@ -214,6 +223,8 @@ class StreamingQuery<T> {
       
       // Build the new result list using cache optimization
       final mappedResults = <T>[];
+      int cacheHits = 0;
+      int cacheMisses = 0;
       
       for (int i = 0; i < rawResults.length; i++) {
         final rawRow = rawResults[i];
@@ -225,13 +236,27 @@ class StreamingQuery<T> {
         if (cached != null && cached.systemVersion == systemVersion) {
           // Use cached mapped object (reference equality maintained)
           mappedResults.add(cached.object);
+          cacheHits++;
         } else {
           // Map new row and cache it
           final mappedRow = _mapper(rawRow);
           final cachedResult = _CachedResult(mappedRow, systemVersion);
           _resultCache[systemId] = cachedResult;
           mappedResults.add(mappedRow);
+          cacheMisses++;
         }
+      }
+      
+      // Log and store cache performance statistics
+      final totalItems = cacheHits + cacheMisses;
+      if (totalItems > 0) {
+        final hitPercentage = (cacheHits / totalItems * 100);
+        _lastCacheStats = (hits: cacheHits, misses: cacheMisses, hitPercentage: hitPercentage);
+        
+        final emoji = getAnimalEmoji(_id);
+        developer.log('StreamingQuery.refresh: $emoji Cache performance for id="$_id": $cacheHits/$totalItems hits (${hitPercentage.toStringAsFixed(1)}%), $cacheMisses misses, total cache size: ${_resultCache.length}', name: 'StreamingQuery');
+      } else {
+        _lastCacheStats = null;
       }
       
       // Clean up cache: remove entries not in current result set

@@ -157,6 +157,9 @@ class QueryStreamManager {
       } else {
         developer.log('QueryStreamManager._processBatchedTableChanges: All queries refreshed successfully for tables=${uniqueTableNames.join(", ")}', name: 'QueryStreamManager');
       }
+
+      // Aggregate and log cache performance across all refreshed queries
+      _logAggregatedCacheStats(affectedQueries.values.toList(), uniqueTableNames);
     } catch (e, stackTrace) {
       developer.log('QueryStreamManager._processBatchedTableChanges: Error during batched table change notification for tables=${uniqueTableNames.join(", ")}', error: e, stackTrace: stackTrace, name: 'QueryStreamManager');
       rethrow;
@@ -392,6 +395,35 @@ class QueryStreamManager {
     _tableChangeSubscription = newSubscription;
     
     developer.log('QueryStreamManager._resetDebouncingStream: Debouncing stream reset complete', name: 'QueryStreamManager');
+  }
+
+  /// Log aggregated cache statistics across multiple queries
+  void _logAggregatedCacheStats(List<StreamingQuery> queries, List<String> tableNames) {
+    if (queries.isEmpty) return;
+
+    int totalHits = 0;
+    int totalMisses = 0;
+    int totalCacheSize = 0;
+    int queriesWithStats = 0;
+
+    for (final query in queries) {
+      final stats = query.lastCacheStats;
+      totalCacheSize += query.cacheSize;
+      
+      if (stats != null) {
+        totalHits += stats.hits;
+        totalMisses += stats.misses;
+        queriesWithStats++;
+      }
+    }
+
+    final totalItems = totalHits + totalMisses;
+    if (totalItems > 0 && queriesWithStats > 0) {
+      final overallHitPercentage = (totalHits / totalItems * 100).toStringAsFixed(1);
+      developer.log('QueryStreamManager._processBatchedTableChanges: 📊 Aggregated cache performance for ${queries.length} queries (tables=${tableNames.join(", ")}): $totalHits/$totalItems hits ($overallHitPercentage%), $totalMisses misses, total cache entries: $totalCacheSize', name: 'QueryStreamManager');
+    } else if (totalCacheSize > 0) {
+      developer.log('QueryStreamManager._processBatchedTableChanges: 📊 Cache status for ${queries.length} queries (tables=${tableNames.join(", ")}): $totalCacheSize total cached entries, no refresh statistics available', name: 'QueryStreamManager');
+    }
   }
 
   @override
