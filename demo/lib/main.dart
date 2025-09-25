@@ -27,7 +27,7 @@ class DeclarativeSqliteDemo extends StatelessWidget {
       home: DatabaseProvider(
         schema: _buildDatabaseSchema,
         databaseName: 'demo.db',
-        recreateDatabase: true,
+        recreateDatabase: false,
         child: const DemoHomeScreen(),
       ),
     );
@@ -40,7 +40,8 @@ class DeclarativeSqliteDemo extends StatelessWidget {
       table.text('name').notNull('');
       table.text('email').notNull('');
       table.integer('age').notNull(0);
-      table.date('created_at').notNull('');
+      table.text('gender').notNull('non-binary');
+      table.date('created_at').notNull().defaultCallback(() => DateTime.now());
       table.key(['id']).primary();
     });
 
@@ -50,7 +51,7 @@ class DeclarativeSqliteDemo extends StatelessWidget {
       table.guid('user_id').notNull('');
       table.text('title').notNull('');
       table.text('content').notNull('');
-      table.date('created_at').notNull('');
+      table.date('created_at').notNull().defaultCallback(() => DateTime.now());
       table.text('user_name').notNull(''); // Denormalized for demo simplicity
       table.key(['id']).primary();
     });
@@ -360,7 +361,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             q.where(col('age').lte(25));
             break;
           case 'old':
-            q.where(col('age').gt(25));
+            q.where(and([col('age').gt(25), col('created_at').gt(DateTime.now().add(const Duration(minutes: -5)).toIso8601String())]));
             break;
           case 'all':
           default:
@@ -699,6 +700,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             Text('Age: ${user.age}'),
             Text('Created: ${_formatDate(user.createdAt)}'),
             Text('ID: ${user.id}'),
+            Text('Gender: ${user.gender}'),
           ],
         ),
         actions: [

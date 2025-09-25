@@ -48,6 +48,12 @@ extension UserGenerated on User {
 
   /// Sets the age column value.
   set age(int value) => setInteger('age', value);
+  
+  /// Gets the email column value.
+  String get gender => getTextNotNull('gender');
+
+  /// Sets the gender column value.
+  set gender(String value) => setText('gender', value);
 
   /// Gets the created_at column value.
   DateTime get createdAt => getDateTimeNotNull('created_at');

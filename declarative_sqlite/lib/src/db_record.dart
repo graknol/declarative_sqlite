@@ -379,7 +379,7 @@ abstract class DbRecord {
 
   /// Parses a database value into a DateTime
   DateTime _parseDateTime(Object? value) {
-    if (value == null) throw ArgumentError('Cannot parse null as DateTime');
+    if (value == null || value == "") throw ArgumentError('Cannot parse null as DateTime');
     if (value is DateTime) return value;
     if (value is String) return DateTime.parse(value);
     if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
