@@ -10,24 +10,6 @@ part of 'post.dart';
 /// Generated typed properties for Post
 extension PostGenerated on Post {
   // Generated getters and setters
-  /// Gets the system_id column value.
-  String get systemId => getTextNotNull('system_id');
-
-  /// Sets the system_id column value.
-  set systemId(String value) => setText('system_id', value);
-
-  /// Gets the system_created_at column value.
-  Object get systemCreatedAt => getValue('system_created_at');
-
-  /// Sets the system_created_at column value.
-  set systemCreatedAt(Object value) => setValue('system_created_at', value);
-
-  /// Gets the system_version column value.
-  Object get systemVersion => getValue('system_version');
-
-  /// Sets the system_version column value.
-  set systemVersion(Object value) => setValue('system_version', value);
-
   /// Gets the id column value.
   String get id => getTextNotNull('id');
 

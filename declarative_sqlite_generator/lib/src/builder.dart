@@ -125,6 +125,11 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
 
     buffer.writeln('  // Generated getters and setters');
     for (final col in table.columns) {
+      // Skip system columns - they are managed by the framework, not user code
+      if (col.name.startsWith('system_')) {
+        continue;
+      }
+
       final propertyName = _camelCase(col.name);
       final dartType = _getDartTypeForColumn(col.logicalType, col.isNotNull);
       final getterMethod =
@@ -156,6 +161,7 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
       'integer' => 'int',
       'real' => 'double',
       'date' => 'DateTime',
+      'hlc' => 'Hlc',
       'fileset' => 'FilesetField',
       _ => 'Object',
     };
@@ -170,6 +176,7 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
       'integer' => notNull ? 'getIntegerNotNull' : 'getInteger',
       'real' => notNull ? 'getRealNotNull' : 'getReal',
       'date' => notNull ? 'getDateTimeNotNull' : 'getDateTime',
+      'hlc' => notNull ? 'getHlcNotNull' : 'getHlc',
       'fileset' => notNull ? 'getFilesetFieldNotNull' : 'getFilesetField',
       _ => 'getValue',
     };
@@ -182,6 +189,7 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
       'integer' => 'setInteger',
       'real' => 'setReal',
       'date' => 'setDateTime',
+      'hlc' => 'setHlc',
       'fileset' => 'setFilesetField',
       _ => 'setValue',
     };
