@@ -147,6 +147,8 @@ class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
     if (database != null) {
       _currentDatabase = database;
       _createStreamingQuery(database);
+      // Trigger rebuild now that streaming query is ready
+      setState(() {});
     }
   }
 
@@ -156,8 +158,12 @@ class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
       _currentDatabase = newDatabase;
       if (newDatabase != null) {
         _createStreamingQuery(newDatabase);
+        // Trigger rebuild now that streaming query is ready
+        setState(() {});
       } else {
         _disposeStreamingQuery();
+        // Trigger rebuild to show loading state
+        setState(() {});
       }
     }
   }
@@ -174,6 +180,8 @@ class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
       developer.log('QueryListView: Query changed, recreating stream', name: 'QueryListView');
       _createStreamingQuery(database);
       _lastQuerySignature = currentSignature;
+      // Trigger rebuild now that streaming query has been recreated
+      setState(() {});
     }
   }
   
