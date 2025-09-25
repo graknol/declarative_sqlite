@@ -286,6 +286,9 @@ class StreamingQuery<T> {
 
   /// Called when the first listener subscribes
   void _onListen() {
+    final emoji = getAnimalEmoji(_id);
+    developer.log('StreamingQuery._onListen: $emoji First listener subscribed, activating query id="$_id"', name: 'StreamingQuery');
+    
     _isActive = true;
     _database.streamManager.register(this);
     
@@ -299,10 +302,15 @@ class StreamingQuery<T> {
 
   /// Called when the last listener unsubscribes  
   void _onCancel() {
+    final emoji = getAnimalEmoji(_id);
+    developer.log('StreamingQuery._onCancel: $emoji Last listener unsubscribed, deactivating query id="$_id"', name: 'StreamingQuery');
+    
     _isActive = false;
     _lastResultSystemIds = null;
     _database.streamManager.unregisterOnly(_id);
     _resultCache.clear();
+    
+    developer.log('StreamingQuery._onCancel: $emoji Unregistered from QueryStreamManager, query id="$_id"', name: 'StreamingQuery');
   }
 
   /// Dispose of this streaming query

@@ -9,16 +9,15 @@ class QueryStreamManager {
   final Map<String, StreamingQuery> _queries = {};
   
   // Use RxDart for batching table change notifications to prevent rapid refresh cycles
-  final _tableChangeSubject = PublishSubject<String>();
-  late final StreamSubscription _tableChangeSubscription;
+  PublishSubject<String> _tableChangeSubject = PublishSubject<String>();
+  late StreamSubscription _tableChangeSubscription;
   
   QueryStreamManager() {
-    developer.log('QueryStreamManager: Initializing with debounced table change processing (16ms delay)', name: 'QueryStreamManager');
+    developer.log('QueryStreamManager: Initializing with debounced table change processing (100ms delay)', name: 'QueryStreamManager');
     
     // Debounce table changes to batch rapid notifications and prevent subscribe/cancel cycles
     _tableChangeSubscription = _tableChangeSubject
-        .debounceTime(const Duration(milliseconds: 16)) // Single frame delay
-        .distinct() // Only process unique table names
+        .debounceTime(const Duration(milliseconds: 100))
         .listen(
           _processTableChange,
           onError: (error, stackTrace) {
@@ -31,7 +30,10 @@ class QueryStreamManager {
   
   /// Registers a streaming query with the manager
   void register(StreamingQuery query) {
+    final emoji = getAnimalEmoji(query.id);
+    developer.log('QueryStreamManager.register: $emoji Registering query id="${query.id}", isActive=${query.isActive}', name: 'QueryStreamManager');
     _queries[query.id] = query;
+    developer.log('QueryStreamManager.register: $emoji Successfully registered query id="${query.id}". Total queries: ${_queries.length}', name: 'QueryStreamManager');
   }
 
   /// Unregisters a streaming query from the manager and disposes it
@@ -53,7 +55,11 @@ class QueryStreamManager {
   /// Unregisters a streaming query from the manager without disposing it
   /// This is used when the query is managing its own disposal
   void unregisterOnly(String queryId) {
+    final emoji = getAnimalEmoji(queryId);
+    final wasPresent = _queries.containsKey(queryId);
+    developer.log('QueryStreamManager.unregisterOnly: $emoji Unregistering query id="$queryId" (without disposal). Was present: $wasPresent', name: 'QueryStreamManager');
     _queries.remove(queryId);
+    developer.log('QueryStreamManager.unregisterOnly: $emoji Successfully unregistered query id="$queryId". Total queries: ${_queries.length}', name: 'QueryStreamManager');
   }
 
   /// Notifies all relevant queries that a table has been modified (debounced to prevent rapid cycles)
@@ -66,8 +72,33 @@ class QueryStreamManager {
         .length;
     developer.log('QueryStreamManager.notifyTableChanged: $affectedCount queries would be affected by table="$tableName" change', name: 'QueryStreamManager');
     
-    _tableChangeSubject.add(tableName);
-    developer.log('QueryStreamManager.notifyTableChanged: Table change queued for debouncing, table="$tableName"', name: 'QueryStreamManager');
+    // Debug the state of the debouncing stream
+    if (_tableChangeSubject.isClosed) {
+      developer.log('QueryStreamManager.notifyTableChanged: ERROR - _tableChangeSubject is closed! Resetting debouncing stream and retrying for table="$tableName"', name: 'QueryStreamManager');
+      _resetDebouncingStream();
+    }
+    
+    try {
+      _tableChangeSubject.add(tableName);
+      developer.log('QueryStreamManager.notifyTableChanged: Table change queued for debouncing, table="$tableName"', name: 'QueryStreamManager');
+    } catch (e) {
+      developer.log('QueryStreamManager.notifyTableChanged: ERROR adding to _tableChangeSubject for table="$tableName": $e. Attempting to reset stream.', name: 'QueryStreamManager');
+      _resetDebouncingStream();
+      
+      // Try once more after reset
+      try {
+        _tableChangeSubject.add(tableName);
+        developer.log('QueryStreamManager.notifyTableChanged: Successfully queued after stream reset for table="$tableName"', name: 'QueryStreamManager');
+      } catch (retryError) {
+        developer.log('QueryStreamManager.notifyTableChanged: FATAL - Still failing after stream reset for table="$tableName": $retryError', name: 'QueryStreamManager');
+        
+        // Last resort: process directly without debouncing
+        developer.log('QueryStreamManager.notifyTableChanged: Using fallback direct processing for table="$tableName"', name: 'QueryStreamManager');
+        _processTableChange(tableName).catchError((error) {
+          developer.log('QueryStreamManager.notifyTableChanged: Fallback processing also failed for table="$tableName": $error', name: 'QueryStreamManager');
+        });
+      }
+    }
   }
   
   /// Process a table change notification (called after debouncing)
@@ -293,6 +324,56 @@ class QueryStreamManager {
   Future<void> debugProcessTableChange(String tableName) async {
     developer.log('QueryStreamManager.debugProcessTableChange: Manually processing table change for table="$tableName" (bypassing debounce)', name: 'QueryStreamManager');
     await _processTableChange(tableName);
+  }
+
+  /// Test method to check if the debouncing stream is working
+  void debugTestDebouncing(String tableName) {
+    developer.log('QueryStreamManager.debugTestDebouncing: Testing debouncing stream with table="$tableName"', name: 'QueryStreamManager');
+    developer.log('QueryStreamManager.debugTestDebouncing: _tableChangeSubject.isClosed = ${_tableChangeSubject.isClosed}', name: 'QueryStreamManager');
+    developer.log('QueryStreamManager.debugTestDebouncing: _tableChangeSubscription.isPaused = ${_tableChangeSubscription.isPaused}', name: 'QueryStreamManager');
+    
+    // Try adding a test event
+    try {
+      _tableChangeSubject.add(tableName);
+      developer.log('QueryStreamManager.debugTestDebouncing: Successfully added test event to debouncing stream', name: 'QueryStreamManager');
+    } catch (e) {
+      developer.log('QueryStreamManager.debugTestDebouncing: ERROR adding test event: $e', name: 'QueryStreamManager');
+    }
+  }
+
+  /// Reset the debouncing stream if it gets into a bad state
+  void _resetDebouncingStream() {
+    developer.log('QueryStreamManager._resetDebouncingStream: Resetting debouncing stream due to malfunction', name: 'QueryStreamManager');
+    
+    try {
+      // Cancel the old subscription
+      _tableChangeSubscription.cancel();
+      
+      // Close the old subject if it's not already closed
+      if (!_tableChangeSubject.isClosed) {
+        _tableChangeSubject.close();
+      }
+    } catch (e) {
+      developer.log('QueryStreamManager._resetDebouncingStream: Error cleaning up old stream: $e', name: 'QueryStreamManager');
+    }
+    
+    // Create new subject and subscription
+    final newSubject = PublishSubject<String>();
+    final newSubscription = newSubject
+        .debounceTime(const Duration(milliseconds: 16))
+        .distinct()
+        .listen(
+          _processTableChange,
+          onError: (error, stackTrace) {
+            developer.log('QueryStreamManager: Error in debounced stream processing', error: error, stackTrace: stackTrace, name: 'QueryStreamManager');
+          },
+        );
+    
+    // Replace with new instances
+    _tableChangeSubject = newSubject;
+    _tableChangeSubscription = newSubscription;
+    
+    developer.log('QueryStreamManager._resetDebouncingStream: Debouncing stream reset complete', name: 'QueryStreamManager');
   }
 
   @override
