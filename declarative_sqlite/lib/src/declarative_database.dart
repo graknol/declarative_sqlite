@@ -60,17 +60,6 @@ class DeclarativeDatabase {
 
   final Map<String, DbRecord> _recordCache = {};
 
-  void registerRecord(DbRecord record) {
-    final systemId = record.systemId;
-    if (systemId != null) {
-      _recordCache[systemId] = record;
-    }
-  }
-
-  DbRecord? getRecordFromCache(String systemId) {
-    return _recordCache[systemId];
-  }
-
   DeclarativeDatabase._internal(
     this._db,
     this.schema,
@@ -92,6 +81,18 @@ class DeclarativeDatabase {
     QueryStreamManager? sharedStreamManager,
   }) : _streamManager = sharedStreamManager ?? QueryStreamManager() {
     files = FileSet(this);
+  }
+
+  // Cache and registry methods
+  void registerRecord(DbRecord record) {
+    final systemId = record.systemId;
+    if (systemId != null) {
+      _recordCache[systemId] = record;
+    }
+  }
+
+  DbRecord? getRecordFromCache(String systemId) {
+    return _recordCache[systemId];
   }
 
   /// Opens the database at the given [path].
@@ -235,6 +236,215 @@ class DeclarativeDatabase {
   ]) {
     return _db.rawDelete(sql, arguments);
   }
+
+  // Helper and utility methods
+  
+  DbTable _getTableDefinition(String tableName) {
+    return schema.tables.firstWhere(
+      (t) => t.name == tableName,
+      orElse: () =>
+          throw ArgumentError('Table not found in schema: $tableName'),
+    );
+  }
+
+  /// Converts a value for database storage using the same logic as DbRecord.setValue
+  Object? _serializeValueForColumn(Object? value, DbColumn column) {
+    if (value == null) return null;
+    
+    switch (column.logicalType) {
+      case 'text':
+      case 'guid':
+      case 'integer':
+      case 'real':
+        return value;
+      case 'date':
+        if (value is DateTime) {
+          return value.toIso8601String();
+        } else if (value is String) {
+          return value; // Assume already serialized
+        } else {
+          return value.toString();
+        }
+      case 'fileset':
+        if (value is FilesetField) {
+          return value.toDatabaseValue();
+        }
+        return value;
+      default:
+        return value;
+    }
+  }
+
+  /// Serializes all values in a map according to their column definitions
+  Map<String, Object?> _serializeValuesForTable(String tableName, Map<String, Object?> values) {
+    final tableDef = _getTableDefinition(tableName);
+    final serializedValues = <String, Object?>{};
+    
+    for (final entry in values.entries) {
+      final columnName = entry.key;
+      final value = entry.value;
+      
+      // Find the column definition
+      final column = tableDef.columns.where((col) => col.name == columnName).firstOrNull;
+      
+      if (column != null) {
+        // Serialize using column definition
+        serializedValues[columnName] = _serializeValueForColumn(value, column);
+      } else {
+        // Column not found in schema - pass through as-is (might be system column)
+        serializedValues[columnName] = value;
+      }
+    }
+    
+    return serializedValues;
+  }
+
+  /// Applies default values for columns that are missing from the provided values map
+  Map<String, Object?> _applyDefaultValues(String tableName, Map<String, Object?> values) {
+    final tableDef = _getTableDefinition(tableName);
+    final valuesWithDefaults = <String, Object?>{...values};
+    
+    // Generate default values for missing columns using callbacks and static defaults
+    for (final col in tableDef.columns) {
+      // Skip system columns - they're handled separately
+      if (col.name.startsWith('system_')) continue;
+      
+      // If column value is not provided and has a default callback, call it
+      if (!valuesWithDefaults.containsKey(col.name) && col.defaultValueCallback != null) {
+        final defaultValue = col.defaultValueCallback!();
+        if (defaultValue != null) {
+          // Apply the same serialization logic as DbRecord.setValue
+          final serializedValue = _serializeValueForColumn(defaultValue, col);
+          valuesWithDefaults[col.name] = serializedValue;
+        }
+      }
+      // If still no value and has a static default value, use it
+      else if (!valuesWithDefaults.containsKey(col.name) && col.defaultValue != null) {
+        // Apply the same serialization logic as DbRecord.setValue
+        final serializedValue = _serializeValueForColumn(col.defaultValue, col);
+        valuesWithDefaults[col.name] = serializedValue;
+      }
+    }
+    
+    return valuesWithDefaults;
+  }
+
+  /// Converts FilesetField values back to database strings before storing.
+  Map<String, Object?> _convertFilesetFieldsToValues(
+    String tableName,
+    Map<String, Object?> values,
+  ) {
+    final tableDef = _getTableDefinition(tableName);
+    final filesetColumns = tableDef.columns
+        .where((col) => col.logicalType == 'fileset')
+        .map((col) => col.name)
+        .toSet();
+
+    if (filesetColumns.isEmpty) return values;
+
+    final convertedValues = <String, Object?>{...values};
+
+    for (final columnName in filesetColumns) {
+      if (convertedValues.containsKey(columnName)) {
+        final value = convertedValues[columnName];
+        if (value is FilesetField) {
+          convertedValues[columnName] = value.toDatabaseValue();
+        }
+      }
+    }
+
+    return convertedValues;
+  }
+
+  /// Transforms raw query results by converting fileset columns to FilesetField objects.
+  List<Map<String, Object?>> _transformFilesetColumns(
+    String tableName,
+    List<Map<String, Object?>> rawResults,
+  ) {
+    if (rawResults.isEmpty) return rawResults;
+
+    // Get table definition to identify fileset columns
+    final tableDef = _getTableDefinition(tableName);
+    final filesetColumns = tableDef.columns
+        .where((col) => col.logicalType == 'fileset')
+        .map((col) => col.name)
+        .toSet();
+
+    if (filesetColumns.isEmpty) return rawResults;
+
+    // Transform each row
+    return rawResults.map((row) {
+      final transformedRow = <String, Object?>{...row};
+
+      for (final columnName in filesetColumns) {
+        if (transformedRow.containsKey(columnName)) {
+          final value = transformedRow[columnName];
+          transformedRow[columnName] = _createFilesetField(value);
+        }
+      }
+
+      return transformedRow;
+    }).toList();
+  }
+
+  /// Creates a FilesetField from a database value.
+  Object? _createFilesetField(Object? value) {
+    if (value == null) return null;
+    return FilesetField.fromDatabaseValue(value, this);
+  }
+
+  /// Validates that a query result meets the requirements for forUpdate
+  void _validateForUpdateQuery(
+      List<Map<String, Object?>> results, String updateTableName) {
+    // Check that the update table exists in the schema
+    schema.userTables.firstWhere(
+      (table) => table.name == updateTableName,
+      orElse: () =>
+          throw ArgumentError('Update table $updateTableName not found in schema'),
+    );
+
+    if (results.isEmpty) return; // No results to validate
+
+    final firstResult = results.first;
+
+    // Verify that system_id is present
+    if (!firstResult.containsKey('system_id') ||
+        firstResult['system_id'] == null) {
+      throw StateError(
+          'Query with forUpdate(\'$updateTableName\') must include system_id column from the target table');
+    }
+
+    // Verify that system_version is present
+    if (!firstResult.containsKey('system_version') ||
+        firstResult['system_version'] == null) {
+      throw StateError(
+          'Query with forUpdate(\'$updateTableName\') must include system_version column from the target table');
+    }
+  }
+
+  /// Determines if a QueryBuilder represents a simple table query (CRUD-enabled)
+  /// vs a complex query or view query (read-only by default).
+  ///
+  /// A simple table query is one that:
+  /// - Queries directly from a table (not a view)
+  /// - Has no complex joins, subqueries, or aggregations
+  /// - Can be safely updated via system_id
+  bool _isSimpleTableQuery(QueryBuilder builder) {
+    final tableName = builder.tableName;
+    if (tableName == null) return false;
+
+    // Check if the table name refers to an actual table (not a view)
+    final isActualTable =
+        schema.userTables.any((table) => table.name == tableName);
+    if (!isActualTable) return false;
+
+    // For now, we'll consider any direct table reference as "simple"
+    // This could be enhanced to check for complex joins, aggregations, etc.
+    // based on the QueryBuilder structure
+    return true;
+  }
+
+  // Query methods (read operations)
 
   /// Executes a query built with a [QueryBuilder] and returns raw Map objects.
   ///
@@ -563,88 +773,6 @@ class DeclarativeDatabase {
     }, tableName: tableName);
   }
 
-  /// Converts a value for database storage using the same logic as DbRecord.setValue
-  Object? _serializeValueForColumn(Object? value, DbColumn column) {
-    if (value == null) return null;
-    
-    switch (column.logicalType) {
-      case 'text':
-      case 'guid':
-      case 'integer':
-      case 'real':
-        return value;
-      case 'date':
-        if (value is DateTime) {
-          return value.toIso8601String();
-        } else if (value is String) {
-          return value; // Assume already serialized
-        } else {
-          return value.toString();
-        }
-      case 'fileset':
-        if (value is FilesetField) {
-          return value.toDatabaseValue();
-        }
-        return value;
-      default:
-        return value;
-    }
-  }
-
-  /// Serializes all values in a map according to their column definitions
-  Map<String, Object?> _serializeValuesForTable(String tableName, Map<String, Object?> values) {
-    final tableDef = _getTableDefinition(tableName);
-    final serializedValues = <String, Object?>{};
-    
-    for (final entry in values.entries) {
-      final columnName = entry.key;
-      final value = entry.value;
-      
-      // Find the column definition
-      final column = tableDef.columns.where((col) => col.name == columnName).firstOrNull;
-      
-      if (column != null) {
-        // Serialize using column definition
-        serializedValues[columnName] = _serializeValueForColumn(value, column);
-      } else {
-        // Column not found in schema - pass through as-is (might be system column)
-        serializedValues[columnName] = value;
-      }
-    }
-    
-    return serializedValues;
-  }
-
-  /// Applies default values for columns that are missing from the provided values map
-  Map<String, Object?> _applyDefaultValues(String tableName, Map<String, Object?> values) {
-    final tableDef = _getTableDefinition(tableName);
-    final valuesWithDefaults = <String, Object?>{...values};
-    
-    // Generate default values for missing columns using callbacks and static defaults
-    for (final col in tableDef.columns) {
-      // Skip system columns - they're handled separately
-      if (col.name.startsWith('system_')) continue;
-      
-      // If column value is not provided and has a default callback, call it
-      if (!valuesWithDefaults.containsKey(col.name) && col.defaultValueCallback != null) {
-        final defaultValue = col.defaultValueCallback!();
-        if (defaultValue != null) {
-          // Apply the same serialization logic as DbRecord.setValue
-          final serializedValue = _serializeValueForColumn(defaultValue, col);
-          valuesWithDefaults[col.name] = serializedValue;
-        }
-      }
-      // If still no value and has a static default value, use it
-      else if (!valuesWithDefaults.containsKey(col.name) && col.defaultValue != null) {
-        // Apply the same serialization logic as DbRecord.setValue
-        final serializedValue = _serializeValueForColumn(col.defaultValue, col);
-        valuesWithDefaults[col.name] = serializedValue;
-      }
-    }
-    
-    return valuesWithDefaults;
-  }
-
   Future<String> _insert(
       String tableName, Map<String, Object?> values, Hlc hlc) async {
     final tableDef = _getTableDefinition(tableName);
@@ -788,14 +916,6 @@ class DeclarativeDatabase {
       valuesToUpdate,
       where: where,
       whereArgs: whereArgs,
-    );
-  }
-
-  DbTable _getTableDefinition(String tableName) {
-    return schema.tables.firstWhere(
-      (t) => t.name == tableName,
-      orElse: () =>
-          throw ArgumentError('Table not found in schema: $tableName'),
     );
   }
 
@@ -944,70 +1064,6 @@ class DeclarativeDatabase {
     return results.map((row) => factory(row, this)).toList();
   }
 
-  /// Transforms raw query results by converting fileset columns to FilesetField objects.
-  List<Map<String, Object?>> _transformFilesetColumns(
-    String tableName,
-    List<Map<String, Object?>> rawResults,
-  ) {
-    if (rawResults.isEmpty) return rawResults;
-
-    // Get table definition to identify fileset columns
-    final tableDef = _getTableDefinition(tableName);
-    final filesetColumns = tableDef.columns
-        .where((col) => col.logicalType == 'fileset')
-        .map((col) => col.name)
-        .toSet();
-
-    if (filesetColumns.isEmpty) return rawResults;
-
-    // Transform each row
-    return rawResults.map((row) {
-      final transformedRow = <String, Object?>{...row};
-
-      for (final columnName in filesetColumns) {
-        if (transformedRow.containsKey(columnName)) {
-          final value = transformedRow[columnName];
-          transformedRow[columnName] = _createFilesetField(value);
-        }
-      }
-
-      return transformedRow;
-    }).toList();
-  }
-
-  /// Creates a FilesetField from a database value.
-  Object? _createFilesetField(Object? value) {
-    if (value == null) return null;
-    return FilesetField.fromDatabaseValue(value, this);
-  }
-
-  /// Converts FilesetField values back to database strings before storing.
-  Map<String, Object?> _convertFilesetFieldsToValues(
-    String tableName,
-    Map<String, Object?> values,
-  ) {
-    final tableDef = _getTableDefinition(tableName);
-    final filesetColumns = tableDef.columns
-        .where((col) => col.logicalType == 'fileset')
-        .map((col) => col.name)
-        .toSet();
-
-    if (filesetColumns.isEmpty) return values;
-
-    final convertedValues = <String, Object?>{...values};
-
-    for (final columnName in filesetColumns) {
-      if (convertedValues.containsKey(columnName)) {
-        final value = convertedValues[columnName];
-        if (value is FilesetField) {
-          convertedValues[columnName] = value.toDatabaseValue();
-        }
-      }
-    }
-
-    return convertedValues;
-  }
-
   /// Bulk loads data into a table, performing an "upsert" operation.
   ///
   /// This method is designed for loading data from a sync source. It respects
@@ -1103,56 +1159,6 @@ class DeclarativeDatabase {
     }
   }
 
-  /// Validates that a query result meets the requirements for forUpdate
-  void _validateForUpdateQuery(
-      List<Map<String, Object?>> results, String updateTableName) {
-    // Check that the update table exists in the schema
-    schema.userTables.firstWhere(
-      (table) => table.name == updateTableName,
-      orElse: () =>
-          throw ArgumentError('Update table $updateTableName not found in schema'),
-    );
-
-    if (results.isEmpty) return; // No results to validate
-
-    final firstResult = results.first;
-
-    // Verify that system_id is present
-    if (!firstResult.containsKey('system_id') ||
-        firstResult['system_id'] == null) {
-      throw StateError(
-          'Query with forUpdate(\'$updateTableName\') must include system_id column from the target table');
-    }
-
-    // Verify that system_version is present
-    if (!firstResult.containsKey('system_version') ||
-        firstResult['system_version'] == null) {
-      throw StateError(
-          'Query with forUpdate(\'$updateTableName\') must include system_version column from the target table');
-    }
-  }
-
-  /// Determines if a QueryBuilder represents a simple table query (CRUD-enabled)
-  /// vs a complex query or view query (read-only by default).
-  ///
-  /// A simple table query is one that:
-  /// - Queries directly from a table (not a view)
-  /// - Has no complex joins, subqueries, or aggregations
-  /// - Can be safely updated via system_id
-  bool _isSimpleTableQuery(QueryBuilder builder) {
-    final tableName = builder.tableName;
-    if (tableName == null) return false;
-
-    // Check if the table name refers to an actual table (not a view)
-    final isActualTable =
-        schema.userTables.any((table) => table.name == tableName);
-    if (!isActualTable) return false;
-
-    // For now, we'll consider any direct table reference as "simple"
-    // This could be enhanced to check for complex joins, aggregations, etc.
-    // based on the QueryBuilder structure
-    return true;
-  }
 }
 
 // Static helper methods for settings

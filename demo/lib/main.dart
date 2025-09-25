@@ -7,7 +7,7 @@ import 'user.dart';
 import 'post.dart';
 import 'sqlite_factory_registration.dart';
 
-final uuid = const Uuid();
+const uuid = const Uuid();
 
 void main() {
   // Register all factory functions using auto-generated registration
@@ -619,13 +619,13 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
   Future<void> _updateUserOutsideFilter() async {
     final db = DatabaseProvider.of(context);
 
-    // Get users NOT in current filter
+    // Get users in current filter
     WhereClause? whereClause;
     switch (_currentFilter) {
       case 'young':
-        whereClause = col('age').gt(25);
-      case 'old':
         whereClause = col('age').lte(25);
+      case 'old':
+        whereClause = col('age').gt(25);
         break;
       case 'all':
         // When showing all, update someone to be very old (outside typical range)
