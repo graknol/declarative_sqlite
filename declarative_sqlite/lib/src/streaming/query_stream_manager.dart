@@ -1,74 +1,89 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'package:rxdart/rxdart.dart';
 import 'streaming_query.dart';
+import 'query_emoji_utils.dart';
 
-/// Manages multiple streaming queries and coordinates their updates
+/// Manages multiple streaming queries and coordinates their updates with batching and debouncing
 class QueryStreamManager {
   final Map<String, StreamingQuery> _queries = {};
   
+  // Use RxDart for batching table change notifications to prevent rapid refresh cycles
+  final _tableChangeSubject = PublishSubject<String>();
+  late final StreamSubscription _tableChangeSubscription;
+  
+  QueryStreamManager() {
+    // Debounce table changes to batch rapid notifications and prevent subscribe/cancel cycles
+    _tableChangeSubscription = _tableChangeSubject
+        .debounceTime(const Duration(milliseconds: 16)) // Single frame delay
+        .distinct() // Only process unique table names
+        .listen(_processTableChange);
+  }
+  
   /// Registers a streaming query with the manager
   void register(StreamingQuery query) {
-    developer.log('QueryStreamManager.register: Registering query id="${query.id}", total queries will be ${_queries.length + 1}', name: 'QueryStreamManager');
     _queries[query.id] = query;
-    developer.log('QueryStreamManager.register: Successfully registered query id="${query.id}"', name: 'QueryStreamManager');
   }
 
   /// Unregisters a streaming query from the manager and disposes it
   void unregister(String queryId) {
-    developer.log('QueryStreamManager.unregister: Unregistering query id="$queryId"', name: 'QueryStreamManager');
+    final emoji = getAnimalEmoji(queryId);
+    developer.log('QueryStreamManager.unregister: $emoji Unregistering query id="$queryId"', name: 'QueryStreamManager');
     final query = _queries.remove(queryId);
     if (query != null) {
       // Fire and forget the async dispose
       query.dispose().catchError((error) {
-        developer.log('QueryStreamManager.unregister: Error disposing query id="$queryId": $error', name: 'QueryStreamManager');
+        developer.log('QueryStreamManager.unregister: $emoji Error disposing query id="$queryId": $error', name: 'QueryStreamManager');
       });
-      developer.log('QueryStreamManager.unregister: Successfully unregistered and disposed query id="$queryId"', name: 'QueryStreamManager');
+      developer.log('QueryStreamManager.unregister: $emoji Successfully unregistered and disposed query id="$queryId"', name: 'QueryStreamManager');
     } else {
-      developer.log('QueryStreamManager.unregister: Query id="$queryId" was not found in active queries', name: 'QueryStreamManager');
+      developer.log('QueryStreamManager.unregister: $emoji Query id="$queryId" was not found in active queries', name: 'QueryStreamManager');
     }
   }
 
   /// Unregisters a streaming query from the manager without disposing it
   /// This is used when the query is managing its own disposal
   void unregisterOnly(String queryId) {
-    developer.log('QueryStreamManager.unregisterOnly: Unregistering query id="$queryId" (without disposal)', name: 'QueryStreamManager');
-    final query = _queries.remove(queryId);
-    if (query != null) {
-      developer.log('QueryStreamManager.unregisterOnly: Successfully unregistered query id="$queryId"', name: 'QueryStreamManager');
-    } else {
-      developer.log('QueryStreamManager.unregisterOnly: Query id="$queryId" was not found in active queries', name: 'QueryStreamManager');
-    }
+    _queries.remove(queryId);
   }
 
-  /// Notifies all relevant queries that a table has been modified
+  /// Notifies all relevant queries that a table has been modified (debounced to prevent rapid cycles)
   Future<void> notifyTableChanged(String tableName) async {
-    developer.log('QueryStreamManager.notifyTableChanged: Notifying queries about table="$tableName" change, checking ${_queries.length} registered queries', name: 'QueryStreamManager');
+    developer.log('QueryStreamManager.notifyTableChanged: Queuing table change notification for table="$tableName" (will be debounced)', name: 'QueryStreamManager');
+    _tableChangeSubject.add(tableName);
+  }
+  
+  /// Process a table change notification (called after debouncing)
+  Future<void> _processTableChange(String tableName) async {
+    developer.log('QueryStreamManager._processTableChange: Processing debounced table change for table="$tableName", checking ${_queries.length} registered queries', name: 'QueryStreamManager');
     
     try {
       final affectedQueries = _queries.values
           .where((query) => query.isActive && query.isAffectedByTable(tableName))
           .toList();
 
-      developer.log('QueryStreamManager.notifyTableChanged: Found ${affectedQueries.length} affected queries for table="$tableName"', name: 'QueryStreamManager');
+      developer.log('QueryStreamManager._processTableChange: Found ${affectedQueries.length} affected queries for table="$tableName"', name: 'QueryStreamManager');
       
       if (affectedQueries.isEmpty) {
-        developer.log('QueryStreamManager.notifyTableChanged: No affected queries for table="$tableName", skipping refresh', name: 'QueryStreamManager');
+        developer.log('QueryStreamManager._processTableChange: No affected queries for table="$tableName", skipping refresh', name: 'QueryStreamManager');
         return;
       }
 
-      developer.log('QueryStreamManager.notifyTableChanged: Refreshing ${affectedQueries.length} queries for table="$tableName"', name: 'QueryStreamManager');
+      developer.log('QueryStreamManager._processTableChange: Refreshing ${affectedQueries.length} queries for table="$tableName"', name: 'QueryStreamManager');
       
       // Refresh all affected queries concurrently with error handling
       final results = await Future.wait(
         affectedQueries.map((query) async {
           try {
-            developer.log('QueryStreamManager.notifyTableChanged: Refreshing query id="${query.id}" for table="$tableName"', name: 'QueryStreamManager');
+            final emoji = getAnimalEmoji(query.id);
+            developer.log('QueryStreamManager._processTableChange: $emoji Refreshing query id="${query.id}" for table="$tableName"', name: 'QueryStreamManager');
             await query.refresh();
-            developer.log('QueryStreamManager.notifyTableChanged: Successfully refreshed query id="${query.id}" for table="$tableName"', name: 'QueryStreamManager');
+            developer.log('QueryStreamManager._processTableChange: $emoji Successfully refreshed query id="${query.id}" for table="$tableName"', name: 'QueryStreamManager');
             return null;
           } catch (e) {
-            final errorMsg = 'Query ${query.id} refresh failed: $e';
-            developer.log('QueryStreamManager.notifyTableChanged: $errorMsg', name: 'QueryStreamManager');
+            final emoji = getAnimalEmoji(query.id);
+            final errorMsg = '$emoji Query ${query.id} refresh failed: $e';
+            developer.log('QueryStreamManager._processTableChange: $errorMsg', name: 'QueryStreamManager');
             return errorMsg;
           }
         }),
@@ -77,12 +92,12 @@ class QueryStreamManager {
       // Handle any errors that occurred
       final errors = results.where((error) => error != null).toList();
       if (errors.isNotEmpty) {
-        developer.log('QueryStreamManager.notifyTableChanged: ${errors.length} queries had errors during refresh for table="$tableName": ${errors.join(", ")}', name: 'QueryStreamManager');
+        developer.log('QueryStreamManager._processTableChange: ${errors.length} queries had errors during refresh for table="$tableName": ${errors.join(", ")}', name: 'QueryStreamManager');
       } else {
-        developer.log('QueryStreamManager.notifyTableChanged: All queries refreshed successfully for table="$tableName"', name: 'QueryStreamManager');
+        developer.log('QueryStreamManager._processTableChange: All queries refreshed successfully for table="$tableName"', name: 'QueryStreamManager');
       }
     } catch (e, stackTrace) {
-      developer.log('QueryStreamManager.notifyTableChanged: Error during table change notification for table="$tableName"', error: e, stackTrace: stackTrace, name: 'QueryStreamManager');
+      developer.log('QueryStreamManager._processTableChange: Error during table change notification for table="$tableName"', error: e, stackTrace: stackTrace, name: 'QueryStreamManager');
       rethrow;
     }
   }
@@ -111,12 +126,14 @@ class QueryStreamManager {
       final results = await Future.wait(
         affectedQueries.map((query) async {
           try {
-            developer.log('QueryStreamManager.notifyColumnChanged: Refreshing query id="${query.id}" for column="$tableName.$columnName"', name: 'QueryStreamManager');
+            final emoji = getAnimalEmoji(query.id);
+            developer.log('QueryStreamManager.notifyColumnChanged: $emoji Refreshing query id="${query.id}" for column="$tableName.$columnName"', name: 'QueryStreamManager');
             await query.refresh();
-            developer.log('QueryStreamManager.notifyColumnChanged: Successfully refreshed query id="${query.id}" for column="$tableName.$columnName"', name: 'QueryStreamManager');
+            developer.log('QueryStreamManager.notifyColumnChanged: $emoji Successfully refreshed query id="${query.id}" for column="$tableName.$columnName"', name: 'QueryStreamManager');
             return null;
           } catch (e) {
-            final errorMsg = 'Query ${query.id} refresh failed: $e';
+            final emoji = getAnimalEmoji(query.id);
+            final errorMsg = '$emoji Query ${query.id} refresh failed: $e';
             developer.log('QueryStreamManager.notifyColumnChanged: $errorMsg', name: 'QueryStreamManager');
             return errorMsg;
           }
@@ -212,13 +229,18 @@ class QueryStreamManager {
   Future<void> dispose() async {
     developer.log('QueryStreamManager.dispose: Disposing ${_queries.length} registered queries', name: 'QueryStreamManager');
     
+    // Clean up debounced table change subscription
+    await _tableChangeSubscription.cancel();
+    _tableChangeSubject.close();
+    
     final disposeFutures = <Future<void>>[];
     
     for (final query in _queries.values) {
-      developer.log('QueryStreamManager.dispose: Disposing query id="${query.id}"', name: 'QueryStreamManager');
+      final emoji = getAnimalEmoji(query.id);
+      developer.log('QueryStreamManager.dispose: $emoji Disposing query id="${query.id}"', name: 'QueryStreamManager');
       disposeFutures.add(
         query.dispose().catchError((error) {
-          developer.log('QueryStreamManager.dispose: Error disposing query id="${query.id}": $error', name: 'QueryStreamManager');
+          developer.log('QueryStreamManager.dispose: $emoji Error disposing query id="${query.id}": $error', name: 'QueryStreamManager');
         })
       );
     }

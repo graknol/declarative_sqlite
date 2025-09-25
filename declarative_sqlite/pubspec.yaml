@@ -18,6 +18,7 @@ dependencies:
   async: ^2.13.0
   pool: ^1.5.2
   async_locks: ^4.0.2
+  rxdart: ^0.28.0
 
 dev_dependencies:
   lints: ^6.0.0

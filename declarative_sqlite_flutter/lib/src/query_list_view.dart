@@ -1,4 +1,7 @@
+import 'dart:developer' as developer;
+
 import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'package:declarative_sqlite/src/streaming/query_emoji_utils.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -68,6 +71,7 @@ class QueryListView<T extends DbRecord> extends StatefulWidget {
 class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
   StreamingQuery<T>? _streamingQuery;
   DeclarativeDatabase? _currentDatabase;
+  String? _lastQuerySignature; // Track query changes more efficiently
 
   @override
   void initState() {
@@ -159,20 +163,41 @@ class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
   }
 
   void _handleWidgetChanges(QueryListView<T> oldWidget) {
-    // Check if query function changed (this is a simple reference check)
-    // In a more sophisticated implementation, you could do deeper comparison
     final database = _currentDatabase;
-    if (database != null && (widget.query != oldWidget.query || widget.mapper != oldWidget.mapper)) {
+    if (database == null) return;
+    
+    // Generate signature for current query to detect meaningful changes
+    final currentSignature = _generateQuerySignature();
+    
+    // Only recreate the streaming query if there's a meaningful change
+    if (_lastQuerySignature != currentSignature || widget.mapper != oldWidget.mapper) {
+      developer.log('QueryListView: Query changed, recreating stream', name: 'QueryListView');
       _createStreamingQuery(database);
+      _lastQuerySignature = currentSignature;
+    }
+  }
+  
+  /// Generate a signature for the current query to detect meaningful changes
+  String _generateQuerySignature() {
+    final builder = QueryBuilder();
+    widget.query(builder);
+    
+    // Build the SQL to use as signature (this captures all meaningful changes)
+    try {
+      final (sql, params) = builder.build();
+      return '$sql|${params.join(',')}';
+    } catch (e) {
+      // If build fails, fall back to table name + hash of widget.query function
+      return '${builder.tableName}_${widget.query.hashCode}';
     }
   }
 
   void _disposeStreamingQuery() {
     if (_streamingQuery != null) {
-      print('QueryListView: Disposing StreamingQuery id="${_streamingQuery!.id}"');
+      final emoji = getAnimalEmoji(_streamingQuery!.id);
       // Fire and forget the async dispose - we don't want to block the UI
       _streamingQuery?.dispose().catchError((error) {
-        print('QueryListView: Error during StreamingQuery dispose: $error');
+        developer.log('QueryListView: $emoji Error during dispose: $error', name: 'QueryListView');
       });
       _streamingQuery = null;
     }
@@ -192,17 +217,16 @@ class _QueryListViewState<T extends DbRecord> extends State<QueryListView<T>> {
     final T Function(Map<String, Object?>) effectiveMapper = _createEffectiveMapper(database);
     
     final queryId = 'query_list_view_${DateTime.now().millisecondsSinceEpoch}';
-    print('QueryListView: Creating new StreamingQuery id="$queryId"');
+    final emoji = getAnimalEmoji(queryId);
+    developer.log('QueryListView: $emoji Creating new streaming query with id="$queryId"', name: 'QueryListView');
     
-    // Create new streaming query
+    // Create new streaming query with RxDart-enhanced lifecycle management
     _streamingQuery = StreamingQuery.create(
       id: queryId,
       builder: builder,
       database: database,
       mapper: effectiveMapper,
     );
-    
-    print('QueryListView: StreamingQuery created id="$queryId" (will register when StreamBuilder listens)');
   }
 
   T Function(Map<String, Object?>) _createEffectiveMapper(DeclarativeDatabase database) {
