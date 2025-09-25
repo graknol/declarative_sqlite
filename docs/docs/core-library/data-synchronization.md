@@ -37,68 +37,86 @@ This adds several system columns to your table, including:
 
 With this enabled, every `insert`, `update`, and `delete` operation is automatically recorded in a special `_dirty_rows` table. This table acts as an outbox of pending changes to be sent to the server.
 
-## 3. Implementing the Sync Manager
+## 3. Implementing Synchronization Logic
 
-The `ServerSyncManager` is the class that orchestrates the synchronization process. You need to provide it with two key functions: `onFetch` and `onSend`.
+With change tracking enabled, you can now implement your own synchronization logic. The core of this is the `_dirty_rows` table, which acts as an outbox of pending changes.
 
-- **`onFetch`**: This function is responsible for fetching changes *from* the server. The manager will provide you with a map of the latest server timestamps it has for each table. Your function should call your backend API with these timestamps to get all records that are newer.
-- **`onSend`**: This function is responsible for sending local changes *to* the server. The manager will provide a list of `DirtyRow` objects from the outbox. Your function should send these operations to your backend API.
+You can get the list of dirty rows by calling `database.getDirtyRows()`.
 
-### Example Implementation
-
-In a Flutter app, you can use the `ServerSyncManagerWidget` to manage the lifecycle of the sync process.
-
-```dart title="lib/widgets/sync_manager.dart"
-import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
-import 'package:flutter/material.dart';
-import '../api/my_api_client.dart'; // Your API client
-
-class SyncManager extends StatelessWidget {
-  final Widget child;
-  const SyncManager({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final database = DatabaseProvider.of(context);
-    final apiClient = MyApiClient(); // Your API client instance
-
-    return ServerSyncManagerWidget(
-      database: database,
-      // How often to attempt synchronization
-      syncInterval: const Duration(minutes: 5),
-      // Fetch changes from the server
-      onFetch: (db, tableTimestamps) async {
-        final remoteChanges = await apiClient.fetchChanges(tableTimestamps);
-        // Apply changes to the local database
-        await db.applyServerChanges(remoteChanges);
-      },
-      // Send local changes to the server
-      onSend: (operations) async {
-        try {
-          await apiClient.sendChanges(operations);
-          return true; // Return true on success
-        } catch (e) {
-          return false; // Return false on failure to retry later
-        }
-      },
-      child: child,
-    );
-  }
-}
+```dart
+final dirtyRows = await database.getDirtyRows();
 ```
 
-You would then wrap your app with this `SyncManager` widget.
+Each `DirtyRow` object contains:
+- `tableName`: The name of the table that was changed.
+- `rowId`: The `system_id` of the row that was changed.
+- `hlc`: The Hybrid Logical Clock timestamp of the change.
 
-```dart title="lib/main.dart"
-void main() {
-  runApp(
-    DatabaseProvider(
-      // ...
-      child: SyncManager(
-        child: const MyApp(),
-      ),
-    ),
-  );
+You can then use this information to fetch the full record from the database and send it to your server.
+
+### Example Synchronization Service
+
+Here is an example of a simple synchronization service that sends pending changes to a server.
+
+```dart
+class MySyncService {
+  final DeclarativeDatabase database;
+  final MyApiClient apiClient; // Your API client
+
+  MySyncService(this.database, this.apiClient);
+
+  Future<void> performSync() async {
+    await _sendLocalChanges();
+    await _fetchRemoteChanges();
+  }
+
+  Future<void> _sendLocalChanges() async {
+    final dirtyRows = await database.getDirtyRows();
+    if (dirtyRows.isEmpty) return;
+
+    final recordsToSend = <Map<String, dynamic>>[];
+    for (final dirtyRow in dirtyRows) {
+      final record = await database.query(
+        (q) => q.from(dirtyRow.tableName)
+              .where(col('system_id').equals(dirtyRow.rowId))
+      );
+      if (record.isNotEmpty) {
+        recordsToSend.add(record.first.toJson());
+      }
+    }
+
+    try {
+      await apiClient.sendChanges(recordsToSend);
+      // If successful, clear the dirty rows that were sent
+      await database.dirtyRowStore?.remove(dirtyRows);
+    } catch (e) {
+      // Handle error, maybe log it or retry later
+    }
+  }
+
+  Future<void> _fetchRemoteChanges() async {
+    // You need to manage the last sync timestamp yourself
+    final lastSyncTimestamp = await _getLastSyncTimestamp();
+    final remoteChanges = await apiClient.fetchChanges(lastSyncTimestamp);
+
+    // The `bulkLoad` method is useful for applying server changes
+    // as it handles inserts and updates based on `system_id`
+    // and respects HLC timestamps for LWW columns.
+    for (final tableName in remoteChanges.keys) {
+      await database.bulkLoad(tableName, remoteChanges[tableName]!);
+    }
+
+    await _setLastSyncTimestamp(DateTime.now());
+  }
+
+  Future<DateTime?> _getLastSyncTimestamp() async {
+    // Implementation to get the last sync timestamp from storage
+    return null;
+  }
+
+  Future<void> _setLastSyncTimestamp(DateTime timestamp) async {
+    // Implementation to save the last sync timestamp to storage
+  }
 }
 ```
 
@@ -108,10 +126,10 @@ void main() {
     - `declarative_sqlite` performs the `UPDATE` on the `tasks` table.
     - It automatically stamps the row with a new HLC timestamp.
     - It records the operation (e.g., `UPDATE tasks WHERE id = '...'`) in the `_dirty_rows` table.
-2.  **Sync Interval**: The `ServerSyncManager` wakes up after its specified interval.
-3.  **`onSend`**: The manager pulls the pending operations from `_dirty_rows` and passes them to your `onSend` function. Your API client sends them to the server.
-4.  **Server Processing**: The server receives the operations. For each row, it compares the HLC timestamp from the client with the HLC timestamp it has for that row. It accepts the change only if the client's timestamp is newer (last-write-wins).
-5.  **`onFetch`**: The manager calls your `onFetch` function, providing the last known server timestamps. Your API client fetches any changes from the server that have occurred since the last sync.
-6.  **Apply Server Changes**: The fetched changes are applied to the local database using `database.applyServerChanges()`. This method intelligently inserts or updates records based on the incoming data, again respecting HLC timestamps to prevent overwriting newer local changes with older server data.
+2.  **Trigger Sync**: You trigger the synchronization process, for example, by calling `MySyncService.performSync()` periodically or in response to network status changes.
+3.  **Send Local Changes**: The service pulls the pending operations from `_dirty_rows`, fetches the full records, and sends them to your server.
+4.  **Server Processing**: The server receives the records. For each row, it compares the HLC timestamp from the client with the HLC timestamp it has for that row. It accepts the change only if the client's timestamp is newer (last-write-wins).
+5.  **Fetch Remote Changes**: The service calls your `onFetch` function, providing the last known server timestamps. Your API client fetches any changes from the server that have occurred since the last sync.
+6.  **Apply Server Changes**: The fetched changes are applied to the local database using `database.bulkLoad()`. This method intelligently inserts or updates records based on the incoming data, again respecting HLC timestamps to prevent overwriting newer local changes with older server data.
 
 This robust, two-way process ensures that data remains consistent across the client and server, even with intermittent network connectivity.

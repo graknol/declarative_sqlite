@@ -8,7 +8,6 @@ This package provides helpful widgets that simplify state management and UI upda
 
 - **`DatabaseProvider`**: An `InheritedWidget` that manages the lifecycle of your `DeclarativeDatabase` instance and provides easy access to it from anywhere in the widget tree.
 - **`QueryListView`**: A reactive `ListView` that listens to a streaming query and automatically rebuilds itself with smooth animations when the underlying data changes. It handles all the boilerplate of subscribing to a stream and updating the UI.
-- **`ServerSyncManagerWidget`**: A widget to manage the lifecycle of the background data synchronization service. It handles scheduling and executing `onFetch` and `onSend` operations to keep your local database in sync with a remote server.
 
 ## Getting Started
 

@@ -27,7 +27,6 @@ Provides Flutter-specific widgets and utilities to easily integrate `declarative
 **Key Features:**
 - **`DatabaseProvider`**: An `InheritedWidget` that provides easy access to your database instance throughout the widget tree.
 - **`QueryListView`**: A reactive `ListView` that listens to a streaming query and automatically rebuilds itself when the data changes.
-- **`ServerSyncManagerWidget`**: A widget to manage the lifecycle of the background data synchronization service.
 
 ### ⚙️ Code Generator (`declarative_sqlite_generator`)
 
@@ -69,7 +68,6 @@ For a detailed guide, please refer to our [**official documentation**](https://g
 |  ---                                |
 │  • DatabaseProvider                 │
 │  • QueryListView                    │
-│  • ServerSyncManagerWidget          │
 ├─────────────────────────────────────┤
 │  > declarative_sqlite               │
 |  ---                                |

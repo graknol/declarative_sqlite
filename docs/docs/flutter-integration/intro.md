@@ -14,12 +14,8 @@ A Flutter `InheritedWidget` that handles the initialization and lifecycle of you
 ### `QueryListView`
 A powerful, reactive `ListView` that is directly connected to a `streamQuery`. It automatically listens for data changes and rebuilds its list of items with smooth animations (`AnimatedList`) when the query results are updated. It handles all the complexities of stream subscriptions, state management, and efficient UI updates for lists of data.
 
-### `ServerSyncManagerWidget`
-A lifecycle-aware widget that manages the `ServerSyncManager` from the core library. It automatically starts the synchronization service when the widget is initialized and stops it when it's disposed. It uses the `TaskScheduler` to periodically run your `onFetch` and `onSend` logic, respecting network conditions and battery life.
-
 ## What You'll Learn
 
 In this section, you will learn how to:
 -   Properly manage your database lifecycle using **`DatabaseProvider`**.
 -   Build dynamic, real-time lists of data with **`QueryListView`**.
--   Set up and manage background data synchronization using **`ServerSyncManagerWidget`**.

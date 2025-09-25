@@ -37,5 +37,7 @@ export 'src/streaming/streaming_query.dart';
 export 'src/streaming/query_stream_manager.dart';
 
 // Synchronization
-export 'src/sync/server_sync_manager.dart';
+export 'src/sync/dirty_row.dart';
+export 'src/sync/dirty_row_store.dart';
 export 'src/scheduling/task_scheduler.dart';
+

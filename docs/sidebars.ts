@@ -45,7 +45,6 @@ const sidebars: SidebarsConfig = {
         'flutter-integration/intro',
         'flutter-integration/database-provider',
         'flutter-integration/query-list-view',
-        'flutter-integration/server-sync-manager-widget',
       ],
     },
     {

@@ -24,6 +24,7 @@ import 'streaming/query_stream_manager.dart';
 import 'streaming/streaming_query.dart';
 import 'sync/hlc.dart';
 import 'sync/dirty_row_store.dart';
+import 'sync/dirty_row.dart';
 
 /// A declarative SQLite database.
 class DeclarativeDatabase {
@@ -989,7 +990,7 @@ class DeclarativeDatabase {
       }
 
       return result;
-    }, tableName: tableName);
+    }, tableName: table);
   }
 
   /// Queries the given [table] and returns a list of the results.
@@ -1185,6 +1186,15 @@ class DeclarativeDatabase {
     }
   }
 
+  /// Retrieves all dirty rows from the dirty row store.
+  ///
+  /// This is useful for implementing custom synchronization logic.
+  Future<List<DirtyRow>> getDirtyRows() async {
+    if (dirtyRowStore == null) {
+      return [];
+    }
+    return await dirtyRowStore!.getDirtyRows();
+  }
 }
 
 // Static helper methods for settings

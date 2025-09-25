@@ -20,8 +20,7 @@ This section provides a deep dive into the advanced features of the core library
 
 ### Synchronization
 - **Hybrid Logical Clock (HLC)**: At the heart of the synchronization system is the HLC, a timestamping mechanism that combines physical time with a logical counter. This ensures a consistent, conflict-free ordering of operations across distributed clients (e.g., multiple devices syncing with a central server).
-- **Change Tracking**: When enabled, the library automatically tracks all `INSERT`, `UPDATE`, and `DELETE` operations in a "dirty rows" table. This log of changes is used by the synchronization manager to send pending operations to a remote server.
-- **Sync Manager**: A `ServerSyncManager` class orchestrates the two-way synchronization process: fetching changes from a server and sending local changes up to it.
+- **Change Tracking**: When enabled, the library automatically tracks all `INSERT`, `UPDATE`, and `DELETE` operations in a "dirty rows" table. This log of changes can be used to implement a custom synchronization solution.
 
 ### Task Scheduling
 - **Background Task Scheduler**: A sophisticated, priority-based task scheduler is included for managing background operations like data synchronization and database maintenance (e.g., file garbage collection). It supports concurrency limits, backoff-and-retry strategies, and network connectivity awareness to ensure that background tasks run efficiently without impacting application performance or battery life.
