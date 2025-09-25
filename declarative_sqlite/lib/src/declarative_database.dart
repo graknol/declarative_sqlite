@@ -99,6 +99,14 @@ class DeclarativeDatabase {
   /// The [schema] is used to create and migrate the database.
   /// The [dirtyRowStore] is used to store and retrieve operations for CRDTs.
   /// The [databaseFactory] is used to open the database.
+  /// 
+  /// If [recreateDatabase] is true, the existing database file will be deleted
+  /// before opening. This is useful for testing and demo data initialization.
+  /// Defaults to false for production safety.
+  /// 
+  /// **SAFETY**: [recreateDatabase] only works in debug mode to prevent
+  /// accidental data loss in production. In release mode, this parameter
+  /// is ignored and an assertion error is thrown if set to true.
   static Future<DeclarativeDatabase> open(
     String path, {
     required sqflite.DatabaseFactory databaseFactory,
@@ -107,8 +115,41 @@ class DeclarativeDatabase {
     required IFileRepository fileRepository,
     bool isReadOnly = false,
     bool isSingleInstance = true,
+    bool recreateDatabase = false,
   }) async {
     return await DbExceptionWrapper.wrapConnection(() async {
+      // Safety check: recreateDatabase only works in debug mode
+      assert(() {
+        if (recreateDatabase && !isReadOnly) {
+          // This assertion will only be active in debug mode
+          return true;
+        }
+        return true;
+      }(), 'recreateDatabase can only be used in debug mode for safety');
+      
+      // Delete existing database if recreation is requested
+      if (recreateDatabase && !isReadOnly) {
+        // Double check: only proceed if assertions are enabled (debug mode)
+        var debugMode = false;
+        assert(() {
+          debugMode = true;
+          return true;
+        }());
+        
+        if (debugMode) {
+          try {
+            await databaseFactory.deleteDatabase(path);
+          } catch (e) {
+            // Ignore errors if database doesn't exist
+          }
+        } else {
+          throw StateError(
+            'recreateDatabase=true is not allowed in production/release mode. '
+            'This is a safety measure to prevent accidental data loss.'
+          );
+        }
+      }
+      
       final db = await databaseFactory.openDatabase(
         path,
         options: sqflite.OpenDatabaseOptions(

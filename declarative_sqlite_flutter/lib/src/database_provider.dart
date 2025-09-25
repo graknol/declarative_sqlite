@@ -66,6 +66,7 @@ class DatabaseProvider extends StatefulWidget {
   final String databaseName;
   final Widget child;
   final String? databasePath;
+  final bool recreateDatabase;
 
   const DatabaseProvider({
     super.key,
@@ -73,6 +74,7 @@ class DatabaseProvider extends StatefulWidget {
     required this.databaseName,
     required this.child,
     this.databasePath,
+    this.recreateDatabase = false,
   });
 
   /// Access the database from anywhere in the widget tree.
@@ -148,6 +150,7 @@ class _DatabaseProviderState extends State<DatabaseProvider> {
       databaseFactory: databaseFactory,
       schema: schema,
       fileRepository: FilesystemFileRepository(fileRepositoryPath),
+      recreateDatabase: widget.recreateDatabase,
     );
   }
 
