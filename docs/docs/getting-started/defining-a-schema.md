@@ -63,7 +63,7 @@ void appSchema(SchemaBuilder builder) {
     table.guid('id').notNull();
     table.text('name').notNull();
     table.text('email').notNull();
-    table.date('created_at').notNull().defaultValue(DateTime.now);
+    table.date('created_at').notNull().defaultCallback(() => DateTime.now);
 
     // Define a primary key on the 'id' column
     table.key(['id']).primary();
@@ -73,7 +73,7 @@ void appSchema(SchemaBuilder builder) {
 
   // Tasks table
   builder.table('tasks', (table) {
-    table.guid('id').notNull().defaultValue(() => Uuid().v4());
+    table.guid('id').notNull().defaultCallback(() => Uuid().v4());
     table.guid('user_id').notNull();
     table.text('title').notNull();
     table.text('description');
@@ -110,8 +110,8 @@ Views are virtual tables based on the result-set of a SQL statement. They are us
 builder.view('active_tasks', (view) {
   view
       .select('t.id, t.title, t.due_date, u.name as user_name')
-      .from('tasks', as: 't')
-      .join('users', on: 't.user_id = u.id', as: 'u')
+      .from('tasks', 't')
+      .innerJoin('users', col('t.user_id').eq(col('u.id')), 'u')
       .where(col('is_completed').eq(0));
 });
 ```
