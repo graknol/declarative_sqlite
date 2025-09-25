@@ -7,7 +7,7 @@ sidebar_position: 2
 The query builder provides a fluent, type-safe API for constructing SQL queries. It helps prevent syntax errors and makes your data access logic more readable and maintainable than raw SQL strings.
 
 You can access the query builder in two ways:
-1.  By passing a callback to `database.queryWithBuilder()`.
+1.  By passing a callback to `database.query()`.
 2.  By creating a `QueryBuilder` instance directly to generate a raw SQL string.
 
 ## Selecting Columns (`select`)
@@ -34,7 +34,7 @@ The `from` method specifies the main table for the query. You can also provide a
 q.from('tasks')
 
 // Using an alias
-q.from('tasks', as: 't')
+q.from('tasks', 't')
 ```
 
 ## Joining Tables (`join`)
@@ -43,8 +43,8 @@ You can join additional tables using the `join`, `leftJoin`, `rightJoin`, and `i
 
 ```dart
 q.select('t.title, u.name as author')
-  .from('tasks', as: 't')
-  .join('users', on: 't.user_id = u.id', as: 'u')
+  .from('tasks', 't')
+  .innerJoin('users', col('t.user_id').eq(col('u.id')), 'u')
 ```
 
 ## Filtering Results (`where`)
@@ -135,20 +135,18 @@ q.from('tasks')
 
 ## Putting It All Together
 
-Here is a complete example using `queryWithBuilder` to fetch the top 5 highest-priority, incomplete tasks assigned to a specific user, along with the user's name.
+Here is a complete example using the query builder to fetch the top 5 highest-priority, incomplete tasks assigned to a specific user, along with the user's name.
 
 ```dart
-final highPriorityTasks = await database.queryWithBuilder((q) {
+final highPriorityTasks = await database.query((q) {
   q
       .select('t.id, t.title, t.priority, u.name as user_name')
-      .from('tasks', as: 't')
-      .join('users', on: 't.user_id = u.id', as: 'u')
-      .where(and([
-        col('t.user_id').eq('user-123'),
-        col('t.is_completed').eq(0),
-        col('t.priority').gte(4),
-      ]))
-      .orderBy('t.priority DESC, t.due_date ASC')
+      .from('tasks', 't')
+      .innerJoin('users', col('t.user_id').eq(col('u.id')), 'u')
+      .where(col('t.user_id').eq('user-123')
+          .and(col('t.is_completed').eq(0))
+          .and(col('t.priority').gte(4)))
+      .orderBy(['t.priority DESC', 't.due_date ASC'])
       .limit(5);
 });
 

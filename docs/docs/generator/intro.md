@@ -68,8 +68,8 @@ class Task extends DbRecord {
   Task(super.data, super.database) : super(tableName: 'tasks');
 
   // It's good practice to add a factory that redirects to the generated one.
-  factory Task.fromMap(Map<String, Object?> data, DeclarativeDatabase db) {
-    return _Task.fromMap(data, db);
+  factory Task.fromDbRecord(DbRecord record) {
+    return _Task.fromDbRecord(record);
   }
 }
 ```
@@ -121,7 +121,7 @@ Now you can interact with your `Task` object in a fully type-safe manner. The ge
 
 ```dart
 // No mapper function is needed because the factory is registered.
-final Stream<List<Task>> taskStream = database.streamQuery('tasks');
+final Stream<List<Task>> taskStream = database.streamTyped<Task>((q) => q.from('tasks'));
 
 taskStream.listen((tasks) {
   final firstTask = tasks.first;

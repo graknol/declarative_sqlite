@@ -62,13 +62,13 @@ class TaskList extends StatelessWidget {
 -   `itemBuilder` (required): A function that builds the widget for each record in the result set. It receives the `BuildContext` and the data item (as a `DbRecord` or a typed subclass).
 -   `loadingBuilder` (optional): A widget to display while waiting for the first set of results from the stream.
 -   `emptyBuilder` (optional): A widget to display if the stream emits an empty list.
--   `mapper` (optional): If you are not using generated and registered factories, you can provide a custom function to map the raw `Map<String, Object?>` to your typed object.
+-   `mapper` (optional): If you are not using generated and registered factories, you can provide a custom function to map the `DbRecord` to your typed object.
 -   `sort` (optional): A client-side sort function to apply to the results after they are fetched from the database.
 -   `reverse`: Whether to reverse the order of the list.
 
 ## How It Works
 
-1.  **Initialization**: When `QueryListView` is built, it calls `database.streamQueryWithBuilder()` with the provided `query`.
+1.  **Initialization**: When `QueryListView` is built, it calls `database.streamRecords()` with the provided `query`.
 2.  **Subscription**: It subscribes to the returned stream.
 3.  **Initial Build**: While waiting for the first event, it shows the `loadingBuilder`. When the first list of data arrives, it builds the list of items using `itemBuilder`.
 4.  **Reactive Updates**: The underlying `QueryStreamManager` monitors the database for changes relevant to the query.

@@ -8,7 +8,7 @@ sidebar_position: 4
 
 ## Insert
 
-To add a new record to a table, use the `insert` method. It takes the table name and a `Map<String, Object?>` representing the data to be inserted.
+To add a new record to a table, use the `insert` method. It takes the table name and a `DbRecord` or `Map<String, Object?>` representing the data to be inserted.
 
 ```dart
 final database = DatabaseProvider.of(context);
@@ -25,16 +25,16 @@ If the table has system columns enabled (`withSystemColumns: true`), the `insert
 
 ## Query (Read)
 
-To read data from the database, use the `query` method. It returns a `Future<List<Map<String, Object?>>>`.
+To read data from the database, use the `query` method. It returns a `Future<List<DbRecord>>`.
 
 ### Simple Query
 
 Fetch all records from a table.
 
 ```dart
-final List<Map<String, Object?>> tasks = await database.query('tasks');
+final List<DbRecord> tasks = await database.query((q) => q.from('tasks'));
 print(tasks);
-// Output: [{'id': '...', 'title': 'Write documentation', ...}]
+// Output: [DbRecord with data {'id': '...', 'title': 'Write documentation', ...}]
 ```
 
 ### Using the Query Builder

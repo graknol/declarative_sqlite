@@ -10,14 +10,13 @@ This is ideal for UI development, as you can simply listen to the stream and reb
 
 ## Creating a Streaming Query
 
-You create a streaming query using the `database.streamQuery()` method. It takes the same arguments as the regular `query()` method, including the option to use the query builder.
+You create a streaming query using the `database.streamRecords()` method. It uses the same query builder syntax as the regular `query()` method.
 
 ```dart
 // Create a stream of all tasks, ordered by title
-final Stream<List<Map<String, Object?>>> taskStream = database.streamQuery(
-  'tasks',
-  orderBy: 'title',
-);
+final Stream<List<DbRecord>> taskStream = database.streamRecords((q) {
+  q.from('tasks').orderBy(['title']);
+});
 
 // Listen to the stream
 final subscription = taskStream.listen((tasks) {
@@ -33,7 +32,7 @@ await database.insert('tasks', {'id': 't4', 'title': 'A new task'});
 You can also use the query builder for more complex streaming queries.
 
 ```dart
-final activeTaskStream = database.streamQueryWithBuilder((q) {
+final activeTaskStream = database.streamRecords((q) {
   q.from('tasks').where(col('is_completed').eq(0));
 });
 ```
@@ -64,17 +63,21 @@ To further improve performance, streaming queries use an internal cache. For que
 
 This "delta-updating" approach is much faster than re-fetching and re-mapping hundreds of rows, especially for large result sets where only a few items have changed.
 
-## Using `streamQuery` with Typed Objects
+## Using `streamRecords` with Typed Objects
 
-While `streamQuery` returns a `Stream<List<Map<String, Object?>>>`, you'll typically want to work with your own typed objects (e.g., `Task`, `User`). You can use the `.map()` method on the stream to convert the raw maps into your objects.
+While `streamRecords` returns a `Stream<List<DbRecord>>`, you'll typically want to work with your own typed objects (e.g., `Task`, `User`). You can use `streamTyped<T>()` to automatically get typed objects, or use the `.map()` method on the stream to convert the records into your objects.
 
 If you are using the code generator, this mapping can be done automatically.
 
 ```dart
-// Assuming you have a Task class with a fromMap factory
+// Using typed streaming for automatic conversion
 final Stream<List<Task>> taskObjectStream = database
-    .streamQuery('tasks')
-    .map((listOfMaps) => listOfMaps.map((map) => Task.fromMap(map, database)).toList());
+    .streamTyped<Task>((q) => q.from('tasks'));
+
+// Or manually converting records to typed objects
+final Stream<List<Task>> taskObjectStream = database
+    .streamRecords((q) => q.from('tasks'))
+    .map((listOfRecords) => listOfRecords.map((record) => Task.fromDbRecord(record)).toList());
 
 taskObjectStream.listen((List<Task> tasks) {
   // Now you have a list of strongly-typed Task objects
