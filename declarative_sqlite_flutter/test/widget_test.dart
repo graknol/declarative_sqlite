@@ -16,7 +16,8 @@ void buildTestSchema(SchemaBuilder builder) {
 }
 
 class User extends DbRecord {
-  User(super.row, super.db);
+  User(Map<String, Object?> data, String tableName, DeclarativeDatabase database)
+      : super(data, tableName, database);
 
   String get name => getValue('name')!;
   int get age => getValue('age')!;
@@ -31,9 +32,13 @@ void main() {
   group('DatabaseProvider', () {
     testWidgets('provides a database to its descendants',
         (WidgetTester tester) async {
+      final schemaBuilder = SchemaBuilder();
+      buildTestSchema(schemaBuilder);
+      final schema = schemaBuilder.build();
+      
       final db = await DeclarativeDatabase.open(
         ':memory:',
-        schema: Schema.fromBuilder(buildTestSchema),
+        schema: schema,
         databaseFactory: databaseFactory,
         fileRepository: InMemoryFileRepository(),
       );
@@ -90,9 +95,13 @@ void main() {
     late DeclarativeDatabase db;
 
     setUp(() async {
+      final schemaBuilder = SchemaBuilder();
+      buildTestSchema(schemaBuilder);
+      final schema = schemaBuilder.build();
+      
       db = await DeclarativeDatabase.open(
         ':memory:',
-        schema: Schema.fromBuilder(buildTestSchema),
+        schema: schema,
         databaseFactory: databaseFactory,
         fileRepository: InMemoryFileRepository(),
       );
@@ -111,7 +120,7 @@ void main() {
             database: db,
             child: QueryListView<User>(
               query: (q) => q.from('users'),
-              mapper: (row, db) => User(row, db),
+              mapper: (row, db) => User(row, 'users', db),
               loadingBuilder: (context) => const Text('Loading...'),
               errorBuilder: (context, error) => Text('Error: $error'),
               itemBuilder: (context, user) => Text(user.name),
@@ -137,7 +146,7 @@ void main() {
             database: db,
             child: QueryListView<User>(
               query: (q) => q.from('users'),
-              mapper: (row, db) => User(row, db),
+              mapper: (row, db) => User(row, 'users', db),
               loadingBuilder: (context) => const CircularProgressIndicator(),
               errorBuilder: (context, error) => const Text('Error'),
               itemBuilder: (context, user) => ListTile(title: Text(user.name)),
@@ -160,7 +169,7 @@ void main() {
             database: db,
             child: QueryListView<User>(
               query: (q) => q.from('users'),
-              mapper: (row, db) => User(row, db),
+              mapper: (row, db) => User(row, 'users', db),
               loadingBuilder: (context) => const Text('Loading...'),
               errorBuilder: (context, error) => Text('Error: $error'),
               itemBuilder: (context, user) => Text(user.name),
@@ -191,7 +200,7 @@ void main() {
             database: db,
             child: QueryListView<User>(
               query: (q) => q.from('non_existent_table'), // Invalid query
-              mapper: (row, db) => User(row, db),
+              mapper: (row, db) => User(row, 'users', db),
               loadingBuilder: (context) => const Text('Loading...'),
               errorBuilder: (context, error) => const Text('Error occurred'),
               itemBuilder: (context, user) => Text(user.name),

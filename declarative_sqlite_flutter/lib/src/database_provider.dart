@@ -4,7 +4,8 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
-import 'package:sqflite_common/sqlite_api.dart';
+
+import 'package:sqflite/sqflite.dart';
 
 /// An inherited widget that provides access to a [DeclarativeDatabase] instance
 /// throughout the widget tree.
@@ -157,7 +158,7 @@ class _DatabaseProviderState extends State<DatabaseProvider> {
         dbPath,
         schema: schema,
         databaseFactory: databaseFactory,
-        fileRepository: FileRepository(
+        fileRepository: FilesystemFileRepository(
           path.join(
             (await getApplicationDocumentsDirectory()).path,
             'files',
