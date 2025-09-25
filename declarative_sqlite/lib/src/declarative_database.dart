@@ -545,7 +545,11 @@ class DeclarativeDatabase {
   Future<String> insert(String tableName, Map<String, Object?> values) async {
     return await DbExceptionWrapper.wrapCreate(() async {
       final now = hlcClock.now();
-      final systemId = await _insert(tableName, values, now);
+      
+      // Serialize input values using column definitions
+      final serializedValues = _serializeValuesForTable(tableName, values);
+      
+      final systemId = await _insert(tableName, serializedValues, now);
       await dirtyRowStore?.add(tableName, systemId, now);
 
       // Notify streaming queries of the change (or defer if in transaction)
@@ -585,6 +589,30 @@ class DeclarativeDatabase {
       default:
         return value;
     }
+  }
+
+  /// Serializes all values in a map according to their column definitions
+  Map<String, Object?> _serializeValuesForTable(String tableName, Map<String, Object?> values) {
+    final tableDef = _getTableDefinition(tableName);
+    final serializedValues = <String, Object?>{};
+    
+    for (final entry in values.entries) {
+      final columnName = entry.key;
+      final value = entry.value;
+      
+      // Find the column definition
+      final column = tableDef.columns.where((col) => col.name == columnName).firstOrNull;
+      
+      if (column != null) {
+        // Serialize using column definition
+        serializedValues[columnName] = _serializeValueForColumn(value, column);
+      } else {
+        // Column not found in schema - pass through as-is (might be system column)
+        serializedValues[columnName] = value;
+      }
+    }
+    
+    return serializedValues;
   }
 
   Future<String> _insert(
@@ -658,10 +686,13 @@ class DeclarativeDatabase {
         },
       );
 
+      // Serialize input values using column definitions
+      final serializedValues = _serializeValuesForTable(tableName, values);
+
       final now = hlcClock.now();
       final result = await _update(
         tableName,
-        values,
+        serializedValues,
         now,
         where: where,
         whereArgs: whereArgs,
