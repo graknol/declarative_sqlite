@@ -7,7 +7,7 @@ import 'user.dart';
 import 'post.dart';
 import 'sqlite_factory_registration.dart';
 
-const uuid = const Uuid();
+const uuid = Uuid();
 
 void main() {
   // Register all factory functions using auto-generated registration

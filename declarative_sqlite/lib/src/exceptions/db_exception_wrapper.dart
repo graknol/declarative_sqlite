@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'db_exceptions.dart';
 import 'db_exception_mapper.dart';
 
@@ -20,13 +21,25 @@ class DbExceptionWrapper {
       // Re-throw already wrapped exceptions
       rethrow;
     } on Exception catch (e) {
-      throw DbExceptionMapper.mapException(
+      final dbException = DbExceptionMapper.mapException(
         e,
         DbOperationType.create,
         tableName: tableName,
         columnName: columnName,
         context: context,
       );
+      
+      // Log constraint violations for developer debugging
+      if (dbException.errorCategory == DbErrorCategory.constraintViolation) {
+        developer.log(
+          'Constraint violation during CREATE: ${dbException.message}${tableName != null ? ' [table: $tableName]' : ''}${columnName != null ? ' [column: $columnName]' : ''}',
+          name: 'DbConstraintViolation',
+          level: 900, // Warning level
+          error: e,
+        );
+      }
+      
+      throw dbException;
     }
   }
 
@@ -43,13 +56,25 @@ class DbExceptionWrapper {
       // Re-throw already wrapped exceptions
       rethrow;
     } on Exception catch (e) {
-      throw DbExceptionMapper.mapException(
+      final dbException = DbExceptionMapper.mapException(
         e,
         DbOperationType.read,
         tableName: tableName,
         columnName: columnName,
         context: context,
       );
+      
+      // Log constraint violations for developer debugging
+      if (dbException.errorCategory == DbErrorCategory.constraintViolation) {
+        developer.log(
+          'Constraint violation during READ: ${dbException.message}${tableName != null ? ' [table: $tableName]' : ''}${columnName != null ? ' [column: $columnName]' : ''}',
+          name: 'DbConstraintViolation',
+          level: 900, // Warning level
+          error: e,
+        );
+      }
+      
+      throw dbException;
     }
   }
 
@@ -66,13 +91,25 @@ class DbExceptionWrapper {
       // Re-throw already wrapped exceptions
       rethrow;
     } on Exception catch (e) {
-      throw DbExceptionMapper.mapException(
+      final dbException = DbExceptionMapper.mapException(
         e,
         DbOperationType.update,
         tableName: tableName,
         columnName: columnName,
         context: context,
       );
+      
+      // Log constraint violations for developer debugging
+      if (dbException.errorCategory == DbErrorCategory.constraintViolation) {
+        developer.log(
+          'Constraint violation during UPDATE: ${dbException.message}${tableName != null ? ' [table: $tableName]' : ''}${columnName != null ? ' [column: $columnName]' : ''}',
+          name: 'DbConstraintViolation',
+          level: 900, // Warning level
+          error: e,
+        );
+      }
+      
+      throw dbException;
     }
   }
 
@@ -88,12 +125,24 @@ class DbExceptionWrapper {
       // Re-throw already wrapped exceptions
       rethrow;
     } on Exception catch (e) {
-      throw DbExceptionMapper.mapException(
+      final dbException = DbExceptionMapper.mapException(
         e,
         DbOperationType.delete,
         tableName: tableName,
         context: context,
       );
+      
+      // Log constraint violations for developer debugging
+      if (dbException.errorCategory == DbErrorCategory.constraintViolation) {
+        developer.log(
+          'Constraint violation during DELETE: ${dbException.message}${tableName != null ? ' [table: $tableName]' : ''}',
+          name: 'DbConstraintViolation',
+          level: 900, // Warning level
+          error: e,
+        );
+      }
+      
+      throw dbException;
     }
   }
 
@@ -108,11 +157,23 @@ class DbExceptionWrapper {
       // Re-throw already wrapped exceptions
       rethrow;
     } on Exception catch (e) {
-      throw DbExceptionMapper.mapException(
+      final dbException = DbExceptionMapper.mapException(
         e,
         DbOperationType.transaction,
         context: context,
       );
+      
+      // Log constraint violations for developer debugging
+      if (dbException.errorCategory == DbErrorCategory.constraintViolation) {
+        developer.log(
+          'Constraint violation during TRANSACTION: ${dbException.message}',
+          name: 'DbConstraintViolation',
+          level: 900, // Warning level
+          error: e,
+        );
+      }
+      
+      throw dbException;
     }
   }
 
@@ -127,11 +188,23 @@ class DbExceptionWrapper {
       // Re-throw already wrapped exceptions
       rethrow;
     } on Exception catch (e) {
-      throw DbExceptionMapper.mapException(
+      final dbException = DbExceptionMapper.mapException(
         e,
         DbOperationType.connection,
         context: context,
       );
+      
+      // Log constraint violations for developer debugging
+      if (dbException.errorCategory == DbErrorCategory.constraintViolation) {
+        developer.log(
+          'Constraint violation during CONNECTION: ${dbException.message}',
+          name: 'DbConstraintViolation',
+          level: 900, // Warning level
+          error: e,
+        );
+      }
+      
+      throw dbException;
     }
   }
 
