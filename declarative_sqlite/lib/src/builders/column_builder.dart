@@ -1,9 +1,6 @@
 import 'package:declarative_sqlite/src/schema/db_column.dart';
 import 'package:meta/meta.dart';
 
-/// Callback function type for generating default values dynamically
-typedef DefaultValueCallback = Object? Function();
-
 /// Base class for all column builders.
 abstract class ColumnBuilder {
   final String name;

@@ -35,6 +35,11 @@ class DbColumn {
   });
 
   String toSql() {
+    assert(
+      !isNotNull || defaultValue != null || defaultValueCallback != null,
+      'defaultValue or defaultValueCallback is required when column is marked as "NOT NULL".',
+    );
+
     final parts = [name, type];
     if (isNotNull) {
       parts.add('NOT NULL');
@@ -46,12 +51,12 @@ class DbColumn {
         parts.add('DEFAULT $defaultValue');
       }
     }
-  if (minValue != null) {
-    parts.add('CHECK($name >= $minValue)');
-  }
-  if (maxLength != null) {
-    parts.add('CHECK(length($name) <= $maxLength)');
-  }
+    if (minValue != null) {
+      parts.add('CHECK($name >= $minValue)');
+    }
+    if (maxLength != null) {
+      parts.add('CHECK(length($name) <= $maxLength)');
+    }
 
     return parts.join(' ');
   }
@@ -71,5 +76,11 @@ class DbColumn {
       'isLww': isLww,
       'defaultValue': defaultValue,
     };
+  }
+
+  Object? getDefaultValue() {
+    return defaultValueCallback != null
+        ? defaultValueCallback!()
+        : defaultValue;
   }
 }

@@ -300,29 +300,32 @@ class DeclarativeDatabase {
   }
 
   /// Applies default values for columns that are missing from the provided values map
+  /// or have null values when the column doesn't allow nulls
   Map<String, Object?> _applyDefaultValues(String tableName, Map<String, Object?> values) {
     final tableDef = _getTableDefinition(tableName);
     final valuesWithDefaults = <String, Object?>{...values};
     
-    // Generate default values for missing columns using callbacks and static defaults
+    // Generate default values for missing columns or null values in non-null columns
     for (final col in tableDef.columns) {
       // Skip system columns - they're handled separately
       if (col.name.startsWith('system_')) continue;
       
-      // If column value is not provided and has a default callback, call it
-      if (!valuesWithDefaults.containsKey(col.name) && col.defaultValueCallback != null) {
-        final defaultValue = col.defaultValueCallback!();
+      final hasValue = valuesWithDefaults.containsKey(col.name);
+      final currentValue = valuesWithDefaults[col.name];
+      final isNullValue = currentValue == null;
+      
+      // Apply default if:
+      // 1. Column value is not provided, OR
+      // 2. Column exists but is null and column doesn't allow nulls
+      final shouldApplyDefault = !hasValue || (hasValue && isNullValue && col.isNotNull);
+      
+      if (shouldApplyDefault) {
+        final defaultValue = col.getDefaultValue();
         if (defaultValue != null) {
           // Apply the same serialization logic as DbRecord.setValue
           final serializedValue = _serializeValueForColumn(defaultValue, col);
           valuesWithDefaults[col.name] = serializedValue;
         }
-      }
-      // If still no value and has a static default value, use it
-      else if (!valuesWithDefaults.containsKey(col.name) && col.defaultValue != null) {
-        // Apply the same serialization logic as DbRecord.setValue
-        final serializedValue = _serializeValueForColumn(col.defaultValue, col);
-        valuesWithDefaults[col.name] = serializedValue;
       }
     }
     
