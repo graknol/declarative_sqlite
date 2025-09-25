@@ -6,7 +6,7 @@ import 'package:source_gen/source_gen.dart';
 class RegistrationScanner extends Builder {
   // Use fromUrl for a stable reference to the annotation.
   static const _annotationChecker = TypeChecker.fromUrl(
-    'package:declarative_sqlite/declarative_sqlite.dart#GenerateDbRecord',
+    'package:declarative_sqlite/src/annotations/generate_db_record.dart#GenerateDbRecord',
   );
 
   @override
