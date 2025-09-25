@@ -1,0 +1,15 @@
+name: dart_demo_test
+description: A Dart-only test project for the declarative_sqlite_generator
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  declarative_sqlite:
+    path: ../declarative_sqlite
+
+dev_dependencies:
+  declarative_sqlite_generator:
+    path: ../declarative_sqlite_generator
+  build_runner: ^2.4.12
+  lints: ^6.0.0

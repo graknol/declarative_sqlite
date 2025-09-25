@@ -5,6 +5,7 @@
 library;
 
 // Core annotations
+export 'src/annotations/db_schema.dart';
 export 'src/annotations/generate_db_record.dart';
 
 // Query builders

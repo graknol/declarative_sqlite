@@ -3,6 +3,7 @@ import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:uuid/uuid.dart';
 
+import 'schema.dart';
 import 'user.dart';
 import 'post.dart';
 import 'sqlite_factory_registration.dart';
@@ -24,37 +25,13 @@ class DeclarativeSqliteDemo extends StatelessWidget {
     return MaterialApp(
       title: 'Declarative SQLite Demo',
       theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
-      home: DatabaseProvider(
-        schema: _buildDatabaseSchema,
+      home: const DatabaseProvider(
+        schema: buildDatabaseSchema,
         databaseName: 'demo.db',
         recreateDatabase: false,
-        child: const DemoHomeScreen(),
+        child: DemoHomeScreen(),
       ),
     );
-  }
-
-  void _buildDatabaseSchema(SchemaBuilder builder) {
-    // Users table
-    builder.table('users', (table) {
-      table.guid('id').notNull('');
-      table.text('name').notNull('');
-      table.text('email').notNull('');
-      table.integer('age').notNull(0);
-      table.text('gender').notNull('non-binary');
-      table.date('created_at').notNull().defaultCallback(() => DateTime.now());
-      table.key(['id']).primary();
-    });
-
-    // Posts table
-    builder.table('posts', (table) {
-      table.guid('id').notNull('');
-      table.guid('user_id').notNull('');
-      table.text('title').notNull('');
-      table.text('content').notNull('');
-      table.date('created_at').notNull().defaultCallback(() => DateTime.now());
-      table.text('user_name').notNull(''); // Denormalized for demo simplicity
-      table.key(['id']).primary();
-    });
   }
 }
 
@@ -103,32 +80,28 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             'name': 'Bob Smith',
             'email': 'bob.smith@example.com',
             'age': 22,
-            'created_at': now
-                .subtract(const Duration(days: 25)),
+            'created_at': now.subtract(const Duration(days: 25)),
           },
           {
             'id': uuid.v4(),
             'name': 'Charlie Brown',
             'email': 'charlie.brown@example.com',
             'age': 35,
-            'created_at': now
-                .subtract(const Duration(days: 20)),
+            'created_at': now.subtract(const Duration(days: 20)),
           },
           {
             'id': uuid.v4(),
             'name': 'Diana Prince',
             'email': 'diana.prince@example.com',
             'age': 24,
-            'created_at': now
-                .subtract(const Duration(days: 15)),
+            'created_at': now.subtract(const Duration(days: 15)),
           },
           {
             'id': uuid.v4(),
             'name': 'Edward Wilson',
             'email': 'edward.wilson@example.com',
             'age': 45,
-            'created_at': now
-                .subtract(const Duration(days: 10)),
+            'created_at': now.subtract(const Duration(days: 10)),
           },
         ];
 
@@ -146,8 +119,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             'content':
                 'This is my first post using the new declarative SQLite library. It makes database operations so much easier!',
             'user_name': users[0]['name'],
-            'created_at': now
-                .subtract(const Duration(days: 5)),
+            'created_at': now.subtract(const Duration(days: 5)),
           },
           {
             'id': uuid.v4(),
@@ -156,8 +128,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             'content':
                 'Just started learning Flutter and I\'m amazed by how quickly you can build beautiful apps.',
             'user_name': users[1]['name'],
-            'created_at': now
-                .subtract(const Duration(days: 4)),
+            'created_at': now.subtract(const Duration(days: 4)),
           },
           {
             'id': uuid.v4(),
@@ -166,8 +137,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             'content':
                 'The way the UI automatically updates when data changes is incredible. No more manual refreshes!',
             'user_name': users[0]['name'],
-            'created_at': now
-                .subtract(const Duration(days: 3)),
+            'created_at': now.subtract(const Duration(days: 3)),
           },
           {
             'id': uuid.v4(),
@@ -176,8 +146,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             'content':
                 'With declarative SQLite, building data-driven apps has never been easier. The reactive queries are a game changer.',
             'user_name': users[2]['name'],
-            'created_at': now
-                .subtract(const Duration(days: 2)),
+            'created_at': now.subtract(const Duration(days: 2)),
           },
           {
             'id': uuid.v4(),
@@ -186,8 +155,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             'content':
                 'Here are some tips I\'ve learned while developing mobile apps with Flutter and SQLite.',
             'user_name': users[3]['name'],
-            'created_at': now
-                .subtract(const Duration(days: 1)),
+            'created_at': now.subtract(const Duration(days: 1)),
           },
         ];
 
@@ -361,7 +329,14 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             q.where(col('age').lte(25));
             break;
           case 'old':
-            q.where(and([col('age').gt(25), col('created_at').gt(DateTime.now().add(const Duration(minutes: -5)))]));
+            q.where(
+              and([
+                col('age').gt(25),
+                col(
+                  'created_at',
+                ).gt(DateTime.now().add(const Duration(minutes: -5))),
+              ]),
+            );
             break;
           case 'all':
           default:
@@ -589,7 +564,9 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
         break;
     }
 
-    final users = await db.queryTyped<User>((q) => q.from("users").where(whereClause));
+    final users = await db.queryTyped<User>(
+      (q) => q.from("users").where(whereClause),
+    );
 
     if (users.isEmpty) {
       if (mounted) {
@@ -634,7 +611,9 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
         break;
     }
 
-    final users = await db.queryTyped<User>((q) => q.from("users").where(whereClause));
+    final users = await db.queryTyped<User>(
+      (q) => q.from("users").where(whereClause),
+    );
 
     if (users.isEmpty) {
       if (mounted) {
