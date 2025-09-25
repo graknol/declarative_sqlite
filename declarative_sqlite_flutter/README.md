@@ -68,12 +68,9 @@ class TaskScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final database = DatabaseProvider.of(context);
-
     return Scaffold(
       appBar: AppBar(title: const Text('Tasks')),
       body: QueryListView(
-        database: database,
         query: (q) => q.from('tasks').orderBy('title'),
         itemBuilder: (context, record) {
           final isCompleted = record.data['completed'] == 1;

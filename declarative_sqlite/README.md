@@ -29,7 +29,6 @@ dependencies:
 ```dart
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'dart:io';
 
 // 1. Define your database schema
 void buildSchema(SchemaBuilder builder) {

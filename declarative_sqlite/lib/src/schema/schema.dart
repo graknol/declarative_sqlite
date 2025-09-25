@@ -63,4 +63,16 @@ class Schema implements SchemaProvider {
     
     return result;
   }
+
+  Map<String, dynamic> toJson() => {
+        'tables': tables.map((t) => t.toJson()).toList(),
+        'views': views.map((v) => v.name).toList(), // Assuming DbView has a name property and we just store that for now
+      };
+
+  factory Schema.fromJson(Map<String, dynamic> json) => Schema(
+        tables: (json['tables'] as List)
+            .map((t) => DbTable.fromJson(t))
+            .toList(),
+        views: [], // Assuming we don't need to deserialize views for now
+      );
 }

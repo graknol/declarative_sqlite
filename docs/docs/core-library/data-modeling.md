@@ -70,11 +70,6 @@ part 'task.db.dart'; // Generated file
 class Task extends DbRecord {
   Task(super.data, super.database) : super(tableName: 'tasks');
 
-  // Convenience factory to use the generated fromMap
-  factory Task.fromMap(Map<String, Object?> data, DeclarativeDatabase db) {
-    return _Task.fromMap(data, db);
-  }
-
   // You can still define your own computed properties or methods
   bool get isOverdue => dueDate != null && dueDate!.isBefore(DateTime.now());
 }
@@ -90,17 +85,16 @@ dart run build_runner build --delete-conflicting-outputs
 
 ### 3. Use the Generated Code
 
-The generator will create a `task.db.dart` file containing a private extension `_Task` on your `Task` class. This extension has:
+The generator will create a `task.db.dart` file containing a private extension `TaskGenerated` on your `Task` class. This extension has:
 - A typed getter for every column in the `tasks` table.
 - A typed setter for every column.
-- A static `fromMap` factory.
 
-You can now access the properties in a fully type-safe way. The generator automatically handles type conversions (e.g., for `DateTime` and `bool`).
+You can now access the properties in a fully type-safe way. The generator automatically handles type conversions (e.g., for `DateTime`).
 
 ```dart
 // The generated extension is private to the library, but the properties
 // are accessible on your Task instance.
-final task = Task.fromMap(taskMap, database);
+final task = Task(taskMap, database);
 
 // Accessing generated properties
 String title = task.title; // Type-safe getter
@@ -111,7 +105,7 @@ await task.save();
 
 ### Factory Registration
 
-The generator also creates a `sqlite_factory_registration.dart` file. By calling `initFactoryRegistration()` at startup, you register all your generated `fromMap` factories.
+The generator also creates a `sqlite_factory_registration.dart` file. By calling `SqliteFactoryRegistration.registerAllFactories()` at startup, you register all your generated type factories.
 
 This allows the database to automatically map query results to your typed `DbRecord` objects without you needing to provide a `mapper` function to `query()` or `streamQuery()`.
 

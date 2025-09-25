@@ -2,13 +2,12 @@
 
 A build-time code generator that creates boilerplate code for `declarative_sqlite`, enhancing productivity and reducing errors.
 
-This generator inspects your `DbRecord` classes and your database schema to generate helpful extensions, including typed getters/setters and `fromMap` constructors.
+This generator inspects your `DbRecord` classes and your database schema to generate helpful extensions, including typed getters/setters.
 
 ## Features
 
-- **Typed Record Classes**: Automatically generates a `.g.dart` file for each of your `DbRecord` subclasses. This file contains a private extension with typed getters and setters for every column in the corresponding table. This gives you full type safety and autocompletion when accessing record data.
-- **`fromMap` Constructors**: Generates a static `fromMap` factory on the extension, removing the need to write and maintain this boilerplate yourself.
-- **Factory Registration**: Creates a `sqlite_factory_registration.dart` file that contains an `initFactoryRegistration()` function. Calling this function once at startup automatically registers all your generated `fromMap` factories with the `RecordMapFactoryRegistry`, allowing `declarative_sqlite` to automatically map query results to your typed objects.
+- **Typed Record Classes**: Automatically generates a `.db.dart` file for each of your `DbRecord` subclasses. This file contains an extension with typed getters and setters for every column in the corresponding table. This gives you full type safety and autocompletion when accessing record data.
+- **Factory Registration**: Creates a `sqlite_factory_registration.dart` file that contains a `SqliteFactoryRegistration.registerAllFactories()` function. Calling this function once at startup automatically registers all your record classes with the `RecordMapFactoryRegistry`, allowing `declarative_sqlite` to automatically map query results to your typed objects.
 
 ## Getting Started
 
@@ -37,11 +36,6 @@ dev_dependencies:
     @GenerateDbRecord('users')
     class User extends DbRecord {
       User(super.data, super.database) : super(tableName: 'users');
-
-      // Redirecting constructor for convenience
-      factory User.fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-        return _User.fromMap(data, database);
-      }
 
       // Typed accessors will be available via the generated extension
       String get name => _user.name;
@@ -82,7 +76,7 @@ dev_dependencies:
 
     void main() {
       // Register all your generated factories
-      initFactoryRegistration();
+      SqliteFactoryRegistration.registerAllFactories();
 
       // Now you can initialize your database
       final database = DeclarativeDatabase(...);

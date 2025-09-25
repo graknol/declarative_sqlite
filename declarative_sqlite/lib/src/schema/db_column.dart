@@ -83,4 +83,28 @@ class DbColumn {
         ? defaultValueCallback!()
         : defaultValue;
   }
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'logicalType': logicalType,
+        'type': type,
+        'isNotNull': isNotNull,
+        'defaultValue': defaultValue.toString(), // Store as string
+        'isParent': isParent,
+        'isLww': isLww,
+        'minValue': minValue,
+        'maxValue': maxValue,
+      };
+
+  factory DbColumn.fromJson(Map<String, dynamic> json) => DbColumn(
+        name: json['name'],
+        logicalType: json['logicalType'],
+        type: json['type'],
+        isNotNull: json['isNotNull'],
+        defaultValue: json['defaultValue'],
+        isParent: json['isParent'],
+        isLww: json['isLww'],
+        minValue: json['minValue'],
+        maxValue: json['maxValue'],
+      );
 }

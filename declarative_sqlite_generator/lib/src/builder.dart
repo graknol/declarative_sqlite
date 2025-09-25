@@ -1,14 +1,19 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:analyzer/dart/element/element.dart';
 import 'package:build/build.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:logging/logging.dart';
 import 'package:source_gen/source_gen.dart';
+import 'package:path/path.dart' as p;
 
 import 'registration_aggregator.dart';
 import 'registration_scanner.dart';
 
 Builder declarativeSqliteGenerator(BuilderOptions options) =>
-    PartBuilder([DeclarativeSqliteGenerator()], '.db.dart');
+    PartBuilder([DeclarativeSqliteGenerator(options)], '.db.dart');
 
 Builder registrationScanner(BuilderOptions options) =>
     RegistrationScanner();
@@ -18,10 +23,13 @@ Builder registrationAggregator(BuilderOptions options) =>
 
 class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord> {
   static final _logger = Logger('DeclarativeSqliteGenerator');
+  final BuilderOptions options;
+
+  DeclarativeSqliteGenerator(this.options);
   
   @override
-  String generateForAnnotatedElement(
-      Element element, ConstantReader annotation, BuildStep buildStep) {
+  Future<String> generateForAnnotatedElement(
+      Element element, ConstantReader annotation, BuildStep buildStep) async {
     _logger.info('=== DeclarativeSqliteGenerator.generateForAnnotatedElement START ===');
     _logger.info('Processing element: ${element.name} (${element.runtimeType})');
     if (element is! ClassElement) {
@@ -35,14 +43,8 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
     final tableName = annotation.read('tableName').stringValue;
     _logger.info('Extracted table name from annotation: "$tableName"');
 
-    // This is a placeholder. A real implementation would need a way
-    // to access the schema definition. For this example, we'll
-    // assume a function `createAppSchema()` exists and can be used.
-    // This part of the logic is complex and would require more robust
-    // schema discovery.
-    _logger.info('Creating app schema...');
-    final schema = createAppSchema();
-    _logger.info('Schema created with ${schema.tables.length} tables: ${schema.tables.map((t) => t.name).join(', ')}');
+    final schema = await _getSchema(buildStep);
+    _logger.info('Schema loaded with ${schema.tables.length} tables: ${schema.tables.map((t) => t.name).join(', ')}');
     
     final table = schema.tables.firstWhere((t) => t.name == tableName,
         orElse: () {
@@ -65,6 +67,92 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
     _logger.info('Generated ${result.split('\n').length} lines of code');
     _logger.info('=== DeclarativeSqliteGenerator.generateForAnnotatedElement END ===');
     return result;
+  }
+
+  Future<Schema> _getSchema(BuildStep buildStep) async {
+    final schemaPath = options.config['schema_definition_file'] as String?;
+    if (schemaPath == null) {
+      throw InvalidGenerationSourceError(
+        'Missing `schema_definition_file` in build.yaml options.',
+      );
+    }
+
+    final schemaAssetId = AssetId.parse(schemaPath);
+    if (!await buildStep.canRead(schemaAssetId)) {
+      throw InvalidGenerationSourceError(
+        'Cannot find schema definition file at "$schemaPath".',
+      );
+    }
+
+    // Create a temporary file to execute
+    final tempDir = await Directory.systemTemp.createTemp('declarative_sqlite_generator');
+    final tempFile = File(p.join(tempDir.path, 'schema_generator.dart'));
+    final schemaJsonFile = File(p.join(tempDir.path, 'schema.json'));
+    final packageConfigFile = File(p.join(Directory.current.path, '.dart_tool', 'package_config.json'));
+
+    if (!await packageConfigFile.exists()) {
+      throw Exception('Could not find .dart_tool/package_config.json. Please run `dart pub get`.');
+    }
+
+    try {
+      final schemaLibrary = await buildStep.resolver.libraryFor(schemaAssetId);
+      final schemaFunction = schemaLibrary.definingCompilationUnit.functions
+          .firstWhere(
+            (e) => e.returnType.getDisplayString(withNullability: false) == 'void' &&
+                   e.parameters.length == 1 &&
+                   e.parameters.first.type.getDisplayString(withNullability: false) == 'SchemaBuilder',
+            orElse: () => throw InvalidGenerationSourceError(
+              'No valid schema definition function found in "$schemaPath". '
+              'Expected a function like: `void defineSchema(SchemaBuilder builder) { ... }`',
+            ),
+          );
+
+      final fileContent = '''
+import 'dart:convert';
+import 'dart:io';
+import 'package:declarative_sqlite/declarative_sqlite.dart';
+import '${schemaAssetId.uri}' as schema_def;
+
+void main() async {
+  final builder = SchemaBuilder();
+  schema_def.${schemaFunction.name}(builder);
+  final schema = builder.build();
+  final jsonString = jsonEncode(schema.toJson());
+  await File('${p.toUri(schemaJsonFile.path)}').writeAsString(jsonString);
+}
+''';
+
+      await tempFile.writeAsString(fileContent);
+
+      // Execute the temporary file
+      final result = await Process.run(
+        'dart',
+        ['--packages=${p.toUri(packageConfigFile.path)}', tempFile.path],
+        workingDirectory: Directory.current.path,
+      );
+
+      if (result.exitCode != 0) {
+        _logger.severe('Failed to generate schema JSON. Error: ${result.stderr}');
+        throw Exception('Failed to generate schema JSON: ${result.stderr}');
+      }
+
+      // Read the generated JSON
+      final jsonString = await schemaJsonFile.readAsString();
+      if (jsonString.isEmpty) {
+        _logger.warning('Generated schema.json is empty. Returning an empty schema.');
+        return Schema(tables: [], views: []);
+      }
+      final jsonMap = jsonDecode(jsonString) as Map<String, dynamic>;
+      return Schema.fromJson(jsonMap);
+    } catch (e, st) {
+      _logger.severe('Error during schema generation: $e\n$st');
+      rethrow;
+    }
+    finally {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    }
   }
 
   /// Generates typed properties extension
@@ -165,37 +253,4 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
 
     return result;
   }
-}
-
-// A placeholder function to make the generator compile.
-// In a real-world scenario, schema information would be accessed differently,
-// possibly by analyzing the source code where the schema is defined.
-Schema createAppSchema() {
-  final builder = SchemaBuilder();
-  builder.table('users', (table) {
-    table.guid('id').notNull('');
-    table.text('name').notNull('');
-    table.text('email').notNull('');
-    table.integer('age').notNull(0);
-    table.date('created_at').notNull('');
-    table.key(['id']).primary();
-  });
-  builder.table('posts', (table) {
-    table.guid('id').notNull('');
-    table.guid('user_id').notNull('');
-    table.text('title').notNull('');
-    table.text('content').notNull('');
-    table.date('created_at').notNull('');
-    table.text('user_name').notNull(''); // Denormalized for demo simplicity
-    table.key(['id']).primary();
-  });
-  builder.table('comments', (table) {
-    table.integer('id').notNull();
-    table.integer('post_id').notNull();
-    table.integer('user_id').notNull();
-    table.text('comment').notNull();
-    table.date('created_at').notNull();
-    table.key(['id']).primary();
-  });
-  return builder.build();
 }

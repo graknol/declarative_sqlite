@@ -20,7 +20,6 @@ Code generation solves these problems by reading your schema directly and creati
 For each class annotated with `@GenerateDbRecord`, the generator produces a `.db.dart` part file containing a private extension. This extension includes:
 1.  **Typed Getters**: A getter for each column in the associated table, with the correct Dart type.
 2.  **Typed Setters**: A setter for each column, with type validation.
-3.  **`fromMap` Factory**: A static `fromMap` method that correctly instantiates your `DbRecord` subclass and handles type conversions (e.g., parsing dates, creating `FilesetField` instances).
 
 Additionally, it generates a single `sqlite_factory_registration.dart` file for your entire project, which allows the database to automatically map query results to your typed objects.
 
@@ -93,7 +92,7 @@ This will create the `task.db.dart` and `sqlite_factory_registration.dart` files
 
 ### Initialize Factory Registration
 
-In your application's entry point (`main.dart`), import and call the generated `initFactoryRegistration` function. This must be done before you initialize your database.
+In your application's entry point (`main.dart`), import and call the generated `SqliteFactoryRegistration.registerAllFactories()` function. This must be done before you initialize your database.
 
 ```dart title="lib/main.dart"
 import 'package:flutter/material.dart';
@@ -104,7 +103,7 @@ import 'database/schema.dart';
 
 void main() {
   // Register all generated DbRecord factories
-  initFactoryRegistration();
+  SqliteFactoryRegistration.registerAllFactories();
 
   runApp(
     DatabaseProvider(
