@@ -42,7 +42,7 @@ void buildSchema(SchemaBuilder builder) {
 }
 
 Future<void> main() async {
-  // 2. Initialize the FFI driver
+  // 2. Initialize the FFI driver (optional, not for Android/iOS, only for desktop)
   sqfliteFfiInit();
   final dbFactory = databaseFactoryFfi;
 
