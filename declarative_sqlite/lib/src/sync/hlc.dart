@@ -47,10 +47,11 @@ class Hlc extends Equatable implements Comparable<Hlc> {
   String toString() {
     // Pad to ensure lexical sortability.
     // Milliseconds: 15 digits (supports dates far into the future)
-    // Counter: 5 digits (allows for 100,000 events per millisecond)
+    // Counter: 9 digits (allows for 1,000,000,000 events per millisecond)
+    // NodeId: 36 characters (standard UUID v4 format)
     return '${milliseconds.toString().padLeft(15, '0')}:'
-        '${counter.toString().padLeft(5, '0')}:'
-        '$nodeId';
+        '${counter.toString().padLeft(9, '0')}:'
+        '${nodeId.padLeft(36, '0')}';
   }
 
   @override

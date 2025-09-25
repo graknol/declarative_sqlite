@@ -73,7 +73,7 @@ class TableBuilder {
               logicalType: 'hlc',
               type: 'TEXT', // HLC
               isNotNull: true,
-              defaultValue: '0000-00-00T00:00:00.000Z-0000-0000000000000000',
+              defaultValue: '000000000000000:000000000:000000000000000000000000000000000000', // HLC format: milliseconds(15):counter(9):nodeId(36)
               isParent: false,
               isLww: false,
             ),
@@ -82,7 +82,7 @@ class TableBuilder {
               logicalType: 'hlc',
               type: 'TEXT', // HLC
               isNotNull: true,
-              defaultValue: '0000-00-00T00:00:00.000Z-0000-0000000000000000',
+              defaultValue: '000000000000000:000000000:000000000000000000000000000000000000', // HLC format: milliseconds(15):counter(9):nodeId(36)
               isParent: false,
               isLww: false,
             ),
