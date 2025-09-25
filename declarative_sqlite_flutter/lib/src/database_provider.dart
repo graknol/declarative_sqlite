@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:flutter/widgets.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:sqflite_common/sqlite_api.dart';
 
 /// An inherited widget that provides access to a [DeclarativeDatabase] instance
 /// throughout the widget tree.
@@ -62,8 +62,9 @@ class _DatabaseInheritedWidget extends InheritedWidget {
 /// )
 /// ```
 class DatabaseProvider extends StatefulWidget {
-  final void Function(SchemaBuilder builder) schema;
-  final String databaseName;
+  final void Function(SchemaBuilder builder)? schema;
+  final String? databaseName;
+  final DeclarativeDatabase? database;
   final Widget child;
   final String? databasePath;
   final bool recreateDatabase;
@@ -75,7 +76,16 @@ class DatabaseProvider extends StatefulWidget {
     required this.child,
     this.databasePath,
     this.recreateDatabase = false,
-  });
+  }) : database = null;
+
+  const DatabaseProvider.value({
+    super.key,
+    required this.database,
+    required this.child,
+  })  : schema = null,
+        databaseName = null,
+        databasePath = null,
+        recreateDatabase = false;
 
   /// Access the database from anywhere in the widget tree.
   static DeclarativeDatabase of(BuildContext context) {
@@ -99,80 +109,69 @@ class _DatabaseProviderState extends State<DatabaseProvider> {
   @override
   void initState() {
     super.initState();
-    _initializeDatabase();
+    if (widget.database != null) {
+      _database = widget.database;
+      _isInitializing = false;
+    } else {
+      _initDatabase();
+    }
   }
 
   @override
   void didUpdateWidget(DatabaseProvider oldWidget) {
     super.didUpdateWidget(oldWidget);
-
-    // If schema or database name changed, reinitialize
-    if (widget.databaseName != oldWidget.databaseName ||
-        widget.databasePath != oldWidget.databasePath) {
-      _disposeDatabase();
-      _initializeDatabase();
+    if (widget.database != oldWidget.database) {
+      setState(() {
+        _database = widget.database;
+        _isInitializing = false;
+        _initializationError = null;
+      });
+    } else if (widget.recreateDatabase &&
+        widget.databaseName != oldWidget.databaseName) {
+      _initDatabase();
     }
   }
 
-  @override
-  void dispose() {
-    _disposeDatabase();
-    super.dispose();
-  }
-
-  void _disposeDatabase() {
-    _database?.close();
-    _database = null;
-  }
-
-  Future<void> _initializeDatabase() async {
-    _setInitializationState(isInitializing: true, error: null);
+  Future<void> _initDatabase() async {
+    setState(() {
+      _isInitializing = true;
+      _initializationError = null;
+    });
 
     try {
-      final schema = _buildDatabaseSchema();
-      final database = await _createDatabaseInstance(schema);
-      _setInitializationState(isInitializing: false, database: database);
-    } catch (error) {
-      _setInitializationState(isInitializing: false, error: error);
-    }
-  }
+      final dbPath = widget.databasePath ??
+          path.join(
+            (await getApplicationDocumentsDirectory()).path,
+            widget.databaseName!,
+          );
 
-  Schema _buildDatabaseSchema() {
-    final schemaBuilder = SchemaBuilder();
-    widget.schema(schemaBuilder);
-    return schemaBuilder.build();
-  }
+      if (widget.recreateDatabase && await File(dbPath).exists()) {
+        await File(dbPath).delete();
+      }
 
-  Future<DeclarativeDatabase> _createDatabaseInstance(Schema schema) async {
-    final fileRepositoryPath = await _getFileRepositoryPath();
-    return await DeclarativeDatabase.open(
-      widget.databasePath ?? widget.databaseName,
-      databaseFactory: databaseFactory,
-      schema: schema,
-      fileRepository: FilesystemFileRepository(fileRepositoryPath),
-      recreateDatabase: widget.recreateDatabase,
-    );
-  }
+      final schemaBuilder = SchemaBuilder();
+      widget.schema!(schemaBuilder);
+      final schema = schemaBuilder.build();
 
-  Future<String> _getFileRepositoryPath() async {
-    final rootDirectory = Platform.isMacOS || Platform.isIOS
-        ? await getLibraryDirectory()
-        : await getApplicationSupportDirectory();
-    return path.join(rootDirectory.path, 'file_repository');
-  }
-
-  void _setInitializationState({
-    required bool isInitializing,
-    Object? error,
-    DeclarativeDatabase? database,
-  }) {
-    if (mounted) {
+      final db = await DeclarativeDatabase.open(
+        dbPath,
+        schema: schema,
+        databaseFactory: databaseFactory,
+        fileRepository: FileRepository(
+          path.join(
+            (await getApplicationDocumentsDirectory()).path,
+            'files',
+          ),
+        ),
+      );
       setState(() {
-        _isInitializing = isInitializing;
-        _initializationError = error;
-        if (database != null) {
-          _database = database;
-        }
+        _database = db;
+        _isInitializing = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isInitializing = false;
+        _initializationError = e;
       });
     }
   }
