@@ -1,4 +1,4 @@
-import 'package:declarative_sqlite/src/schema/table.dart';
+import 'package:declarative_sqlite/src/schema/db_table.dart';
 import 'package:declarative_sqlite/src/schema/schema.dart';
 import 'package:declarative_sqlite/src/builders/table_builder.dart';
 import 'package:declarative_sqlite/src/builders/view_builder.dart';
@@ -38,10 +38,11 @@ class SchemaBuilder {
   ///
   /// The [name] is not allowed to start with `__` (two underscores) as that is
   /// reserved for system tables.
-  void table(String name, void Function(TableBuilder) build) {
+  SchemaBuilder table(String name, void Function(TableBuilder) build) {
     final builder = TableBuilder(name);
     build(builder);
     _tableBuilders.add(builder);
+    return this;
   }
 
   /// Defines a view in the schema.
@@ -49,10 +50,11 @@ class SchemaBuilder {
   /// The [name] is the name of the view.
   /// The [build] callback provides a [ViewBuilder] to define the view's
   /// SELECT statement.
-  void view(String name, void Function(ViewBuilder) build) {
+  SchemaBuilder view(String name, void Function(ViewBuilder) build) {
     final builder = ViewBuilder(name);
     build(builder);
     _viewBuilders.add(builder);
+    return this;
   }
 
   /// Builds the [Schema] object.
@@ -75,7 +77,7 @@ class SchemaBuilder {
     );
   }
 
-  Table _buildSystemTableSettings() {
+  DbTable _buildSystemTableSettings() {
     final builder = TableBuilder('__settings');
     builder.text('key').notNull('_');
     builder.text('value');
@@ -83,7 +85,7 @@ class SchemaBuilder {
     return builder.build();
   }
 
-  Table _buildSystemTableFiles() {
+  DbTable _buildSystemTableFiles() {
     final builder = TableBuilder('__files');
     builder.guid('id').notNull('00000000-0000-0000-0000-000000000000');
     builder.guid('owner_id').notNull('00000000-0000-0000-0000-000000000000');
@@ -96,7 +98,7 @@ class SchemaBuilder {
     return builder.build();
   }
 
-  Table _buildSystemTableDirtyRows() {
+  DbTable _buildSystemTableDirtyRows() {
     final builder = TableBuilder('__dirty_rows');
     builder.text('table_name').notNull('default');
     builder.guid('row_id').notNull('00000000-0000-0000-0000-000000000000');

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:declarative_sqlite/src/database.dart';
+import 'package:declarative_sqlite/src/declarative_database.dart';
 import 'package:declarative_sqlite/src/files/fileset.dart';
 
 /// Represents a fileset column value with convenient access to file operations.
@@ -34,7 +34,7 @@ class FilesetField {
   String? get filesetId => _filesetId;
 
   /// Returns true if this fileset field has a value (is not null or empty).
-  bool get hasValue => _filesetId != null && _filesetId!.isNotEmpty;
+  bool get hasValue => _filesetId != null && _filesetId.isNotEmpty;
 
   /// Adds a file to this fileset.
   ///

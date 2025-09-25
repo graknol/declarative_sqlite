@@ -8,7 +8,7 @@ class DatabaseMaintenanceTasks {
     required Future<Map<String, int>> Function() garbageCollectTask,
     Duration interval = const Duration(hours: 6),
     TaskPriority priority = TaskPriority.low,
-  }) {
+  }) async {
     return TaskScheduler.instance.scheduleRecurringTask(
       name: 'Fileset Garbage Collection',
       task: garbageCollectTask,
@@ -24,7 +24,7 @@ class DatabaseMaintenanceTasks {
     Duration interval = const Duration(days: 1),
     TaskPriority priority = TaskPriority.low,
   }) async {
-    return await TaskScheduler.instance.scheduleRecurringTask(
+    return TaskScheduler.instance.scheduleRecurringTask(
       name: 'Database Optimization',
       task: optimizeTask,
       interval: interval,
@@ -42,7 +42,7 @@ class DatabaseMaintenanceTasks {
     Duration interval = const Duration(minutes: 15),
     TaskPriority priority = TaskPriority.normal,
   }) async {
-    return await TaskScheduler.instance.scheduleRecurringTask(
+    return TaskScheduler.instance.scheduleRecurringTask(
       name: 'Server Synchronization',
       task: () => syncManager.performSync(),
       interval: interval,
@@ -57,7 +57,7 @@ class DatabaseMaintenanceTasks {
     Duration interval = const Duration(hours: 12),
     TaskPriority priority = TaskPriority.normal,
   }) async {
-    return await TaskScheduler.instance.scheduleRecurringTask(
+    return TaskScheduler.instance.scheduleRecurringTask(
       name: 'Database Backup',
       task: backupTask,
       interval: interval,
@@ -72,7 +72,7 @@ class DatabaseMaintenanceTasks {
     Duration interval = const Duration(days: 7),
     TaskPriority priority = TaskPriority.low,
   }) async {
-    return await TaskScheduler.instance.scheduleRecurringTask(
+    return TaskScheduler.instance.scheduleRecurringTask(
       name: 'Data Cleanup',
       task: cleanupTask,
       interval: interval,
@@ -87,7 +87,7 @@ class DatabaseMaintenanceTasks {
     Duration interval = const Duration(hours: 1),
     TaskPriority priority = TaskPriority.high,
   }) async {
-    return await TaskScheduler.instance.scheduleRecurringTask(
+    return TaskScheduler.instance.scheduleRecurringTask(
       name: 'Database Health Check',
       task: healthCheckTask,
       interval: interval,

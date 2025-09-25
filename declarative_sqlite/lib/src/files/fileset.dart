@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:declarative_sqlite/src/database.dart';
+import 'package:declarative_sqlite/src/declarative_database.dart';
 import 'package:uuid/uuid.dart';
 
 /// Orchestrates file storage and metadata for fileset columns.

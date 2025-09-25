@@ -1,14 +1,14 @@
-import 'package:declarative_sqlite/src/schema/column.dart';
-import 'package:declarative_sqlite/src/schema/key.dart';
+import 'package:declarative_sqlite/src/schema/db_column.dart';
+import 'package:declarative_sqlite/src/schema/db_key.dart';
 import 'package:declarative_sqlite/src/schema/live_schema.dart';
-import 'package:declarative_sqlite/src/schema/table.dart';
-import 'package:declarative_sqlite/src/schema/view.dart';
+import 'package:declarative_sqlite/src/schema/db_table.dart';
+import 'package:declarative_sqlite/src/schema/db_view.dart';
 
 abstract class SchemaChange {}
 
 // Table changes
 class CreateTable extends SchemaChange {
-  final Table table;
+  final DbTable table;
   CreateTable(this.table);
 }
 
@@ -19,7 +19,7 @@ class DropTable extends SchemaChange {
 
 class AlterTable extends SchemaChange {
   final LiveTable liveTable;
-  final Table targetTable;
+  final DbTable targetTable;
   final List<ColumnChange> columnChanges;
   final List<KeyChange> keyChanges;
   AlterTable(
@@ -30,7 +30,7 @@ class AlterTable extends SchemaChange {
 abstract class ColumnChange {}
 
 class AddColumn extends ColumnChange {
-  final Column column;
+  final DbColumn column;
   AddColumn(this.column);
 }
 
@@ -41,7 +41,7 @@ class DropColumn extends ColumnChange {
 
 class AlterColumn extends ColumnChange {
   final LiveColumn liveColumn;
-  final Column targetColumn;
+  final DbColumn targetColumn;
   AlterColumn(this.liveColumn, this.targetColumn);
 }
 
@@ -49,7 +49,7 @@ class AlterColumn extends ColumnChange {
 abstract class KeyChange {}
 
 class AddKey extends KeyChange {
-  final Key key;
+  final DbKey key;
   AddKey(this.key);
 }
 
@@ -62,13 +62,13 @@ class DropKey extends KeyChange {
 abstract class ViewChange extends SchemaChange {}
 
 class CreateView extends ViewChange {
-  final View view;
+  final DbView view;
   CreateView(this.view);
 }
 
 class AlterView extends ViewChange {
   final LiveView liveView;
-  final View targetView;
+  final DbView targetView;
   AlterView(this.liveView, this.targetView);
 }
 

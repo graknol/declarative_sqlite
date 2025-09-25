@@ -1,7 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:declarative_sqlite/src/migration/schema_diff.dart';
 import 'package:declarative_sqlite/src/schema/live_schema.dart';
-import 'package:declarative_sqlite/src/schema/table.dart';
+import 'package:declarative_sqlite/src/schema/db_table.dart';
 import 'package:declarative_sqlite/src/schema/schema.dart';
 
 List<SchemaChange> diffSchemas(
@@ -56,7 +56,7 @@ List<SchemaChange> diffSchemas(
   return changes;
 }
 
-List<ColumnChange> _diffColumns(Table declarativeTable, LiveTable liveTable) {
+List<ColumnChange> _diffColumns(DbTable declarativeTable, LiveTable liveTable) {
   final changes = <ColumnChange>[];
   final declarativeColumns = declarativeTable.columns;
   final liveColumns = liveTable.columns;
@@ -85,7 +85,7 @@ List<ColumnChange> _diffColumns(Table declarativeTable, LiveTable liveTable) {
   return changes;
 }
 
-List<KeyChange> _diffKeys(Table declarativeTable, LiveTable liveTable) {
+List<KeyChange> _diffKeys(DbTable declarativeTable, LiveTable liveTable) {
   final changes = <KeyChange>[];
   final declarativeKeys = declarativeTable.keys;
   final liveKeys = liveTable.keys;

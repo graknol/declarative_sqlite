@@ -1,36 +1,22 @@
-targets:
-  $default:
-    builders:
-      declarative_sqlite_generator:declarative_sqlite_generator:
-        generate_for:
-          - "lib/**"
-        options:
-          # Options for the generator can be configured here
-      declarative_sqlite_generator:registration_collect_builder:
-        generate_for:
-          - "lib/**"
-      declarative_sqlite_generator:registration_aggregate_builder:
-        generate_for:
-          - "lib/**"
-
 builders:
   declarative_sqlite_generator:
     import: "package:declarative_sqlite_generator/src/builder.dart"
     builder_factories: ["declarativeSqliteGenerator"]
-    build_extensions: {".dart": [".g.dart"]}
-    auto_apply: dependents
-    build_to: cache
-    applies_builders: ["source_gen|combining_builder"]
-  registration_collect_builder:
-    import: "package:declarative_sqlite_generator/src/builder.dart"
-    builder_factories: ["registrationCollectBuilder"]
-    build_extensions: {".dart": [".registration.json"]}
-    auto_apply: dependents
-    build_to: cache
-  registration_aggregate_builder:
-    import: "package:declarative_sqlite_generator/src/builder.dart"
-    builder_factories: ["registrationAggregateBuilder"]
-    build_extensions: {r"$lib$": ["lib/generated_registrations.dart"]}
+    build_extensions: { ".dart": [".db.dart"] }
     auto_apply: dependents
     build_to: source
-    runs_after: ["declarative_sqlite_generator:registration_collect_builder"]
+
+  registration_scanner:
+    import: "package:declarative_sqlite_generator/src/builder.dart"
+    builder_factories: ["registrationScanner"]
+    build_extensions: { ".dart": [".dbrecord_meta"] }
+    auto_apply: dependents
+    build_to: cache
+
+  registration_aggregator:
+    import: "package:declarative_sqlite_generator/src/builder.dart"
+    builder_factories: ["registrationAggregator"]
+    build_extensions: { "$lib$": ["sqlite_factory_registration.dart"] }
+    auto_apply: dependents
+    build_to: source
+    required_inputs: [".dbrecord_meta"]

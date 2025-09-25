@@ -102,20 +102,14 @@ abstract class DbException implements Exception {
 /// Exception thrown when a record cannot be created
 class DbCreateException extends DbException {
   const DbCreateException({
-    required DbErrorCategory errorCategory,
-    required String message,
-    String? tableName,
-    String? columnName,
-    Exception? originalException,
-    Map<String, Object?>? context,
+    required super.errorCategory,
+    required super.message,
+    super.tableName,
+    super.columnName,
+    super.originalException,
+    super.context,
   }) : super(
           operationType: DbOperationType.create,
-          errorCategory: errorCategory,
-          message: message,
-          tableName: tableName,
-          columnName: columnName,
-          originalException: originalException,
-          context: context,
         );
 
   /// Creates an exception for constraint violations during insert
@@ -156,20 +150,14 @@ class DbCreateException extends DbException {
 /// Exception thrown when a record cannot be read/found
 class DbReadException extends DbException {
   const DbReadException({
-    required DbErrorCategory errorCategory,
-    required String message,
-    String? tableName,
-    String? columnName,
-    Exception? originalException,
-    Map<String, Object?>? context,
+    required super.errorCategory,
+    required super.message,
+    super.tableName,
+    super.columnName,
+    super.originalException,
+    super.context,
   }) : super(
           operationType: DbOperationType.read,
-          errorCategory: errorCategory,
-          message: message,
-          tableName: tableName,
-          columnName: columnName,
-          originalException: originalException,
-          context: context,
         );
 
   /// Creates an exception for when a record is not found
@@ -206,20 +194,14 @@ class DbReadException extends DbException {
 /// Exception thrown when a record cannot be updated
 class DbUpdateException extends DbException {
   const DbUpdateException({
-    required DbErrorCategory errorCategory,
-    required String message,
-    String? tableName,
-    String? columnName,
-    Exception? originalException,
-    Map<String, Object?>? context,
+    required super.errorCategory,
+    required super.message,
+    super.tableName,
+    super.columnName,
+    super.originalException,
+    super.context,
   }) : super(
           operationType: DbOperationType.update,
-          errorCategory: errorCategory,
-          message: message,
-          tableName: tableName,
-          columnName: columnName,
-          originalException: originalException,
-          context: context,
         );
 
   /// Creates an exception for constraint violations during update
@@ -273,18 +255,13 @@ class DbUpdateException extends DbException {
 /// Exception thrown when a record cannot be deleted
 class DbDeleteException extends DbException {
   const DbDeleteException({
-    required DbErrorCategory errorCategory,
-    required String message,
-    String? tableName,
-    Exception? originalException,
-    Map<String, Object?>? context,
+    required super.errorCategory,
+    required super.message,
+    super.tableName,
+    super.originalException,
+    super.context,
   }) : super(
           operationType: DbOperationType.delete,
-          errorCategory: errorCategory,
-          message: message,
-          tableName: tableName,
-          originalException: originalException,
-          context: context,
         );
 
   /// Creates an exception for constraint violations during delete
@@ -321,16 +298,12 @@ class DbDeleteException extends DbException {
 /// Exception thrown when a transaction fails
 class DbTransactionException extends DbException {
   const DbTransactionException({
-    required DbErrorCategory errorCategory,
-    required String message,
-    Exception? originalException,
-    Map<String, Object?>? context,
+    required super.errorCategory,
+    required super.message,
+    super.originalException,
+    super.context,
   }) : super(
           operationType: DbOperationType.transaction,
-          errorCategory: errorCategory,
-          message: message,
-          originalException: originalException,
-          context: context,
         );
 
   /// Creates an exception for when a transaction is rolled back
@@ -363,16 +336,12 @@ class DbTransactionException extends DbException {
 /// Exception thrown when database connection fails
 class DbConnectionException extends DbException {
   const DbConnectionException({
-    required DbErrorCategory errorCategory,
-    required String message,
-    Exception? originalException,
-    Map<String, Object?>? context,
+    required super.errorCategory,
+    required super.message,
+    super.originalException,
+    super.context,
   }) : super(
           operationType: DbOperationType.connection,
-          errorCategory: errorCategory,
-          message: message,
-          originalException: originalException,
-          context: context,
         );
 
   /// Creates an exception for connection failures
@@ -405,16 +374,12 @@ class DbConnectionException extends DbException {
 /// Exception thrown when database migration fails
 class DbMigrationException extends DbException {
   const DbMigrationException({
-    required DbErrorCategory errorCategory,
-    required String message,
-    Exception? originalException,
-    Map<String, Object?>? context,
+    required super.errorCategory,
+    required super.message,
+    super.originalException,
+    super.context,
   }) : super(
           operationType: DbOperationType.migration,
-          errorCategory: errorCategory,
-          message: message,
-          originalException: originalException,
-          context: context,
         );
 
   /// Creates an exception for schema mismatch

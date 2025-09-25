@@ -1,4 +1,4 @@
-import 'package:declarative_sqlite/src/schema/column.dart';
+import 'package:declarative_sqlite/src/schema/db_column.dart';
 import 'package:declarative_sqlite/src/builders/column_builder.dart';
 import 'package:declarative_sqlite/src/builders/date_column_builder.dart';
 import 'package:declarative_sqlite/src/builders/fileset_column_builder.dart';
@@ -7,7 +7,7 @@ import 'package:declarative_sqlite/src/builders/integer_column_builder.dart';
 import 'package:declarative_sqlite/src/builders/key_builder.dart';
 import 'package:declarative_sqlite/src/builders/real_column_builder.dart';
 import 'package:declarative_sqlite/src/builders/text_column_builder.dart';
-import 'package:declarative_sqlite/src/schema/table.dart';
+import 'package:declarative_sqlite/src/schema/db_table.dart';
 
 class TableBuilder {
   final String name;
@@ -36,13 +36,13 @@ class TableBuilder {
     return builder;
   }
 
-  Table build() {
+  DbTable build() {
     final columns = _columnBuilders.map((b) => b.build()).toList();
-    final hlcColumns = <Column>[];
+    final hlcColumns = <DbColumn>[];
     for (final column in columns) {
       if (column.isLww) {
         hlcColumns.add(
-          Column(
+          DbColumn(
             name: '${column.name}__hlc',
             logicalType: 'hlc',
             type: 'TEXT',
@@ -57,9 +57,9 @@ class TableBuilder {
     final isSystemTable = name.startsWith('__');
 
     final systemColumns = isSystemTable
-        ? <Column>[]
+        ? <DbColumn>[]
         : [
-            Column(
+            DbColumn(
               name: 'system_id',
               logicalType: 'guid',
               type: 'TEXT', // GUID
@@ -68,27 +68,27 @@ class TableBuilder {
               isParent: false,
               isLww: false,
             ),
-            Column(
+            DbColumn(
               name: 'system_created_at',
               logicalType: 'hlc',
               type: 'TEXT', // HLC
               isNotNull: true,
-              defaultValue: '0000-00-00T00:00:00.000Z-0000-0000000000000000',
+              defaultValue: '000000000000000:000000000:000000000000000000000000000000000000', // HLC format: milliseconds(15):counter(9):nodeId(36)
               isParent: false,
               isLww: false,
             ),
-            Column(
+            DbColumn(
               name: 'system_version',
               logicalType: 'hlc',
               type: 'TEXT', // HLC
               isNotNull: true,
-              defaultValue: '0000-00-00T00:00:00.000Z-0000-0000000000000000',
+              defaultValue: '000000000000000:000000000:000000000000000000000000000000000000', // HLC format: milliseconds(15):counter(9):nodeId(36)
               isParent: false,
               isLww: false,
             ),
           ];
 
-    return Table(
+    return DbTable(
       name: name,
       columns: [...systemColumns, ...columns, ...hlcColumns],
       keys: _keyBuilders.map((b) => b.build()).toList(),

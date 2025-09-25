@@ -114,7 +114,7 @@ class _ServerSyncManagerWidgetState extends State<ServerSyncManagerWidget> {
 
     // Get or create task scheduler
     _scheduler = widget.taskScheduler ?? TaskScheduler.withConfig(
-      TaskSchedulerConfig.autoDetectDevice()
+      TaskSchedulerConfig.resourceConstrained
     );
 
     // Initialize scheduler with database for persistent tracking

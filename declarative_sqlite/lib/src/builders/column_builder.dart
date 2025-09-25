@@ -1,4 +1,4 @@
-import 'package:declarative_sqlite/src/schema/column.dart';
+import 'package:declarative_sqlite/src/schema/db_column.dart';
 import 'package:meta/meta.dart';
 
 /// Base class for all column builders.
@@ -15,10 +15,12 @@ abstract class ColumnBuilder {
   bool isLww = false;
   @protected
   Object? defaultValue;
+  @protected
+  DefaultValueCallback? defaultValueCallback;
 
   ColumnBuilder(this.name, this.logicalType, this.dbType);
 
-  ColumnBuilder notNull(Object defaultValue) {
+  ColumnBuilder notNull([Object? defaultValue]) {
     isNotNull = true;
     this.defaultValue = defaultValue;
     return this;
@@ -34,13 +36,28 @@ abstract class ColumnBuilder {
     return this;
   }
 
-  Column build() {
-    return Column(
+  ColumnBuilder defaultsTo(Object? value) {
+    defaultValue = value;
+    defaultValueCallback = null; // Clear callback when setting static value
+    return this;
+  }
+
+  /// Sets a callback function to generate default values on-the-fly
+  /// The callback is called each time a record is inserted without a value for this column
+  ColumnBuilder defaultCallback(DefaultValueCallback callback) {
+    defaultValueCallback = callback;
+    defaultValue = null; // Clear static value when setting callback
+    return this;
+  }
+
+  DbColumn build() {
+    return DbColumn(
       name: name,
       logicalType: logicalType,
       type: dbType,
       isNotNull: isNotNull,
       defaultValue: defaultValue,
+      defaultValueCallback: defaultValueCallback,
       isParent: isParent,
       isLww: isLww,
     );

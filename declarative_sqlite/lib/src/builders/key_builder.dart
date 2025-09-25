@@ -1,8 +1,10 @@
-import 'package:declarative_sqlite/src/schema/key.dart';
+import 'package:declarative_sqlite/src/schema/db_key.dart';
 
 class KeyBuilder {
   final List<String> columns;
   KeyType _type = KeyType.indexed;
+  String? _foreignTable;
+  List<String>? _foreignColumns;
 
   KeyBuilder(this.columns);
 
@@ -14,7 +16,22 @@ class KeyBuilder {
     _type = KeyType.indexed;
   }
 
-  Key build() {
-    return Key(columns: columns, type: _type);
+  void unique() {
+    _type = KeyType.unique;
+  }
+
+  void foreignKey(String table, List<String> columns) {
+    _type = KeyType.foreign;
+    _foreignTable = table;
+    _foreignColumns = columns;
+  }
+
+  DbKey build() {
+    return DbKey(
+      columns: columns,
+      type: _type,
+      foreignTable: _foreignTable,
+      foreignColumns: _foreignColumns,
+    );
   }
 }

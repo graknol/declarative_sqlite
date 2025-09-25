@@ -1,4 +1,4 @@
-import 'package:declarative_sqlite/src/database.dart';
+import 'package:declarative_sqlite/src/declarative_database.dart';
 import 'package:declarative_sqlite/src/files/fileset_field.dart';
 
 /// Base class for mapping database rows to typed objects.

@@ -1,47 +1,42 @@
-import 'package:equatable/equatable.dart';
+import 'aliased.dart';
+import 'analysis_context.dart';
+import 'query_column.dart';
+import 'join_clause.dart';
+import 'query_dependencies.dart';
 import 'where_clause.dart';
 
-class QueryBuilder extends Equatable {
-  String? _from;
-  final List<String> _columns = [];
+class QueryBuilder {
+  Aliased<String>? _from;
+  final List<Aliased<QueryColumn>> _columns = [];
   WhereClause? _where;
-  final List<String> _orderBy = [];
-  final List<String> _groupBy = [];
-  final List<String> _joins = [];
-  final List<Object?> _joinParameters = [];
+  final List<QueryColumn> _orderBy = [];
+  final List<QueryColumn> _groupBy = [];
+  final List<JoinClause> _joins = [];
   String? _having;
   String? _updateTable; // Table to target for CRUD operations
 
   QueryBuilder select(String column, [String? alias]) {
-    if (alias != null) {
-      _columns.add('$column AS $alias');
-    } else {
-      _columns.add(column);
-    }
+    _columns.add(Aliased(QueryColumn.parse(column), alias));
     return this;
   }
 
   QueryBuilder from(String table, [String? alias]) {
-    if (alias != null) {
-      _from = '$table AS $alias';
-    } else {
-      _from = table;
-    }
+    _from = Aliased(table, alias);
     return this;
   }
 
-  QueryBuilder where(WhereClause clause) {
+  QueryBuilder where(WhereClause? clause) {
     _where = clause;
     return this;
   }
 
   QueryBuilder orderBy(List<String> columns) {
-    _orderBy.addAll(columns);
+    _orderBy.addAll(columns.map((col) => QueryColumn.parse(col)));
     return this;
   }
 
   QueryBuilder groupBy(List<String> columns) {
-    _groupBy.addAll(columns);
+    _groupBy.addAll(columns.map((col) => QueryColumn.parse(col)));
     return this;
   }
 
@@ -52,7 +47,7 @@ class QueryBuilder extends Equatable {
 
   /// Specifies that results from this query should be CRUD-enabled
   /// targeting the specified table for update operations.
-  /// 
+  ///
   /// This allows queries from views or joins to return updatable records
   /// as long as they include system_id and system_version from the target table.
   QueryBuilder forUpdate(String tableName) {
@@ -60,42 +55,47 @@ class QueryBuilder extends Equatable {
     return this;
   }
 
-  QueryBuilder join(String joinClause) {
-    _joins.add(joinClause);
+  QueryBuilder innerJoin(
+    String table,
+    WhereClause onCondition, [
+    String? alias,
+  ]) {
+    _joins.add(JoinClause.inner(table, onCondition, alias));
     return this;
   }
 
-  QueryBuilder innerJoin(String table, dynamic onCondition, [String? alias]) {
-    final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    final conditionSql = _buildJoinCondition(onCondition);
-    _joins.add('INNER JOIN $tableWithAlias ON $conditionSql');
+  QueryBuilder leftJoin(
+    String table,
+    WhereClause onCondition, [
+    String? alias,
+  ]) {
+    _joins.add(JoinClause.left(table, onCondition, alias));
     return this;
   }
 
-  QueryBuilder leftJoin(String table, dynamic onCondition, [String? alias]) {
-    final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    final conditionSql = _buildJoinCondition(onCondition);
-    _joins.add('LEFT JOIN $tableWithAlias ON $conditionSql');
+  QueryBuilder rightJoin(
+    String table,
+    WhereClause onCondition, [
+    String? alias,
+  ]) {
+    _joins.add(JoinClause.right(table, onCondition, alias));
     return this;
   }
 
-  QueryBuilder rightJoin(String table, dynamic onCondition, [String? alias]) {
-    final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    final conditionSql = _buildJoinCondition(onCondition);
-    _joins.add('RIGHT JOIN $tableWithAlias ON $conditionSql');
+  QueryBuilder fullOuterJoin(
+    String table,
+    WhereClause onCondition, [
+    String? alias,
+  ]) {
+    _joins.add(JoinClause.fullOuter(table, onCondition, alias));
     return this;
   }
 
-  QueryBuilder fullOuterJoin(String table, dynamic onCondition, [String? alias]) {
-    final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    final conditionSql = _buildJoinCondition(onCondition);
-    _joins.add('FULL OUTER JOIN $tableWithAlias ON $conditionSql');
-    return this;
-  }
-
-  QueryBuilder crossJoin(String table, [String? alias]) {
-    final tableWithAlias = alias != null ? '$table AS $alias' : table;
-    _joins.add('CROSS JOIN $tableWithAlias');
+  QueryBuilder crossJoin(
+    String table,[
+    String? alias,
+  ]) {
+    _joins.add(JoinClause.cross(table, alias));
     return this;
   }
 
@@ -105,37 +105,29 @@ class QueryBuilder extends Equatable {
     build(subQueryBuilder);
     final built = subQueryBuilder.build();
     final subQuery = built.$1;
-    _columns.add('($subQuery) AS $alias');
+    _columns.add(Aliased(QueryColumn.parse('($subQuery)'), alias));
     return this;
   }
 
-  /// Helper method to build join conditions
-  String _buildJoinCondition(dynamic onCondition) {
-    if (onCondition is String) {
-      return onCondition;
-    } else if (onCondition is WhereClause) {
-      final built = onCondition.build();
-      _joinParameters.addAll(built.parameters);
-      return built.sql;
-    } else {
-      throw ArgumentError('Join condition must be either a String or WhereClause');
-    }
-  }
+
 
   (String, List<Object?>) build() {
     if (_from == null) {
       throw StateError('A "from" clause is required to build a query.');
     }
 
-    final columns = _columns.isEmpty ? '*' : _columns.join(', ');
+    final columns = _columns.isEmpty
+        ? '*'
+        : _columns.map((col) => col.toString()).join(', ');
 
-    var sql = 'SELECT $columns FROM $_from';
+    var sql = 'SELECT $columns FROM ${_from!.toString()}';
     var parameters = <Object?>[];
 
-    // Add JOINs
-    if (_joins.isNotEmpty) {
-      sql += ' ${_joins.join(' ')}';
-      parameters.addAll(_joinParameters);
+    // Add JOINs using structured JoinClause.build()
+    for (final joinClause in _joins) {
+      final builtJoin = joinClause.build();
+      sql += ' ${builtJoin.sql}';
+      parameters.addAll(builtJoin.parameters);
     }
 
     if (_where != null) {
@@ -145,7 +137,7 @@ class QueryBuilder extends Equatable {
     }
 
     if (_groupBy.isNotEmpty) {
-      sql += ' GROUP BY ${_groupBy.join(', ')}';
+      sql += ' GROUP BY ${_groupBy.map((col) => col.toSql()).join(', ')}';
     }
 
     if (_having != null) {
@@ -153,7 +145,15 @@ class QueryBuilder extends Equatable {
     }
 
     if (_orderBy.isNotEmpty) {
-      sql += ' ORDER BY ${_orderBy.join(', ')}';
+      sql += ' ORDER BY ${_orderBy.map((col) => col.toSql()).join(', ')}';
+    }
+
+    if (_limit != null) {
+      sql += ' LIMIT $_limit';
+    }
+
+    if (_offset != null) {
+      sql += ' OFFSET $_offset';
     }
 
     return (sql, parameters);
@@ -162,24 +162,78 @@ class QueryBuilder extends Equatable {
   /// Gets the main table name being queried (without alias).
   String? get tableName {
     if (_from == null) return null;
-    // Handle "table AS alias" format
-    final parts = _from!.split(' ');
-    return parts.first;
+    return _from!.expression;
   }
 
   /// Gets the table name specified for CRUD operations via forUpdate()
   String? get updateTableName => _updateTable;
 
-  @override
-  List<Object?> get props => [
-        _from,
-        _columns,
-        _where,
-        _orderBy,
-        _groupBy,
-        _joins,
-        _joinParameters,
-        _having,
-        _updateTable,
-      ];
+  int? _limit;
+  int? _offset;
+
+  QueryBuilder limit(int count) {
+    _limit = count;
+    return this;
+  }
+
+  QueryBuilder offset(int count) {
+    _offset = count;
+    return this;
+  }
+
+  /// Analyzes this query to determine table and column dependencies
+  QueryDependencies analyzeDependencies([AnalysisContext? parentContext]) {
+    final context = parentContext ?? AnalysisContext();
+    var dependencies = QueryDependencies.empty();
+
+    // Build the analysis context with FROM clause
+    String? baseTableName;
+
+    // Add FROM clause to context
+    if (_from != null) {
+      baseTableName = _from!.expression;
+      context.addTable(baseTableName, alias: _from!.alias);
+
+      // Add to dependencies with alias if present
+      final tableRef = _from!.alias != null
+          ? '${_from!.expression} AS ${_from!.alias}'
+          : _from!.expression;
+
+      dependencies = dependencies.merge(QueryDependencies(
+        tables: {tableRef},
+        columns: <QueryDependencyColumn>{},
+        usesWildcard: false,
+      ));
+    }
+
+    // Add JOIN clauses and analyze their dependencies
+    for (final joinClause in _joins) {
+      dependencies = dependencies.merge(joinClause.analyzeDependencies(context));
+    }
+
+    // Analyze columns from SELECT clause using Column.analyzeDependencies
+    for (final col in _columns) {
+      dependencies = dependencies.merge(col.expression.analyzeDependencies(context, baseTableName));
+    }
+
+    // Add dependencies from WHERE clause
+    if (_where != null) {
+      dependencies = dependencies.merge(_where!.analyzeDependencies(context));
+    }
+
+    // Analyze columns from ORDER BY clause
+    for (final columnExpr in _orderBy) {
+      dependencies = dependencies.merge(columnExpr.analyzeDependencies(context, baseTableName));
+    }
+
+    // Analyze columns from GROUP BY clause
+    for (final columnExpr in _groupBy) {
+      dependencies = dependencies.merge(columnExpr.analyzeDependencies(context, baseTableName));
+    }
+
+    // Note: HAVING clause analysis would require WhereClause type
+    // Currently _having is a String, so we can't analyze it structurally
+
+    return dependencies;
+  }
 }

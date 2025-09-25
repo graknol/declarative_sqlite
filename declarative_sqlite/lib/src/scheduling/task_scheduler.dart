@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:isolate';
 import 'dart:math';
-import '../database.dart';
+import 'package:declarative_sqlite/declarative_sqlite.dart';
+import 'package:pool/pool.dart';
+import 'package:meta/meta.dart';
 
 /// Priority levels for scheduled tasks
 enum TaskPriority {
@@ -169,10 +170,10 @@ class TaskScheduler {
   final Queue<ScheduledTask> _taskQueue = Queue<ScheduledTask>();
   final Map<String, ScheduledTask> _tasks = <String, ScheduledTask>{};
   final Set<String> _runningTasks = <String>{};
-  
-  /// Semaphore for resource-constrained devices
-  late final Semaphore _concurrencySemaphore;
-  
+
+  /// Pool for managing concurrent task execution
+  late final Pool _concurrencyPool;
+
   /// Database for storing task execution history
   DeclarativeDatabase? _database;
   
@@ -184,10 +185,16 @@ class TaskScheduler {
   int _totalTasksExecuted = 0;
   int _totalTasksFailed = 0;
   Duration _totalExecutionTime = Duration.zero;
-  
-  TaskScheduler._internal([TaskSchedulerConfig? config]) 
-    : _config = config ?? const TaskSchedulerConfig() {
-    _concurrencySemaphore = Semaphore(_config.maxConcurrentTasks);
+
+  @visibleForTesting
+  TaskScheduler.internal([TaskSchedulerConfig? config])
+      : _config = config ?? const TaskSchedulerConfig() {
+    _concurrencyPool = Pool(_config.maxConcurrentTasks);
+  }
+
+  TaskScheduler._internal([TaskSchedulerConfig? config])
+      : _config = config ?? const TaskSchedulerConfig() {
+    _concurrencyPool = Pool(_config.maxConcurrentTasks);
   }
   
   /// Initialize with custom configuration
@@ -260,13 +267,26 @@ class TaskScheduler {
     Duration? timeout,
   }) {
     final taskId = _generateTaskId();
-    
+
     // Check last run time from database if available
     DateTime? effectiveFirstRun = firstRun;
     if (_database != null && effectiveFirstRun == null) {
-      effectiveFirstRun = _getNextRunTimeFromHistory(name, interval);
+      _getNextRunTimeFromHistory(name, interval).then((nextRunTime) {
+        final scheduledTask = ScheduledTask(
+          id: taskId,
+          name: name,
+          task: task,
+          priority: priority,
+          scheduledTime: nextRunTime,
+          interval: interval,
+          maxRetries: maxRetries,
+          timeout: timeout,
+        );
+        _addTask(scheduledTask);
+      });
+      return taskId;
     }
-    
+
     final scheduledTask = ScheduledTask(
       id: taskId,
       name: name,
@@ -277,7 +297,7 @@ class TaskScheduler {
       maxRetries: maxRetries,
       timeout: timeout,
     );
-    
+
     _addTask(scheduledTask);
     return taskId;
   }
@@ -377,88 +397,100 @@ class TaskScheduler {
     if (task._isRunning || _runningTasks.contains(task.id)) {
       return;
     }
-    
-    task._isRunning = true;
-    _runningTasks.add(task.id);
-    _taskQueue.remove(task);
-    
-    final startTime = DateTime.now();
-    bool success = false;
-    Object? error;
-    StackTrace? stackTrace;
-    
-    try {
-      // Apply timeout if specified
-      if (task.timeout != null) {
-        await task.task().timeout(task.timeout!);
-      } else {
-        await task.task();
-      }
-      success = true;
-    } catch (e, st) {
-      error = e;
-      stackTrace = st;
-      task._retryCount++;
-    }
-    
-    final executionTime = DateTime.now().difference(startTime);
-    task._lastExecution = DateTime.now();
-    task._isRunning = false;
-    _runningTasks.remove(task.id);
-    
-    // Update statistics
-    _totalTasksExecuted++;
-    _totalExecutionTime += executionTime;
-    if (!success) {
-      _totalTasksFailed++;
-    }
-    
-    // Create execution result
-    final result = TaskExecutionResult(
-      task: task,
-      success: success,
-      executionTime: executionTime,
-      error: error,
-      stackTrace: stackTrace,
-    );
-    
-    // Notify callback
-    _onTaskComplete?.call(result);
-    
-    // Handle task completion
-    if (success) {
-      // Reset retry count on success
-      task._retryCount = 0;
-      
-      // Reschedule if recurring
-      if (task.isRecurring) {
-        _insertTaskByPriority(task);
-      } else {
-        // Remove one-time completed task
-        _tasks.remove(task.id);
-      }
-    } else {
-      // Handle failure
-      if (task.hasExceededRetries) {
-        // Remove failed task
-        _tasks.remove(task.id);
-      } else {
-        // Reschedule for retry with exponential backoff
-        final delay = Duration(
-          milliseconds: _config.minTaskDelayMs * pow(2, task._retryCount).toInt(),
-        );
-        Timer(delay, () {
-          if (_tasks.containsKey(task.id)) {
-            _insertTaskByPriority(task);
+
+    await _concurrencyPool.withResource(() async {
+      try {
+        task._isRunning = true;
+        _runningTasks.add(task.id);
+        _taskQueue.remove(task);
+
+        final startTime = DateTime.now();
+        bool success = false;
+        Object? error;
+        StackTrace? stackTrace;
+
+        try {
+          // Apply timeout if specified
+          if (task.timeout != null) {
+            await task.task().timeout(task.timeout!);
+          } else {
+            await task.task();
           }
-        });
+          success = true;
+        } catch (e, st) {
+          error = e;
+          stackTrace = st;
+          task._retryCount++;
+        }
+
+        final executionTime = DateTime.now().difference(startTime);
+        task._lastExecution = DateTime.now();
+        task._isRunning = false;
+        _runningTasks.remove(task.id);
+
+        // Update statistics
+        _totalTasksExecuted++;
+        _totalExecutionTime += executionTime;
+        if (!success) {
+          _totalTasksFailed++;
+        }
+
+        // Create execution result
+        final result = TaskExecutionResult(
+          task: task,
+          success: success,
+          executionTime: executionTime,
+          error: error,
+          stackTrace: stackTrace,
+        );
+
+        // Notify callback
+        _onTaskComplete?.call(result);
+
+        // Handle task completion
+        if (success) {
+          // Reset retry count on success
+          task._retryCount = 0;
+
+          // Update task history in database
+          if (task.isRecurring) {
+            await _updateTaskHistory(task.name);
+          }
+
+          // Reschedule if recurring
+          if (task.isRecurring) {
+            _insertTaskByPriority(task);
+          } else {
+            // Remove one-time completed task
+            _tasks.remove(task.id);
+          }
+        } else {
+          // Handle failure
+          if (task.hasExceededRetries) {
+            // Remove failed task
+            _tasks.remove(task.id);
+          } else {
+            // Reschedule for retry with exponential backoff
+            final delay = Duration(
+              milliseconds:
+                  _config.minTaskDelayMs * pow(2, task._retryCount).toInt(),
+            );
+            Timer(delay, () {
+              if (_tasks.containsKey(task.id)) {
+                _insertTaskByPriority(task);
+              }
+            });
+          }
+        }
+
+        // Add small delay to prevent overwhelming the system
+        await Future.delayed(Duration(milliseconds: _config.minTaskDelayMs));
+      } finally {
+        // The pool manages the resource, so no manual release needed
       }
-    }
-    
-    // Add small delay to prevent overwhelming the system
-    await Future.delayed(Duration(milliseconds: _config.minTaskDelayMs));
+    });
   }
-  
+
   String _generateTaskId() {
     return 'task_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(1000)}';
   }
@@ -468,5 +500,53 @@ class TaskScheduler {
     _taskQueue.clear();
     _tasks.clear();
     _runningTasks.clear();
+  }
+
+  // ==========================================================================
+  // Database persistence for task history
+  // ==========================================================================
+
+  static const String _taskHistoryTable = '_task_history';
+
+  Future<void> _ensureTaskHistoryTable() async {
+    await _database?.execute('''
+      CREATE TABLE IF NOT EXISTS $_taskHistoryTable (
+        name TEXT PRIMARY KEY,
+        last_run TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future<void> _updateTaskHistory(String taskName) async {
+    await _database?.execute('''
+      INSERT OR REPLACE INTO $_taskHistoryTable (name, last_run)
+      VALUES (?, ?)
+    ''', [taskName, DateTime.now().toIso8601String()]);
+  }
+
+  Future<DateTime?> _getLastRunTimeFromHistory(String taskName) async {
+    final result = await _database?.queryMaps(
+      (q) => q
+          .from(_taskHistoryTable)
+          .select('last_run')
+          .where(col('name').eq(taskName)),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      final lastRunString = result.first['last_run'] as String?;
+      if (lastRunString != null) {
+        return DateTime.tryParse(lastRunString);
+      }
+    }
+    return null;
+  }
+
+  Future<DateTime> _getNextRunTimeFromHistory(
+      String taskName, Duration interval) async {
+    final lastRun = await _getLastRunTimeFromHistory(taskName);
+    if (lastRun != null) {
+      return lastRun.add(interval);
+    }
+    return DateTime.now();
   }
 }
