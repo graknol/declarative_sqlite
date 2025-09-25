@@ -990,7 +990,7 @@ class DeclarativeDatabase {
       }
 
       return result;
-    }, tableName: table);
+    }, tableName: tableName);
   }
 
   /// Queries the given [table] and returns a list of the results.
@@ -1193,7 +1193,7 @@ class DeclarativeDatabase {
     if (dirtyRowStore == null) {
       return [];
     }
-    return await dirtyRowStore!.getDirtyRows();
+    return await dirtyRowStore!.getAll();
   }
 }
 
