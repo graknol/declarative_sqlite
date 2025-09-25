@@ -13,19 +13,20 @@ class QueryStreamManager {
   late StreamSubscription _tableChangeSubscription;
   
   QueryStreamManager() {
-    developer.log('QueryStreamManager: Initializing with debounced table change processing (100ms delay)', name: 'QueryStreamManager');
+    developer.log('QueryStreamManager: Initializing with batched table change processing (100ms buffer window)', name: 'QueryStreamManager');
     
-    // Debounce table changes to batch rapid notifications and prevent subscribe/cancel cycles
+    // Use buffer with debounce to collect ALL table changes within the time window
     _tableChangeSubscription = _tableChangeSubject
-        .debounceTime(const Duration(milliseconds: 100))
+        .bufferTime(const Duration(milliseconds: 100))
+        .where((batch) => batch.isNotEmpty) // Only process non-empty batches
         .listen(
-          _processTableChange,
+          _processBatchedTableChanges,
           onError: (error, stackTrace) {
-            developer.log('QueryStreamManager: Error in debounced stream processing', error: error, stackTrace: stackTrace, name: 'QueryStreamManager');
+            developer.log('QueryStreamManager: Error in batched stream processing', error: error, stackTrace: stackTrace, name: 'QueryStreamManager');
           },
         );
         
-    developer.log('QueryStreamManager: Debounced table change subscription established', name: 'QueryStreamManager');
+    developer.log('QueryStreamManager: Batched table change subscription established', name: 'QueryStreamManager');
   }
   
   /// Registers a streaming query with the manager
@@ -62,9 +63,9 @@ class QueryStreamManager {
     developer.log('QueryStreamManager.unregisterOnly: $emoji Successfully unregistered query id="$queryId". Total queries: ${_queries.length}', name: 'QueryStreamManager');
   }
 
-  /// Notifies all relevant queries that a table has been modified (debounced to prevent rapid cycles)
+  /// Notifies all relevant queries that a table has been modified (batched to prevent rapid cycles)
   Future<void> notifyTableChanged(String tableName) async {
-    developer.log('QueryStreamManager.notifyTableChanged: Queuing table change notification for table="$tableName" (will be debounced). Currently ${_queries.length} queries registered.', name: 'QueryStreamManager');
+    developer.log('QueryStreamManager.notifyTableChanged: Queuing table change notification for table="$tableName" (will be batched). Currently ${_queries.length} queries registered.', name: 'QueryStreamManager');
     
     // Check if we have any queries that would be affected
     final affectedCount = _queries.values
@@ -80,7 +81,7 @@ class QueryStreamManager {
     
     try {
       _tableChangeSubject.add(tableName);
-      developer.log('QueryStreamManager.notifyTableChanged: Table change queued for debouncing, table="$tableName"', name: 'QueryStreamManager');
+      developer.log('QueryStreamManager.notifyTableChanged: Table change queued for batching, table="$tableName"', name: 'QueryStreamManager');
     } catch (e) {
       developer.log('QueryStreamManager.notifyTableChanged: ERROR adding to _tableChangeSubject for table="$tableName": $e. Attempting to reset stream.', name: 'QueryStreamManager');
       _resetDebouncingStream();
@@ -101,37 +102,49 @@ class QueryStreamManager {
     }
   }
   
-  /// Process a table change notification (called after debouncing)
-  Future<void> _processTableChange(String tableName) async {
-    developer.log('QueryStreamManager._processTableChange: Processing debounced table change for table="$tableName", checking ${_queries.length} registered queries', name: 'QueryStreamManager');
+  /// Process a batch of table change notifications (called after buffering)
+  Future<void> _processBatchedTableChanges(List<String> tableNames) async {
+    if (tableNames.isEmpty) return;
+    
+    // Remove duplicates while preserving order
+    final uniqueTableNames = tableNames.toSet().toList();
+    
+    developer.log('QueryStreamManager._processBatchedTableChanges: Processing batched table changes for tables=${uniqueTableNames.join(", ")} (${tableNames.length} events batched into ${uniqueTableNames.length} unique tables), checking ${_queries.length} registered queries', name: 'QueryStreamManager');
     
     try {
-      final affectedQueries = _queries.values
-          .where((query) => query.isActive && query.isAffectedByTable(tableName))
-          .toList();
+      // Collect all affected queries (deduplicated by query ID)
+      final affectedQueries = <String, StreamingQuery>{};
+      
+      for (final tableName in uniqueTableNames) {
+        for (final query in _queries.values) {
+          if (query.isActive && query.isAffectedByTable(tableName)) {
+            affectedQueries[query.id] = query;
+          }
+        }
+      }
 
-      developer.log('QueryStreamManager._processTableChange: Found ${affectedQueries.length} affected queries for table="$tableName"', name: 'QueryStreamManager');
+      developer.log('QueryStreamManager._processBatchedTableChanges: Found ${affectedQueries.length} unique affected queries for tables=${uniqueTableNames.join(", ")}', name: 'QueryStreamManager');
       
       if (affectedQueries.isEmpty) {
-        developer.log('QueryStreamManager._processTableChange: No affected queries for table="$tableName", skipping refresh', name: 'QueryStreamManager');
+        developer.log('QueryStreamManager._processBatchedTableChanges: No affected queries for tables=${uniqueTableNames.join(", ")}, skipping refresh', name: 'QueryStreamManager');
         return;
       }
 
-      developer.log('QueryStreamManager._processTableChange: Refreshing ${affectedQueries.length} queries for table="$tableName"', name: 'QueryStreamManager');
+      developer.log('QueryStreamManager._processBatchedTableChanges: Refreshing ${affectedQueries.length} queries for tables=${uniqueTableNames.join(", ")}', name: 'QueryStreamManager');
       
       // Refresh all affected queries concurrently with error handling
       final results = await Future.wait(
-        affectedQueries.map((query) async {
+        affectedQueries.values.map((query) async {
           try {
             final emoji = getAnimalEmoji(query.id);
-            developer.log('QueryStreamManager._processTableChange: $emoji Refreshing query id="${query.id}" for table="$tableName"', name: 'QueryStreamManager');
+            developer.log('QueryStreamManager._processBatchedTableChanges: $emoji Refreshing query id="${query.id}" for tables=${uniqueTableNames.join(", ")}', name: 'QueryStreamManager');
             await query.refresh();
-            developer.log('QueryStreamManager._processTableChange: $emoji Successfully refreshed query id="${query.id}" for table="$tableName"', name: 'QueryStreamManager');
+            developer.log('QueryStreamManager._processBatchedTableChanges: $emoji Successfully refreshed query id="${query.id}" for tables=${uniqueTableNames.join(", ")}', name: 'QueryStreamManager');
             return null;
           } catch (e) {
             final emoji = getAnimalEmoji(query.id);
             final errorMsg = '$emoji Query ${query.id} refresh failed: $e';
-            developer.log('QueryStreamManager._processTableChange: $errorMsg', name: 'QueryStreamManager');
+            developer.log('QueryStreamManager._processBatchedTableChanges: $errorMsg', name: 'QueryStreamManager');
             return errorMsg;
           }
         }),
@@ -140,14 +153,19 @@ class QueryStreamManager {
       // Handle any errors that occurred
       final errors = results.where((error) => error != null).toList();
       if (errors.isNotEmpty) {
-        developer.log('QueryStreamManager._processTableChange: ${errors.length} queries had errors during refresh for table="$tableName": ${errors.join(", ")}', name: 'QueryStreamManager');
+        developer.log('QueryStreamManager._processBatchedTableChanges: ${errors.length} queries had errors during refresh for tables=${uniqueTableNames.join(", ")}: ${errors.join(", ")}', name: 'QueryStreamManager');
       } else {
-        developer.log('QueryStreamManager._processTableChange: All queries refreshed successfully for table="$tableName"', name: 'QueryStreamManager');
+        developer.log('QueryStreamManager._processBatchedTableChanges: All queries refreshed successfully for tables=${uniqueTableNames.join(", ")}', name: 'QueryStreamManager');
       }
     } catch (e, stackTrace) {
-      developer.log('QueryStreamManager._processTableChange: Error during table change notification for table="$tableName"', error: e, stackTrace: stackTrace, name: 'QueryStreamManager');
+      developer.log('QueryStreamManager._processBatchedTableChanges: Error during batched table change notification for tables=${uniqueTableNames.join(", ")}', error: e, stackTrace: stackTrace, name: 'QueryStreamManager');
       rethrow;
     }
+  }
+
+  /// Process a single table change notification (for backward compatibility and debugging)
+  Future<void> _processTableChange(String tableName) async {
+    await _processBatchedTableChanges([tableName]);
   }
 
   /// Notifies all relevant queries that a specific column has been modified
@@ -357,15 +375,15 @@ class QueryStreamManager {
       developer.log('QueryStreamManager._resetDebouncingStream: Error cleaning up old stream: $e', name: 'QueryStreamManager');
     }
     
-    // Create new subject and subscription
+    // Create new subject and subscription with batching
     final newSubject = PublishSubject<String>();
     final newSubscription = newSubject
-        .debounceTime(const Duration(milliseconds: 16))
-        .distinct()
+        .bufferTime(const Duration(milliseconds: 100))
+        .where((batch) => batch.isNotEmpty)
         .listen(
-          _processTableChange,
+          _processBatchedTableChanges,
           onError: (error, stackTrace) {
-            developer.log('QueryStreamManager: Error in debounced stream processing', error: error, stackTrace: stackTrace, name: 'QueryStreamManager');
+            developer.log('QueryStreamManager: Error in batched stream processing', error: error, stackTrace: stackTrace, name: 'QueryStreamManager');
           },
         );
     
