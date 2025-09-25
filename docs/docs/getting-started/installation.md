@@ -1,169 +1,92 @@
+---
+sidebar_position: 1
+---
+
 # Installation
 
-Get started with Declarative SQLite by adding the packages to your project.
+Setting up `declarative_sqlite` involves adding the required packages to your `pubspec.yaml` and choosing the appropriate SQLite driver for your target platform.
 
-## Package Selection
+## 1. Add Dependencies
 
-Choose the packages you need based on your project type:
+The ecosystem is split into multiple packages. Add the ones you need for your project.
 
-### For Flutter Applications
+### For Flutter Projects
 
-```yaml
+For a standard Flutter application, you'll need the core library, the Flutter integration package, and the `sqflite` driver. If you plan to use code generation (recommended), you'll also need the generator and `build_runner`.
+
+```yaml title="pubspec.yaml"
 dependencies:
   flutter:
     sdk: flutter
-  
-  # Core database functionality
+  # Core library
   declarative_sqlite: ^1.0.1
-    
-  # Flutter-specific widgets and utilities  
-  declarative_sqlite_flutter: ^1.0.0
-    
-  # SQLite driver for Flutter
-  sqflite: ^2.3.0
+  # Flutter-specific widgets and helpers
+  declarative_sqlite_flutter: ^1.0.1
+  # Standard SQLite plugin for Flutter
+  sqflite: ^2.3.3
 
 dev_dependencies:
-  # Code generation for typed records (recommended)
-  declarative_sqlite_generator: ^1.0.0
-  build_runner: ^2.4.0
+  # Code generator for DbRecord classes
+  declarative_sqlite_generator: ^1.0.1
+  # Standard Dart build tool
+  build_runner: ^2.4.10
 ```
 
-### For Standalone Dart Applications
+### For Standalone Dart Projects
 
-```yaml
+For command-line or server-side Dart applications, you'll need the core library and the `sqflite_common_ffi` driver.
+
+```yaml title="pubspec.yaml"
 dependencies:
-  # Core database functionality
+  # Core library
   declarative_sqlite: ^1.0.1
-    
-  # SQLite driver for Dart (non-Flutter)
-  sqflite_common_ffi: ^2.3.0
+  # FFI-based SQLite driver for Dart
+  sqflite_common_ffi: ^2.3.3
 
 dev_dependencies:
-  # Code generation for typed records (recommended)
-  declarative_sqlite_generator: ^1.0.0
-  build_runner: ^2.4.0
+  # Code generator for DbRecord classes
+  declarative_sqlite_generator: ^1.0.1
+  # Standard Dart build tool
+  build_runner: ^2.4.10
 ```
 
-## Platform Setup
+After adding the dependencies, run `flutter pub get` or `dart pub get` to install them.
 
-### Android
+## 2. Initialize the Database Driver (Dart Only)
 
-No additional setup required. SQLite is available by default.
+For standalone Dart applications using FFI, you need to initialize the `sqflite_common_ffi` driver at the beginning of your application's entry point.
 
-### iOS
-
-No additional setup required. SQLite is available by default.
-
-### macOS
-
-For Flutter desktop apps, you may need to enable network entitlements if using synchronization features:
-
-```xml
-<!-- macos/Runner/DebugProfile.entitlements -->
-<key>com.apple.security.network.client</key>
-<true/>
-```
-
-### Linux
-
-For standalone Dart applications using `sqflite_common_ffi`, you may need to install SQLite:
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install sqlite3 libsqlite3-dev
-
-# CentOS/RHEL
-sudo yum install sqlite sqlite-devel
-```
-
-### Windows
-
-For standalone Dart applications, SQLite should work out of the box with `sqflite_common_ffi`.
-
-## Verification
-
-Create a simple test to verify your installation:
-
-### Flutter Test
-
-```dart
-// test_installation.dart
-import 'package:flutter/material.dart';
-import 'package:declarative_sqlite/declarative_sqlite.dart';
-import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
-
-void main() {
-  runApp(
-    DatabaseProvider(
-      schema: (builder) {
-        builder.table('test', (table) {
-          table.guid('id').notNull();
-          table.text('name').notNull();
-          table.key(['id']).primary();
-        });
-      },
-      databaseName: 'test.db',
-      child: MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Text('Declarative SQLite is working!'),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-```
-
-### Dart Test
-
-```dart
-// test_installation.dart
-import 'package:declarative_sqlite/declarative_sqlite.dart';
+```dart title="bin/my_app.dart"
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-void main() async {
-  // Initialize SQLite FFI for standalone Dart apps
+void main() {
+  // Initialize FFI
   sqfliteFfiInit();
-  databaseFactory = databaseFactoryFfi;
 
-  final database = DeclarativeDatabase(
-    schema: (builder) {
-      builder.table('test', (table) {
-        table.guid('id').notNull();
-        table.text('name').notNull();
-        table.key(['id']).primary();
-      });
-    },
-    path: 'test.db',
-  );
-
-  // Test basic operations
-  await database.insert('test', {
-    'id': 'test-1',
-    'name': 'Test Item',
-  });
-
-  final results = await database.query('test');
-  print('Installation successful! Found ${results.length} test records.');
-  
-  await database.close();
+  // Your application logic here...
 }
 ```
 
-Run the test:
+Flutter projects using the standard `sqflite` package do **not** need this step, as initialization is handled automatically.
 
-```bash
-dart test_installation.dart
+## 3. Configure the Code Generator (Optional, but Recommended)
+
+To enable code generation for your `DbRecord` classes, create a `build.yaml` file in the root of your project. This file tells the generator where to find your schema definition, which is necessary for creating typed accessors.
+
+```yaml title="build.yaml"
+targets:
+  $default:
+    builders:
+      declarative_sqlite_generator:
+        options:
+          # Relative path to the file containing your schema builder function
+          schema_definition_file: "lib/database/schema.dart"
 ```
 
-If you see "Installation successful!" then everything is working correctly.
+Replace `"lib/database/schema.dart"` with the actual path to your schema definition file.
 
 ## Next Steps
 
-Now that you have Declarative SQLite installed, continue with:
+With the installation complete, you're ready to define your first schema.
 
-- [Quick Start Guide](quick-start) - Learn the basics and set up typed records
-- [Typed Records](../core-library/typed-records) - Work with generated typed record classes
-- [Schema Definition](../core-library/schema-definition) - Design your database structure
-- [Exception Handling](../core-library/exception-handling) - Handle database errors gracefully
+- **Next**: [Defining a Schema](./defining-a-schema.md)

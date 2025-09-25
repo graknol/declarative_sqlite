@@ -1,104 +1,41 @@
-# Welcome to Declarative SQLite
+---
+sidebar_position: 1
+---
 
-A comprehensive Dart and Flutter library ecosystem for declarative SQLite schema management and database operations with real-time synchronization capabilities.
+# Introduction
+
+Welcome to the official documentation for **Declarative SQLite**, a comprehensive ecosystem for declarative SQLite schema management, data operations, and real-time synchronization in Dart and Flutter.
 
 ## What is Declarative SQLite?
 
-Declarative SQLite transforms how you work with SQLite databases in Dart and Flutter applications. Instead of writing SQL migration scripts and managing database versions manually, you simply declare your desired schema using a fluent, type-safe API.
+Declarative SQLite provides a fluent, type-safe, and reactive API for interacting with SQLite databases. It is designed to abstract away the complexities of manual schema migrations, raw SQL queries, and change tracking, allowing you to focus on building your application's features.
 
-## Key Benefits
+The ecosystem is built as a monorepo containing several key packages:
 
-🚀 **No Migration Scripts** - Define your schema once, automatic migrations handle the rest  
-🔄 **Real-time Updates** - Streaming queries automatically update your UI when data changes  
-🎯 **Typed Records** - Work with typed record classes instead of raw Map objects  
-🛡️ **Smart Exception Handling** - REST API-like exception hierarchy for better error handling  
-🔗 **Seamless Sync** - Built-in conflict-free synchronization with remote servers  
-📁 **File Management** - Integrated file attachments with automatic lifecycle management  
-🧩 **Flutter Ready** - Reactive widgets that integrate perfectly with Flutter's architecture
+- **`declarative_sqlite`**: The core library providing the foundational features.
+- **`declarative_sqlite_flutter`**: Flutter-specific widgets and helpers for seamless UI integration.
+- **`declarative_sqlite_generator`**: A code generator to reduce boilerplate and improve type safety.
+- **`demo`**: A complete Flutter application showcasing best practices and common use cases.
 
-## Quick Example
+## Core Philosophy
 
-Define your schema declaratively:
+1.  **Declarative Schema as the Source of Truth**: Define your entire database schema—tables, columns, keys, and views—in one place using a fluent Dart API. The library uses this definition to automatically generate and apply migration scripts.
+2.  **Reactivity by Default**: Data is dynamic. The library is built around `Stream`s, enabling you to build reactive applications where the UI updates automatically in response to data changes.
+3.  **Productivity and Type Safety**: Through a powerful query builder and code generation, the library aims to provide maximum type safety and autocompletion, catching errors at compile-time instead of runtime.
+4.  **Offline-First Synchronization**: With built-in support for Hybrid Logical Clocks (HLCs), the library provides a robust foundation for building offline-first applications that can sync data with a server without conflicts.
 
-```dart
-void buildSchema(SchemaBuilder builder) {
-  builder.table('users', (table) {
-    table.guid('id').notNull();
-    table.text('name').notNull();
-    table.text('email').notNull();
-    table.date('created_at').notNull();
-    table.key(['id']).primary();
-  });
-}
-```
+## Who is this for?
 
-Work with typed records:
+- **Flutter Developers** building data-driven applications that require a local database.
+- **Dart Developers** working on server-side or standalone applications needing a simple yet powerful database solution.
+- Developers who want to avoid writing raw SQL and manual migration scripts.
+- Teams looking for a structured, maintainable, and scalable way to manage their application's database.
 
-```dart
-// Register your record types once
-registerAllFactories(database); // Automatic registration with @RegisterFactory
+## How to Use These Docs
 
-// Query with full type safety
-final users = await db.queryTyped<User>((q) => q.from('users'));
-final user = users.first;
+- **Getting Started**: This section will guide you through the initial setup, from installation to creating your first database and schema.
+- **Core Library**: A deep dive into the features of the main `declarative_sqlite` package, including advanced queries, synchronization, and file management.
+- **Flutter Integration**: Learn how to use the Flutter-specific widgets to quickly build reactive user interfaces.
+- **Generator**: Understand how to use code generation to automate boilerplate and improve your development workflow.
 
-// Direct property access and modification
-print('Hello ${user.name}!'); // Type-safe property access
-user.email = 'new@example.com'; // Type-safe property setting
-await user.save(); // Save changes back to database
-```
-
-Use reactive widgets in Flutter:
-
-```dart
-QueryListView<User>(
-  database: DatabaseProvider.of(context),
-  query: (q) => q.from('users'),
-  itemBuilder: (context, user) => UserCard(user: user),
-)
-```
-
-## Architecture Overview
-
-The ecosystem consists of two complementary packages:
-
-- **`declarative_sqlite`** - Core database operations, schema management, and synchronization
-- **`declarative_sqlite_flutter`** - Flutter widgets and utilities for reactive UI development
-
-## Getting Started
-
-Ready to get started? Follow our [Installation Guide](getting-started/installation) to add Declarative SQLite to your project, or jump straight into the [Quick Start Guide](getting-started/quick-start) to see it in action.
-
-## Features at a Glance
-
-### Schema Definition
-- Fluent API for table and column definitions
-- Built-in validation and constraints
-- Automatic migration handling
-- Support for views and indexes
-
-### Database Operations
-- Type-safe query builder with typed record support
-- Streaming queries for real-time updates
-- Transaction support
-- Smart CRUD vs read-only record intelligence
-- REST API-like exception handling
-- Efficient bulk operations
-
-### Flutter Integration
-- `DatabaseProvider` for dependency injection
-- `QueryListView` for reactive lists
-- `ServerSyncManagerWidget` for background sync
-- Seamless integration with Flutter's widget system
-
-### Synchronization
-- Last-Writer-Wins conflict resolution
-- Automatic dirty tracking
-- Configurable sync intervals
-- Robust error handling and retry logic
-
-### File Management
-- `FilesetField` for file attachments
-- Automatic file lifecycle management
-- Support for multiple files per field
-- Integration with database transactions
+Ready to get started? Head over to the [Installation](./getting-started/installation.md) guide.
