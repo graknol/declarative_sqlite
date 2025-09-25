@@ -43,21 +43,19 @@ For more complex queries involving `WHERE` clauses, `JOIN`s, `ORDER BY`, etc., y
 
 ```dart
 // Find all incomplete tasks for a specific user, ordered by due date.
-final incompleteTasks = await database.query(
-  'tasks',
-  where: 'user_id = ? AND is_completed = ?',
-  whereArgs: ['user-123', 0],
-  orderBy: 'due_date ASC',
-);
+final incompleteTasks = await database.query((q) {
+  q.from('tasks')
+    .where(col('user_id').eq('user-123').and(col('is_completed').eq(0)))
+    .orderBy(['due_date ASC']);
+});
 
 // Using the fluent query builder for more complex scenarios
-final results = await database.queryWithBuilder((q) {
-  q
-      .select('t.title, u.name as author')
-      .from('tasks', as: 't')
-      .join('users', on: 't.user_id = u.id', as: 'u')
-      .where(col('t.is_completed').eq(0))
-      .orderBy('t.due_date');
+final results = await database.query((q) {
+  q.select('t.title, u.name as author')
+    .from('tasks', 't')
+    .innerJoin('users', col('t.user_id').eq(col('u.id')), 'u')
+    .where(col('t.is_completed').eq(0))
+    .orderBy(['t.due_date']);
 });
 ```
 
