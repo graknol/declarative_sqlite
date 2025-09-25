@@ -65,19 +65,22 @@ For a detailed guide, please refer to our [**official documentation**](https://g
 ┌─────────────────────────────────────┐
 │        Flutter Application          │
 ├─────────────────────────────────────┤
-│    declarative_sqlite_flutter       │
+│  > declarative_sqlite_flutter       │
+|  ---                                |
 │  • DatabaseProvider                 │
 │  • QueryListView                    │
 │  • ServerSyncManagerWidget          │
 ├─────────────────────────────────────┤
-│       declarative_sqlite            │
+│  > declarative_sqlite               │
+|  ---                                |
 │  • Schema Definition & Migration    │
 │  • CRUD & Query Builders            │
 │  • Streaming Queries                │
 │  • HLC-based Sync Management        │
 │  • File Management                  │
 ├─────────────────────────────────────┤
-│   declarative_sqlite_generator      │
+│  > declarative_sqlite_generator     │
+|  ---                                |
 │  • DbRecord Code Generation         │
 ├─────────────────────────────────────┤
 │          SQLite Database            │
