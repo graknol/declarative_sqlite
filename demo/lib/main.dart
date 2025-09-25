@@ -511,7 +511,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
       'name': '$name ${DateTime.now().millisecond}',
       'email': '${name.toLowerCase()}${DateTime.now().millisecond}@$domain',
       'age': age,
-      'created_at': now.toIso8601String(),
+      'created_at': now,
     });
 
     if (mounted) {
@@ -564,7 +564,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
       'title': '$title ${DateTime.now().millisecond}',
       'content': content,
       'user_name': randomUser['name'],
-      'created_at': now.toIso8601String(),
+      'created_at': now,
     });
 
     if (mounted) {
