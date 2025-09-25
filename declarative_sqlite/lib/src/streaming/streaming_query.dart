@@ -108,6 +108,9 @@ class StreamingQuery<T> {
   /// Get the cache statistics from the last refresh operation
   ({int hits, int misses, double hitPercentage})? get lastCacheStats => _lastCacheStats;
 
+  /// Whether this query supports caching (has system columns and cached data)
+  bool get supportsCaching => _resultCache.isNotEmpty || _lastResultSystemIds != null;
+
   /// Updates the query builder and mapper with smart lifecycle management.
   /// 
   /// Re-analyzes dependencies when the query changes to ensure accurate
@@ -191,13 +194,68 @@ class StreamingQuery<T> {
     try {
       final rawResults = await _database.queryMapsWith(_builder);
       
-      // Extract system IDs and versions for all raw results
+      // Check if caching is possible by verifying system columns exist
+      final canCache = rawResults.isNotEmpty && 
+          rawResults.first.containsKey('system_id') && 
+          rawResults.first.containsKey('system_version');
+      
+      if (!canCache) {
+        // No caching possible - map all results directly
+        final emoji = getAnimalEmoji(_id);
+        developer.log('StreamingQuery.refresh: $emoji No system columns detected for id="$_id", caching disabled for this query', name: 'StreamingQuery');
+        
+        final mappedResults = rawResults.map(_mapper).toList();
+        
+        // Update state and emit (only if not disposed)
+        _lastResultSystemIds = null; // Clear cached system IDs
+        _resultCache.clear(); // Clear any existing cache
+        
+        // Check if query was disposed during the async operation
+        if (_isDisposed) {
+          return;
+        }
+        
+        // Only add to subject if it's not closed
+        if (!_subject.isClosed) {
+          _subject.add(mappedResults);
+        }
+        return;
+      }
+      
+      // Extract system IDs and versions for all raw results (caching enabled)
       final newResultSystemIds = <String>[];
       final systemIdToVersion = <String, String>{};
       
       for (final rawRow in rawResults) {
-        final systemId = rawRow['system_id'] as String;
-        final systemVersion = rawRow['system_version'] as String;
+        // Double-check each row has the required system columns
+        final systemIdValue = rawRow['system_id'];
+        final systemVersionValue = rawRow['system_version'];
+        
+        if (systemIdValue == null || systemVersionValue == null) {
+          // If any row is missing system columns, fall back to no caching
+          final emoji = getAnimalEmoji(_id);
+          developer.log('StreamingQuery.refresh: $emoji Inconsistent system columns detected for id="$_id", falling back to no caching', name: 'StreamingQuery');
+          
+          final mappedResults = rawResults.map(_mapper).toList();
+          
+          // Update state and emit (only if not disposed)
+          _lastResultSystemIds = null; // Clear cached system IDs
+          _resultCache.clear(); // Clear any existing cache
+          
+          // Check if query was disposed during the async operation
+          if (_isDisposed) {
+            return;
+          }
+          
+          // Only add to subject if it's not closed
+          if (!_subject.isClosed) {
+            _subject.add(mappedResults);
+          }
+          return;
+        }
+        
+        final systemId = systemIdValue as String;
+        final systemVersion = systemVersionValue as String;
         
         newResultSystemIds.add(systemId);
         systemIdToVersion[systemId] = systemVersion;

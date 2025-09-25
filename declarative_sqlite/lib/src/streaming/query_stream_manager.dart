@@ -405,10 +405,19 @@ class QueryStreamManager {
     int totalMisses = 0;
     int totalCacheSize = 0;
     int queriesWithStats = 0;
+    int queriesWithCache = 0;
+    int queriesWithoutCache = 0;
 
     for (final query in queries) {
       final stats = query.lastCacheStats;
-      totalCacheSize += query.cacheSize;
+      final cacheSize = query.cacheSize;
+      
+      if (cacheSize > 0) {
+        queriesWithCache++;
+        totalCacheSize += cacheSize;
+      } else {
+        queriesWithoutCache++;
+      }
       
       if (stats != null) {
         totalHits += stats.hits;
@@ -420,9 +429,17 @@ class QueryStreamManager {
     final totalItems = totalHits + totalMisses;
     if (totalItems > 0 && queriesWithStats > 0) {
       final overallHitPercentage = (totalHits / totalItems * 100).toStringAsFixed(1);
-      developer.log('QueryStreamManager._processBatchedTableChanges: 📊 Aggregated cache performance for ${queries.length} queries (tables=${tableNames.join(", ")}): $totalHits/$totalItems hits ($overallHitPercentage%), $totalMisses misses, total cache entries: $totalCacheSize', name: 'QueryStreamManager');
+      String cacheabilityInfo = queriesWithoutCache > 0 
+          ? " ($queriesWithCache cacheable, $queriesWithoutCache non-cacheable)"
+          : " (all cacheable)";
+      developer.log('QueryStreamManager._processBatchedTableChanges: 📊 Aggregated cache performance for ${queries.length} queries$cacheabilityInfo (tables=${tableNames.join(", ")}): $totalHits/$totalItems hits ($overallHitPercentage%), $totalMisses misses, total cache entries: $totalCacheSize', name: 'QueryStreamManager');
     } else if (totalCacheSize > 0) {
-      developer.log('QueryStreamManager._processBatchedTableChanges: 📊 Cache status for ${queries.length} queries (tables=${tableNames.join(", ")}): $totalCacheSize total cached entries, no refresh statistics available', name: 'QueryStreamManager');
+      String cacheabilityInfo = queriesWithoutCache > 0 
+          ? " ($queriesWithCache cacheable, $queriesWithoutCache non-cacheable)"
+          : " (all cacheable)";
+      developer.log('QueryStreamManager._processBatchedTableChanges: 📊 Cache status for ${queries.length} queries$cacheabilityInfo (tables=${tableNames.join(", ")}): $totalCacheSize total cached entries, no refresh statistics available', name: 'QueryStreamManager');
+    } else {
+      developer.log('QueryStreamManager._processBatchedTableChanges: 📊 Cache status for ${queries.length} queries (tables=${tableNames.join(", ")}): No caching available (queries may lack system columns)', name: 'QueryStreamManager');
     }
   }
 
