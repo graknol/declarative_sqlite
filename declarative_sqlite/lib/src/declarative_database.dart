@@ -615,14 +615,10 @@ class DeclarativeDatabase {
     return serializedValues;
   }
 
-  Future<String> _insert(
-      String tableName, Map<String, Object?> values, Hlc hlc) async {
+  /// Applies default values for columns that are missing from the provided values map
+  Map<String, Object?> _applyDefaultValues(String tableName, Map<String, Object?> values) {
     final tableDef = _getTableDefinition(tableName);
-
-    // Convert FilesetField values to database strings
-    final convertedValues = _convertFilesetFieldsToValues(tableName, values);
-
-    final valuesToInsert = {...convertedValues};
+    final valuesWithDefaults = <String, Object?>{...values};
     
     // Generate default values for missing columns using callbacks and static defaults
     for (final col in tableDef.columns) {
@@ -630,21 +626,36 @@ class DeclarativeDatabase {
       if (col.name.startsWith('system_')) continue;
       
       // If column value is not provided and has a default callback, call it
-      if (!valuesToInsert.containsKey(col.name) && col.defaultValueCallback != null) {
+      if (!valuesWithDefaults.containsKey(col.name) && col.defaultValueCallback != null) {
         final defaultValue = col.defaultValueCallback!();
         if (defaultValue != null) {
           // Apply the same serialization logic as DbRecord.setValue
           final serializedValue = _serializeValueForColumn(defaultValue, col);
-          valuesToInsert[col.name] = serializedValue;
+          valuesWithDefaults[col.name] = serializedValue;
         }
       }
       // If still no value and has a static default value, use it
-      else if (!valuesToInsert.containsKey(col.name) && col.defaultValue != null) {
+      else if (!valuesWithDefaults.containsKey(col.name) && col.defaultValue != null) {
         // Apply the same serialization logic as DbRecord.setValue
         final serializedValue = _serializeValueForColumn(col.defaultValue, col);
-        valuesToInsert[col.name] = serializedValue;
+        valuesWithDefaults[col.name] = serializedValue;
       }
     }
+    
+    return valuesWithDefaults;
+  }
+
+  Future<String> _insert(
+      String tableName, Map<String, Object?> values, Hlc hlc) async {
+    final tableDef = _getTableDefinition(tableName);
+
+    // Convert FilesetField values to database strings
+    final convertedValues = _convertFilesetFieldsToValues(tableName, values);
+
+    // Apply default values for missing columns
+    final valuesToInsert = _applyDefaultValues(tableName, convertedValues);
+    
+    // Add system columns
     valuesToInsert['system_version'] = hlc.toString();
     if (valuesToInsert['system_id'] == null) {
       valuesToInsert['system_id'] = Uuid().v4();
