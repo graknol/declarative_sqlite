@@ -1,6 +1,6 @@
 # Declarative SQLite (Core)
 
-The foundation of the Declarative SQLite ecosystem. This package provides all the core functionality for declarative schema definition, data manipulation, streaming queries, and synchronization for Dart applications.
+The foundation of the Declarative SQLite ecosystem. This package provides all the core functionality for declarative schema definition, data manipulation, and streaming queries for Dart applications.
 
 For Flutter-specific features, see [`declarative_sqlite_flutter`](../declarative_sqlite_flutter/).
 
@@ -10,7 +10,7 @@ For Flutter-specific features, see [`declarative_sqlite_flutter`](../declarative
 - **Automatic Migrations**: The library automatically detects schema changes and generates and applies the necessary migration scripts. No more manual `ALTER TABLE` statements.
 - **Type-Safe Queries**: Build complex SQL queries with type safety and autocompletion using a powerful query builder.
 - **Streaming Queries**: Create reactive queries that automatically emit new results when underlying data changes, perfect for building responsive UIs.
-- **Conflict-Free Sync**: Built-in support for data synchronization using a Hybrid Logical Clock (HLC). This enables conflict-free, last-write-wins data merging, essential for applications that work offline or have multiple data sources.
+- **LWW Columns**: Built-in support for Last-Writer-Wins (LWW) columns using Hybrid Logical Clock (HLC) timestamps for conflict resolution.
 - **File Management**: Integrated support for attaching and managing files linked to database records, with garbage collection for orphaned files.
 
 ## Getting Started
@@ -33,49 +33,51 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 // 1. Define your database schema
 void buildSchema(SchemaBuilder builder) {
   builder.table('users', (table) {
-    table.guid('id').notNull();
-    table.text('name').notNull();
+    table.guid('id');
+    table.text('name');
     table.integer('age');
     table.key(['id']).primary();
   });
 }
 
 Future<void> main() async {
-  // 2. Initialize the FFI driver (optional, not for Android/iOS, only for desktop)
+  // 2. Initialize the FFI driver (for desktop apps)
   sqfliteFfiInit();
-  final dbFactory = databaseFactoryFfi;
+  
+  // 3. Create schema
+  final schemaBuilder = SchemaBuilder();
+  buildSchema(schemaBuilder);
+  final schema = schemaBuilder.build();
 
-  // 3. Create and initialize the database
-  final database = DeclarativeDatabase(
-    path: 'my_app.db',
-    schema: buildSchema,
-    dbFactory: dbFactory,
+  // 4. Open the database
+  final database = await DeclarativeDatabase.open(
+    'my_app.db',
+    schema: schema,
+    fileRepository: FilesystemFileRepository('files'),
   );
-  await database.init();
 
-  // 4. Insert data
+  // 5. Insert data
   await database.insert('users', {
     'id': 'a1b2c3d4',
     'name': 'Alice',
     'age': 30,
   });
 
-  // 5. Query data
-  final users = await database.query('users', where: 'age > ?', whereArgs: [25]);
+  // 6. Query data with the query builder
+  final users = await database.query((q) => 
+    q.from('users').where('age').isGreaterThan(25)
+  );
   print('Users older than 25: $users');
 
-  // 6. Use streaming queries
-  final userStream = database.streamQuery('users');
-  final subscription = userStream.listen((userList) {
-    print('Current users: $userList');
+  // 7. Use streaming queries for reactive UIs
+  final userStream = database.streamQuery((q) => q.from('users'));
+  final subscription = userStream.stream.listen((userList) {
+    print('Current users: ${userList.length}');
   });
 
   // Changes will automatically be pushed to the stream
-  await database.update(
-    'users',
-    {'age': 31},
-    where: "name = 'Alice'",
-  );
+  await database.update('users', {'age': 31}, 
+    where: 'name = ?', whereArgs: ['Alice']);
 
   // Clean up
   await subscription.cancel();

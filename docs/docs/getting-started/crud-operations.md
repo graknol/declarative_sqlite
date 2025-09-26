@@ -14,40 +14,49 @@ To add a new record to a table, use the `insert` method. It takes the table name
 final database = DatabaseProvider.of(context);
 
 await database.insert('tasks', {
-  'id': Uuid().v4(),
+  'id': const Uuid().v4(),
   'user_id': 'user-123',
   'title': 'Write documentation',
   'is_completed': 0,
 });
 ```
 
-If the table has system columns enabled (`withSystemColumns: true`), the `insert` method will automatically generate and populate the `system_id`, `system_created_at`, and `system_version` fields.
-
 ## Query (Read)
 
-To read data from the database, use the `query` method. It returns a `Future<List<DbRecord>>`.
+### Query for DbRecord objects
 
-### Simple Query
-
-Fetch all records from a table.
+The `query` method returns `Future<List<DbRecord>>` for working with typed record objects:
 
 ```dart
 final List<DbRecord> tasks = await database.query((q) => q.from('tasks'));
-print(tasks);
-// Output: [DbRecord with data {'id': '...', 'title': 'Write documentation', ...}]
+for (final task in tasks) {
+  print('Task: ${task.getValue('title')}');
+}
 ```
 
-### Using the Query Builder
+### Query for raw maps
 
-For more complex queries involving `WHERE` clauses, `JOIN`s, `ORDER BY`, etc., you can use the powerful query builder.
+The `queryMaps` method returns `Future<List<Map<String, Object?>>>` for simple data access:
 
 ```dart
-// Find all incomplete tasks for a specific user, ordered by due date.
-final incompleteTasks = await database.query((q) {
-  q.from('tasks')
-    .where(col('user_id').eq('user-123').and(col('is_completed').eq(0)))
-    .orderBy(['due_date ASC']);
-});
+final List<Map<String, Object?>> taskMaps = await database.queryMaps((q) => q.from('tasks'));
+for (final task in taskMaps) {
+  print('Task: ${task['title']}');
+}
+```
+
+### Using WHERE clauses
+
+For filtered queries, use `RawSqlWhereClause`:
+
+```dart
+// Find incomplete tasks for a specific user
+final incompleteTasks = await database.query((q) => 
+  q.from('tasks').where(RawSqlWhereClause(
+    'user_id = ? AND is_completed = ?', 
+    ['user-123', 0]
+  ))
+);
 
 // Using the fluent query builder for more complex scenarios
 final results = await database.query((q) {

@@ -13,15 +13,13 @@ This is ideal for UI development, as you can simply listen to the stream and reb
 You create a streaming query using the `database.streamRecords()` method. It uses the same query builder syntax as the regular `query()` method.
 
 ```dart
-// Create a stream of all tasks, ordered by title
-final Stream<List<DbRecord>> taskStream = database.streamRecords((q) {
-  q.from('tasks').orderBy(['title']);
-});
+// Create a stream of all tasks
+final Stream<List<DbRecord>> taskStream = database.streamRecords((q) => q.from('tasks'));
 
 // Listen to the stream
 final subscription = taskStream.listen((tasks) {
   print('Tasks updated! New count: ${tasks.length}');
-  // In a Flutter app, you would call setState() here or use a StreamBuilder.
+  // In a Flutter app, you would use StreamBuilder widget
 });
 
 // Later, when you modify the data...
@@ -29,12 +27,12 @@ await database.insert('tasks', {'id': 't4', 'title': 'A new task'});
 // ...the stream will automatically emit the new list of tasks.
 ```
 
-You can also use the query builder for more complex streaming queries.
+You can also use filtered streaming queries:
 
 ```dart
-final activeTaskStream = database.streamRecords((q) {
-  q.from('tasks').where(col('is_completed').eq(0));
-});
+final activeTaskStream = database.streamRecords((q) => 
+  q.from('tasks').where(RawSqlWhereClause('is_completed = ?', [0]))
+);
 ```
 
 ## How It Works: Dependency Analysis

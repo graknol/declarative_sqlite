@@ -20,11 +20,8 @@ import 'database/schema.dart'; // Your schema definition
 void main() {
   runApp(
     DatabaseProvider(
-      // The name of the database file
       databaseName: 'app.db',
-      // A reference to your schema builder function
-      schema: appSchema,
-      // The child widget tree that can access the database
+      schema: buildAppSchema,
       child: const MyApp(),
     ),
   );
@@ -36,7 +33,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: HomeScreen(),
+      home: const HomeScreen(),
     );
   }
 }
@@ -77,23 +74,32 @@ import 'path/to/your/schema.dart';
 Future<void> main() async {
   // 1. Initialize the FFI driver
   sqfliteFfiInit();
-  final dbFactory = databaseFactoryFfi;
 
-  // 2. Create a DeclarativeDatabase instance
-  final database = DeclarativeDatabase(
-    path: 'my_app.db',
-    schema: appSchema,
-    dbFactory: dbFactory,
+  // 2. Build the schema
+  final schemaBuilder = SchemaBuilder();
+  buildAppSchema(schemaBuilder);
+  final schema = schemaBuilder.build();
+
+  // 3. Open the database
+  final database = await DeclarativeDatabase.open(
+    'my_app.db',
+    databaseFactory: databaseFactoryFfi,
+    schema: schema,
+    fileRepository: FilesystemFileRepository('files'),
   );
 
-  // 3. Initialize the database
-  // This opens the connection and runs migrations
-  await database.init();
-
-  print('Database initialized successfully!');
+  print('Database opened successfully!');
 
   // Your application logic here...
-  // e.g., await database.insert('users', ...);
+  await database.insert('users', {
+    'id': '1',
+    'name': 'Alice',
+    'email': 'alice@example.com',
+  });
+
+  // Query data
+  final users = await database.queryMaps((q) => q.from('users'));
+  print('Users: $users');
 
   // 4. Close the database when done
   await database.close();

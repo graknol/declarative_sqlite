@@ -26,27 +26,27 @@ class TaskList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final database = DatabaseProvider.of(context);
-
-    return QueryListView<Task>( // Specify the typed DbRecord if using one
-      database: database,
-      // The query to be executed and streamed
-      query: (q) => q.from('tasks').orderBy('created_at DESC'),
-      // A builder for each item in the list
+    return QueryListView<DbRecord>(
+      query: (q) => q.from('tasks'),
+      mapper: (row, db) => DbRecord(row, 'tasks', db),
       itemBuilder: (context, task) {
         return ListTile(
-          title: Text(task.title),
-          subtitle: Text('Due: ${task.dueDate}'),
+          title: Text(task.getValue('title') as String),
+          subtitle: Text('Due: ${task.getValue('due_date')}'),
           trailing: Checkbox(
-            value: task.isCompleted,
-            onChanged: (isCompleted) {
-              task.isCompleted = isCompleted ?? false;
-              task.save(); // Save the change back to the database
+            value: (task.getValue('is_completed') as int) == 1,
+            onChanged: (isCompleted) async {
+              final database = DatabaseProvider.of(context);
+              await database.update(
+                'tasks',
+                {'is_completed': isCompleted == true ? 1 : 0},
+                where: 'id = ?',
+                whereArgs: [task.getValue('id')],
+              );
             },
           ),
         );
       },
-      // Optional: A widget to show while the initial data is loading
       loadingBuilder: (context) => const Center(child: CircularProgressIndicator()),
       // Optional: A widget to show when the query returns no results
       emptyBuilder: (context) => const Center(child: Text('No tasks yet!')),

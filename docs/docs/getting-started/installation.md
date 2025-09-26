@@ -69,22 +69,6 @@ void main() {
 
 Flutter projects using the standard `sqflite` package do **not** need this step, as initialization is handled automatically.
 
-## 3. Configure the Code Generator (Optional, but Recommended)
-
-To enable code generation for your `DbRecord` classes, create a `build.yaml` file in the root of your project. This file tells the generator where to find your schema definition, which is necessary for creating typed accessors.
-
-```yaml title="build.yaml"
-targets:
-  $default:
-    builders:
-      declarative_sqlite_generator:
-        options:
-          # Relative path to the file containing your schema builder function
-          schema_definition_file: "lib/database/schema.dart"
-```
-
-Replace `"lib/database/schema.dart"` with the actual path to your schema definition file.
-
 ## Next Steps
 
 With the installation complete, you're ready to define your first schema.
