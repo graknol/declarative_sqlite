@@ -290,7 +290,7 @@ final schema = SchemaBuilder()
     table.text('description').maxLength(500);
     table.real('quantity').notNull(0.0).lww();
     table.key(['work_order_id', 'line_no']).primary();
-    table.key(['work_order_id']).index(); // Foreign key index
+    table.key(['work_order_id']).index(); // Performance index for queries
   })
   .view('work_order_summary', (view) {
     view
@@ -398,7 +398,7 @@ table.text('required_field').notNull(); // Missing default!
 // ❌ Using LWW for system-critical data
 table.real('account_balance').lww(); // Don't use LWW for financial data!
 
-// ❌ Missing indices for foreign keys
+// ❌ Missing indices for related columns
 table.guid('parent_id'); // Should add .index() for performance
 ```
 
@@ -428,7 +428,7 @@ await database.insert('users', user.toMap());
 - Validate fileset constraints during development
 
 ### Performance Optimization
-- Create indices for all foreign key columns
+- Create indices for all related/reference columns
 - Use composite indices for multi-column WHERE clauses
 - Batch bulk operations for better performance
 - Consider view materialization for expensive computations
