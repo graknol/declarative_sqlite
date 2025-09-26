@@ -67,7 +67,7 @@ const config: Config = {
       items: [
         {
           type: 'docSidebar',
-          sidebarId: 'tutorialSidebar',
+          sidebarId: 'docs',
           position: 'left',
           label: 'Documentation',
         },
@@ -89,16 +89,16 @@ const config: Config = {
               to: '/docs/intro',
             },
             {
-              label: 'Typed Records',
-              to: '/docs/core-library/typed-records',
+              label: 'Core Library',
+              to: '/docs/core-library/intro',
             },
             {
-              label: 'Exception Handling',
-              to: '/docs/core-library/exception-handling',
+              label: 'Query Builder',
+              to: '/docs/core-library/query-builder',
             },
             {
               label: 'Flutter Integration',
-              to: '/docs/flutter-integration/widgets',
+              to: '/docs/flutter-integration/intro',
             },
           ],
         },
