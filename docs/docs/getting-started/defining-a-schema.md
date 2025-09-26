@@ -90,19 +90,22 @@ void buildAppSchema(SchemaBuilder builder) {
 
 ## Usage in Your Application
 
-Once you've defined your schema function, you'll use it when opening the database:
+Once you've defined your schema function, you'll use it with the `DatabaseProvider` widget:
 
-```dart
-final schemaBuilder = SchemaBuilder();
-buildAppSchema(schemaBuilder);
-final schema = schemaBuilder.build();
+```dart title="lib/main.dart"
+import 'package:flutter/material.dart';
+import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
+import 'database/schema.dart';
 
-final database = await DeclarativeDatabase.open(
-  'app.db',
-  databaseFactory: databaseFactoryFfi,
-  schema: schema,
-  fileRepository: FilesystemFileRepository('files'),
-);
+void main() {
+  runApp(
+    DatabaseProvider(
+      databaseName: 'app.db',
+      schema: buildAppSchema,
+      child: const MyApp(),
+    ),
+  );
+}
 ```
 
 ## Next Steps

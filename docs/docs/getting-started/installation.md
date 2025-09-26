@@ -4,15 +4,11 @@ sidebar_position: 1
 
 # Installation
 
-Setting up `declarative_sqlite` involves adding the required packages to your `pubspec.yaml` and choosing the appropriate SQLite driver for your target platform.
+Setting up `declarative_sqlite` for Flutter involves adding the required packages to your `pubspec.yaml`. The library uses the standard `sqflite` plugin for Android and iOS compatibility.
 
-## 1. Add Dependencies
+## Add Dependencies
 
-The ecosystem is split into multiple packages. Add the ones you need for your project.
-
-### For Flutter Projects
-
-For a standard Flutter application, you'll need the core library, the Flutter integration package, and the `sqflite` driver. If you plan to use code generation (recommended), you'll also need the generator and `build_runner`.
+For a Flutter application, you'll need the core library, the Flutter integration package, and the `sqflite` driver. If you plan to use code generation (recommended), you'll also need the generator and `build_runner`.
 
 ```yaml title="pubspec.yaml"
 dependencies:
@@ -22,7 +18,7 @@ dependencies:
   declarative_sqlite: ^1.0.1
   # Flutter-specific widgets and helpers
   declarative_sqlite_flutter: ^1.0.1
-  # Standard SQLite plugin for Flutter
+  # Standard SQLite plugin for Flutter (Android/iOS)
   sqflite: ^2.3.3
 
 dev_dependencies:
@@ -32,42 +28,11 @@ dev_dependencies:
   build_runner: ^2.4.10
 ```
 
-### For Standalone Dart Projects
+After adding the dependencies, run `flutter pub get` to install them.
 
-For command-line or server-side Dart applications, you'll need the core library and the `sqflite_common_ffi` driver.
+## Database Initialization
 
-```yaml title="pubspec.yaml"
-dependencies:
-  # Core library
-  declarative_sqlite: ^1.0.1
-  # FFI-based SQLite driver for Dart
-  sqflite_common_ffi: ^2.3.3
-
-dev_dependencies:
-  # Code generator for DbRecord classes
-  declarative_sqlite_generator: ^1.0.1
-  # Standard Dart build tool
-  build_runner: ^2.4.10
-```
-
-After adding the dependencies, run `flutter pub get` or `dart pub get` to install them.
-
-## 2. Initialize the Database Driver (Dart Only)
-
-For standalone Dart applications using FFI, you need to initialize the `sqflite_common_ffi` driver at the beginning of your application's entry point.
-
-```dart title="bin/my_app.dart"
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-
-void main() {
-  // Initialize FFI
-  sqfliteFfiInit();
-
-  // Your application logic here...
-}
-```
-
-Flutter projects using the standard `sqflite` package do **not** need this step, as initialization is handled automatically.
+Flutter projects using the `sqflite` package do **not** need any special initialization steps. The SQLite driver is automatically available on Android and iOS platforms.
 
 ## Next Steps
 
