@@ -1,3 +1,10 @@
+## 1.0.1
+
+### Updates
+- Updated to use declarative_sqlite ^1.0.1
+- Added missing dependencies (glob, logging, path) for proper pub.dev publication
+- Updated documentation to remove build.yaml requirement
+
 ## 1.0.0
 
 ### Features

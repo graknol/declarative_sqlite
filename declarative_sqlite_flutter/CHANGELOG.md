@@ -1,3 +1,10 @@
+## 1.0.1
+
+### Updates
+- Updated to use declarative_sqlite ^1.0.1
+- Added missing dependencies for proper pub.dev publication
+- Updated documentation examples
+
 ## 1.0.0
 
 ### Features
