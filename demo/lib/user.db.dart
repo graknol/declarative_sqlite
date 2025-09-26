@@ -37,6 +37,12 @@ extension UserGenerated on User {
   /// Sets the gender column value.
   set gender(String value) => setText('gender', value);
 
+  /// Gets the kids column value.
+  int get kids => getIntegerNotNull('kids');
+
+  /// Sets the kids column value.
+  set kids(int value) => setInteger('kids', value);
+
   /// Gets the created_at column value.
   DateTime get createdAt => getDateTimeNotNull('created_at');
 

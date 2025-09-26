@@ -10,6 +10,7 @@ void buildDatabaseSchema(SchemaBuilder builder) {
     table.text('email').notNull('');
     table.integer('age').notNull(0);
     table.text('gender').notNull('non-binary');
+    table.integer('kids').notNull(0);
     table.date('created_at').notNull().defaultCallback(() => DateTime.now());
     table.key(['id']).primary();
   });

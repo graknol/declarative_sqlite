@@ -381,7 +381,7 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
             ),
           ),
           title: Text(user.name),
-          subtitle: Text('${user.email} • Age: ${user.age}'),
+          subtitle: Text('${user.email} • Age: ${user.age} • Kids: ${user.kids}'),
           trailing: IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () => _editUser(user),
@@ -684,7 +684,11 @@ class _DemoHomeScreenState extends State<DemoHomeScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () {
+              user.kids++;
+              user.save();
+              Navigator.of(context).pop();
+            },
             child: const Text('Close'),
           ),
         ],
