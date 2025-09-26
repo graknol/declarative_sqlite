@@ -19,16 +19,21 @@ Add the package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
+  flutter:
+    sdk: flutter
+  # Core library
   declarative_sqlite: ^1.0.1
-  # For standalone Dart apps, you need a native library loader.
-  sqflite_common_ffi: ^2.3.3
+  # Flutter integration package
+  declarative_sqlite_flutter: ^1.0.1
+  # Standard SQLite plugin for Flutter (Android/iOS)
+  sqflite: ^2.3.3
 ```
 
-### Example Usage (Standalone Dart)
+### Example Usage (Flutter)
 
 ```dart
-import 'package:declarative_sqlite/declarative_sqlite.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:flutter/material.dart';
+import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
 
 // 1. Define your database schema
 void buildSchema(SchemaBuilder builder) {
@@ -40,48 +45,68 @@ void buildSchema(SchemaBuilder builder) {
   });
 }
 
-Future<void> main() async {
-  // 2. Initialize the FFI driver (for desktop apps)
-  sqfliteFfiInit();
-  
-  // 3. Create schema
-  final schemaBuilder = SchemaBuilder();
-  buildSchema(schemaBuilder);
-  final schema = schemaBuilder.build();
-
-  // 4. Open the database
-  final database = await DeclarativeDatabase.open(
-    'my_app.db',
-    schema: schema,
-    fileRepository: FilesystemFileRepository('files'),
+void main() {
+  runApp(
+    // 2. Wrap your app with DatabaseProvider
+    DatabaseProvider(
+      databaseName: 'my_app.db',
+      schema: buildSchema,
+      child: const MyApp(),
+    ),
   );
+}
 
-  // 5. Insert data
-  await database.insert('users', {
-    'id': 'a1b2c3d4',
-    'name': 'Alice',
-    'age': 30,
-  });
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
-  // 6. Query data with the query builder
-  final users = await database.query((q) => 
-    q.from('users').where('age').isGreaterThan(25)
-  );
-  print('Users older than 25: $users');
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: const HomeScreen(),
+    );
+  }
+}
 
-  // 7. Use streaming queries for reactive UIs
-  final userStream = database.streamQuery((q) => q.from('users'));
-  final subscription = userStream.stream.listen((userList) {
-    print('Current users: ${userList.length}');
-  });
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
 
-  // Changes will automatically be pushed to the stream
-  await database.update('users', {'age': 31}, 
-    where: 'name = ?', whereArgs: ['Alice']);
-
-  // Clean up
-  await subscription.cancel();
-  await database.close();
+  @override
+  Widget build(BuildContext context) {
+    // 3. Access the database from any descendant widget
+    final database = DatabaseProvider.of(context);
+    
+    return Scaffold(
+      appBar: AppBar(title: const Text('Declarative SQLite Demo')),
+      body: Column(
+        children: [
+          ElevatedButton(
+            onPressed: () async {
+              // 4. Insert data
+              await database.insert('users', {
+                'id': 'a1b2c3d4',
+                'name': 'Alice',
+                'age': 30,
+              });
+            },
+            child: const Text('Add User'),
+          ),
+          // 5. Use QueryListView for reactive data display
+          Expanded(
+            child: QueryListView<DbRecord>(
+              query: (q) => q.from('users').where('age').isGreaterThan(25),
+              mapper: (row, db) => DbRecord(row, 'users', db),
+              itemBuilder: (context, user) {
+                return ListTile(
+                  title: Text(user.getValue('name')!),
+                  subtitle: Text('Age: ${user.getValue('age')}'),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 ```
 

@@ -246,15 +246,9 @@ The package provides excellent testing support with in-memory databases:
 ```dart
 import 'package:test/test.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
   late DeclarativeDatabase database;
-
-  setUpAll(() {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  });
 
   setUp(() async {
     database = DeclarativeDatabase.memory(buildTestSchema);

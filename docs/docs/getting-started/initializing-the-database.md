@@ -4,9 +4,9 @@ sidebar_position: 3
 
 # Initializing the Database
 
-Once you have defined your schema, the next step is to create and initialize a `DeclarativeDatabase` instance. This process involves connecting to the database file, analyzing the existing schema, and automatically applying any necessary migrations.
+Once you have defined your schema, the next step is to create and initialize a `DeclarativeDatabase` instance using the `DatabaseProvider` widget. This process involves connecting to the database file, analyzing the existing schema, and automatically applying any necessary migrations.
 
-## Using `DatabaseProvider` (Flutter)
+## Using `DatabaseProvider`
 
 In a Flutter application, the easiest way to manage the database lifecycle is with the `DatabaseProvider` widget. It handles initialization, closing the connection, and making the database instance available to the entire widget tree.
 
@@ -51,58 +51,9 @@ class HomeScreen extends StatelessWidget {
     final database = DatabaseProvider.of(context);
 
     return Scaffold(
-      // ...
+      // Your app UI here...
     );
   }
-}
-```
-
-## Manual Initialization (Standalone Dart)
-
-In a standalone Dart application, you create and initialize the `DeclarativeDatabase` instance manually.
-
-You'll need to provide:
-- `path`: The path to the database file.
-- `schema`: A reference to your schema builder function.
-- `dbFactory`: The database factory from `sqflite_common_ffi`.
-
-```dart title="bin/my_app.dart"
-import 'package:declarative_sqlite/declarative_sqlite.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'path/to/your/schema.dart';
-
-Future<void> main() async {
-  // 1. Initialize the FFI driver
-  sqfliteFfiInit();
-
-  // 2. Build the schema
-  final schemaBuilder = SchemaBuilder();
-  buildAppSchema(schemaBuilder);
-  final schema = schemaBuilder.build();
-
-  // 3. Open the database
-  final database = await DeclarativeDatabase.open(
-    'my_app.db',
-    databaseFactory: databaseFactoryFfi,
-    schema: schema,
-    fileRepository: FilesystemFileRepository('files'),
-  );
-
-  print('Database opened successfully!');
-
-  // Your application logic here...
-  await database.insert('users', {
-    'id': '1',
-    'name': 'Alice',
-    'email': 'alice@example.com',
-  });
-
-  // Query data
-  final users = await database.queryMaps((q) => q.from('users'));
-  print('Users: $users');
-
-  // 4. Close the database when done
-  await database.close();
 }
 ```
 
@@ -124,7 +75,6 @@ This process is fully automatic. You only need to update your schema in your Dar
 
 You can enable detailed logging for the migration process by setting the `logStatements` flag to `true`. This is useful for debugging what happens during initialization.
 
-**In Flutter:**
 ```dart
 DatabaseProvider(
   databaseName: 'app.db',
@@ -132,17 +82,6 @@ DatabaseProvider(
   logStatements: true, // Enable logging
   child: const MyApp(),
 )
-```
-
-**In Dart:**
-```dart
-final database = DeclarativeDatabase(
-  path: 'my_app.db',
-  schema: appSchema,
-  dbFactory: dbFactory,
-  logStatements: true, // Enable logging
-);
-await database.init();
 ```
 
 ## Next Steps
