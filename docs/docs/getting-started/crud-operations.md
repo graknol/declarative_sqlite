@@ -108,17 +108,38 @@ await database.delete(
 
 If you omit the `where` clause, **all records in the table will be deleted**.
 
-## Transactions
+## Important: Transactions Not Supported
 
-For operations that need to be atomic (either all succeed or all fail), you can use the `transaction` method. If any error occurs within the transaction block, all changes made inside it are automatically rolled back.
+**Transactions are explicitly NOT supported** in DeclarativeDatabase and will throw `UnsupportedError`. This is intentional due to complexity with dirty row rollbacks, real-time streaming queries, and change notifications.
 
 ```dart
-await database.transaction((txn) async {
-  // 'txn' is a transaction-aware database instance
-  await txn.delete('tasks', where: 'user_id = ?', whereArgs: ['user-123']);
-  await txn.delete('users', where: 'id = ?', whereArgs: ['user-123']);
-});
+// DON'T DO THIS - Will throw UnsupportedError
+try {
+  await database.transaction((txn) async {
+    await txn.delete('tasks', where: 'user_id = ?', whereArgs: ['user-123']);
+    await txn.delete('users', where: 'id = ?', whereArgs: ['user-123']);
+  });
+} catch (e) {
+  // UnsupportedError: Transactions are not supported in DeclarativeDatabase...
+}
 ```
+
+### Alternative Approaches
+
+Instead of transactions, use separate operations with error handling:
+
+```dart
+// Use separate operations with proper error handling
+try {
+  await database.delete('tasks', where: 'user_id = ?', whereArgs: ['user-123']);
+  await database.delete('users', where: 'id = ?', whereArgs: ['user-123']);
+} catch (e) {
+  // Handle errors and implement compensating actions if needed
+  // For example: restore deleted tasks if user deletion fails
+}
+```
+
+This design prioritizes simplicity, reliability, and real-time capabilities over traditional ACID transaction semantics.
 
 ## Next Steps
 
