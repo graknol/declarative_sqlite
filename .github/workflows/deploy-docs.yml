@@ -42,6 +42,9 @@ jobs:
           npm ci
           
       - name: Build documentation
+        env:
+          ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
+          ALGOLIA_API_KEY: ${{ secrets.ALGOLIA_API_KEY }}
         run: |
           cd docs
           npm run build
