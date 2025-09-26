@@ -22,9 +22,9 @@ dependencies:
   flutter:
     sdk: flutter
   # Core library
-  declarative_sqlite: ^1.0.1
+  declarative_sqlite: ^1.0.2
   # Flutter integration package
-  declarative_sqlite_flutter: ^1.0.1
+  declarative_sqlite_flutter: ^1.0.2
   # Standard SQLite plugin for Flutter (Android/iOS)
   sqflite: ^2.3.3
 ```

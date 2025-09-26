@@ -15,15 +15,15 @@ dependencies:
   flutter:
     sdk: flutter
   # Core library
-  declarative_sqlite: ^1.0.1
+  declarative_sqlite: ^1.0.2
   # Flutter-specific widgets and helpers
-  declarative_sqlite_flutter: ^1.0.1
+  declarative_sqlite_flutter: ^1.0.2
   # Standard SQLite plugin for Flutter (Android/iOS)
   sqflite: ^2.3.3
 
 dev_dependencies:
   # Code generator for DbRecord classes
-  declarative_sqlite_generator: ^1.0.1
+  declarative_sqlite_generator: ^1.0.2
   # Standard Dart build tool
   build_runner: ^2.4.10
 ```

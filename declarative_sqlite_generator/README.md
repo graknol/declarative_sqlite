@@ -15,11 +15,11 @@ Add the packages to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  declarative_sqlite: ^1.0.0
+  declarative_sqlite: ^1.0.2
 
 dev_dependencies:
   build_runner: ^2.4.0
-  declarative_sqlite_generator: ^1.0.0
+  declarative_sqlite_generator: ^1.0.2
 ```
 
 ## Usage

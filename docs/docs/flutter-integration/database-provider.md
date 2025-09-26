@@ -26,8 +26,6 @@ void main() {
       databaseName: 'my_application.db',
       // A reference to your schema builder function
       schema: appSchema,
-      // Enable logging for migrations and statements (optional)
-      logStatements: true,
       // The rest of your application
       child: const MyApp(),
     ),
@@ -40,7 +38,6 @@ void main() {
 -   `databaseName` (required): The filename for your SQLite database.
 -   `schema` (required): A reference to the function that defines your database schema.
 -   `child` (required): The widget tree that will have access to the database.
--   `logStatements` (optional): A boolean to enable detailed logging of SQL statements and migration steps. Defaults to `false`.
 -   `fileRepository` (optional): An instance of `IFileRepository` if you are using the file management features.
 
 ## Accessing the Database

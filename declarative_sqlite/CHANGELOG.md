@@ -1,3 +1,14 @@
+## 1.0.2
+
+### Breaking Changes
+- Removed foreign key functionality from KeyBuilder and DbKey classes
+- Foreign key constraint handling removed from exception system
+- Architecture now favors application-level relationship management
+
+### Documentation
+- Updated all documentation to remove foreign key references
+- Improved examples focusing on application-domain relationships
+
 ## 1.0.1
 
 ### Features

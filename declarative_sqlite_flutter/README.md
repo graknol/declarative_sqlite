@@ -17,8 +17,8 @@ Add both packages to your `pubspec.yaml`:
 dependencies:
   flutter:
     sdk: flutter
-  declarative_sqlite: ^1.0.0
-  declarative_sqlite_flutter: ^1.0.0
+  declarative_sqlite: ^1.0.2
+  declarative_sqlite_flutter: ^1.0.2
 ```
 
 ### Example Usage

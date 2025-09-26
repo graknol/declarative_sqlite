@@ -48,12 +48,12 @@ To get started, add the necessary packages to your `pubspec.yaml`:
 dependencies:
   flutter:
     sdk: flutter
-  declarative_sqlite: ^1.0.1
-  declarative_sqlite_flutter: ^1.0.1
+  declarative_sqlite: ^1.0.2
+  declarative_sqlite_flutter: ^1.0.2
 
 dev_dependencies:
   build_runner: ^2.4.10
-  declarative_sqlite_generator: ^1.0.1
+  declarative_sqlite_generator: ^1.0.2
 ```
 
 For a detailed guide, please refer to our [**official documentation**](https://graknol.github.io/declarative_sqlite/).

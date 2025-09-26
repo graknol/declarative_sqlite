@@ -73,13 +73,12 @@ This process is fully automatic. You only need to update your schema in your Dar
 
 ## Debugging Migrations
 
-You can enable detailed logging for the migration process by setting the `logStatements` flag to `true`. This is useful for debugging what happens during initialization.
+In debug mode, the migration statements are shown in the debug console. This is useful for debugging what happens during initialization.
 
 ```dart
 DatabaseProvider(
   databaseName: 'app.db',
   schema: appSchema,
-  logStatements: true, // Enable logging
   child: const MyApp(),
 )
 ```

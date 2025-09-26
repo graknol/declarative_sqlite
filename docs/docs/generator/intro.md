@@ -31,11 +31,11 @@ Ensure you have `declarative_sqlite_generator` and `build_runner` in your `dev_d
 
 ```yaml title="pubspec.yaml"
 dependencies:
-  declarative_sqlite: ^1.0.1
+  declarative_sqlite: ^1.0.2
 
 dev_dependencies:
   build_runner: ^2.4.10
-  declarative_sqlite_generator: ^1.0.1
+  declarative_sqlite_generator: ^1.0.2
 ```
 
 ### 2. Define Your Schema with @DbSchema

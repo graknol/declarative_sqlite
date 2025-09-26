@@ -1,6 +1,6 @@
 name: declarative_sqlite
 description: A dart package for declaratively creating SQLite tables and automatically migrating them.
-version: 1.0.1
+version: 1.0.2
 repository: https://github.com/graknol/declarative_sqlite
 
 environment:

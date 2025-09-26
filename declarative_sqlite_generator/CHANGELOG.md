@@ -1,3 +1,9 @@
+## 1.0.2
+
+### Updates
+- Updated to use declarative_sqlite ^1.0.2
+- Aligned with foreign key removal changes
+
 ## 1.0.1
 
 ### Updates
