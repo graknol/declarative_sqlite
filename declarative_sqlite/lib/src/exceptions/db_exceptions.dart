@@ -11,7 +11,7 @@ enum DbOperationType {
 
 /// Enumeration of database error categories
 enum DbErrorCategory {
-  /// Constraint violation (unique, foreign key, check, etc.)
+  /// Constraint violation (unique, primary key, check, etc.)
   constraintViolation,
   
   /// Resource not found (table, column, record, etc.)

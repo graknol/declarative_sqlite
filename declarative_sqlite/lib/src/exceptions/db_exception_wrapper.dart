@@ -305,8 +305,6 @@ class DbExceptionWrapper {
     
     if (lowerMessage.contains('unique')) {
       return ConstraintType.unique;
-    } else if (lowerMessage.contains('foreign key') || lowerMessage.contains('fkey')) {
-      return ConstraintType.foreignKey;
     } else if (lowerMessage.contains('not null')) {
       return ConstraintType.notNull;
     } else if (lowerMessage.contains('check')) {
@@ -321,7 +319,6 @@ class DbExceptionWrapper {
   /// Gets the appropriate log level based on constraint type
   static int _getConstraintLogLevel(ConstraintType type) {
     switch (type) {
-      case ConstraintType.foreignKey:
       case ConstraintType.primaryKey:
         return 1000; // SEVERE - Data integrity violations
       case ConstraintType.unique:
@@ -336,8 +333,6 @@ class DbExceptionWrapper {
   /// Gets an appropriate emoji based on constraint type for visual identification
   static String _getConstraintEmoji(ConstraintType type) {
     switch (type) {
-      case ConstraintType.foreignKey:
-        return '🔗'; // Chain link for foreign key relationships
       case ConstraintType.primaryKey:
         return '🔑'; // Key for primary key
       case ConstraintType.unique:
@@ -355,7 +350,6 @@ class DbExceptionWrapper {
 /// Enum for different constraint violation types
 enum ConstraintType {
   unique,
-  foreignKey,
   notNull,
   check,
   primaryKey,
@@ -368,8 +362,6 @@ extension ConstraintTypeName on ConstraintType {
     switch (this) {
       case ConstraintType.unique:
         return 'Unique';
-      case ConstraintType.foreignKey:
-        return 'ForeignKey';
       case ConstraintType.notNull:
         return 'NotNull';
       case ConstraintType.check:

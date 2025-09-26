@@ -111,7 +111,6 @@ class DbExceptionMapper {
     // Fallback to message-based detection
     if (lowerErrorMessage.contains('constraint') ||
         lowerErrorMessage.contains('unique') ||
-        lowerErrorMessage.contains('foreign key') ||
         lowerErrorMessage.contains('primary key') ||
         lowerErrorMessage.contains('check constraint')) {
       return DbErrorCategory.constraintViolation;
@@ -314,7 +313,7 @@ class DbExceptionMapper {
     switch (errorCategory) {
       case DbErrorCategory.constraintViolation:
         return DbDeleteException.constraintViolation(
-          message: 'Cannot delete record due to foreign key constraint${tableName != null ? ' in table $tableName' : ''}',
+          message: 'Cannot delete record due to constraint violation${tableName != null ? ' in table $tableName' : ''}',
           tableName: tableName,
           originalException: originalException,
           context: context,
@@ -404,10 +403,6 @@ class DbExceptionMapper {
     
     if (errorMessage.contains('unique')) {
       return 'Unique constraint violation${columnName != null ? ' on column $columnName' : ''}${tableName != null ? ' in table $tableName' : ''}';
-    }
-    
-    if (errorMessage.contains('foreign key')) {
-      return 'Foreign key constraint violation${tableName != null ? ' in table $tableName' : ''}';
     }
     
     if (errorMessage.contains('primary key')) {
