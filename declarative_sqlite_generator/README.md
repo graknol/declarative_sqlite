@@ -35,8 +35,8 @@ dev_dependencies:
 
     @GenerateDbRecord('users')
     class User extends DbRecord {
-      User(Map<String, Object?> data, String tableName, DeclarativeDatabase database)
-          : super(data, tableName, database);
+      User(Map<String, Object?> data, DeclarativeDatabase database)
+          : super(data, 'users', database);
 
       // Typed accessors will be generated automatically
       // Generated extension will provide:

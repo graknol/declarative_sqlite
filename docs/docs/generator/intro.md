@@ -75,16 +75,8 @@ part 'task.db.dart';
 
 @GenerateDbRecord('tasks')
 class Task extends DbRecord {
-  // The constructor must match the DbRecord signature.
-  Task(Map<String, Object?> data, String tableName, DeclarativeDatabase database)
-      : super(data, tableName, database);
-
-  // Convenient getters and setters using the base class methods
-  String get title => getValue('title')!;
-  set title(String value) => setValue('title', value);
-  
-  bool get completed => getValue('completed') == 1;
-  set completed(bool value) => setValue('completed', value ? 1 : 0);
+  Task(Map<String, Object?> data, DeclarativeDatabase database)
+      : super(data, 'tasks', database);
 }
 ```
 

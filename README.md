@@ -33,7 +33,7 @@ Provides Flutter-specific widgets and utilities to easily integrate `declarative
 A build-time code generator that creates boilerplate code for you, enhancing productivity and reducing errors.
 
 **Key Features:**
-- **Typed Record Classes**: Automatically generates typed getters, setters, and `fromMap` constructors for your `DbRecord` classes based on your schema.
+- **Typed Record Classes**: Automatically generates typed getters and setters for your `DbRecord` classes based on your schema.
 - **Factory Registration**: Generates code to automatically register your typed record factories, simplifying database setup.
 
 ### 🚀 Demo Application (`demo`)
