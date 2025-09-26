@@ -47,7 +47,7 @@ Each column builder provides methods to add constraints:
 You can define primary keys, unique constraints, and indexes using the `table.key()` method.
 - `key([...]).primary()`: Defines a primary key.
 - `key([...]).unique()`: Defines a unique constraint.
-- `key([...]).indexed()`: Creates an index on the specified columns.
+- `key([...]).index()`: Creates an index on the specified columns.
 
 ### Example: A Simple Schema
 
@@ -83,7 +83,7 @@ void buildAppSchema(SchemaBuilder builder) {
     // Define primary key
     table.key(['id']).primary();
     // Add an index on user_id for faster lookups
-    table.key(['user_id']).indexed();
+    table.key(['user_id']).index();
   });
 }
 ```
