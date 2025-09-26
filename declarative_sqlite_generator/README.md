@@ -1,26 +1,25 @@
-# Declarative SQLite Generator
+# DeclarativeSQLite Generator
 
-A build-time code generator that creates boilerplate code for `declarative_sqlite`, enhancing productivity and reducing errors.
-
-This generator inspects your `DbRecord` classes and your database schema to generate helpful extensions, including typed getters/setters and `fromMap` constructors.
+Code generation for DeclarativeSQLite that creates typed record classes and reduces boilerplate.
 
 ## Features
 
-- **Typed Record Classes**: Automatically generates a `.g.dart` file for each of your `DbRecord` subclasses. This file contains a private extension with typed getters and setters for every column in the corresponding table. This gives you full type safety and autocompletion when accessing record data.
-- **`fromMap` Constructors**: Generates a static `fromMap` factory on the extension, removing the need to write and maintain this boilerplate yourself.
-- **Factory Registration**: Creates a `sqlite_factory_registration.dart` file that contains an `initFactoryRegistration()` function. Calling this function once at startup automatically registers all your generated `fromMap` factories with the `RecordMapFactoryRegistry`, allowing `declarative_sqlite` to automatically map query results to your typed objects.
+- **`@GenerateDbRecord` annotation**: Generates typed accessors for database record classes
+- **Build-time code generation**: Uses `build_runner` for compile-time code generation
+- **Type safety**: Provides compile-time checking for database field access
+- **Integration with core library**: Works seamlessly with `DeclarativeDatabase`
 
-## Getting Started
+## Installation
 
-Add the necessary packages to your `pubspec.yaml`:
+Add the packages to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  declarative_sqlite: ^1.0.1
+  declarative_sqlite: ^1.0.0
 
 dev_dependencies:
-  build_runner: ^2.4.10
-  declarative_sqlite_generator: ^1.0.1
+  build_runner: ^2.4.0
+  declarative_sqlite_generator: ^1.0.0
 ```
 
 ## Usage
@@ -36,33 +35,32 @@ dev_dependencies:
 
     @GenerateDbRecord('users')
     class User extends DbRecord {
-      User(super.data, super.database) : super(tableName: 'users');
+      User(Map<String, Object?> data, String tableName, DeclarativeDatabase database)
+          : super(data, tableName, database);
 
-      // Redirecting constructor for convenience
-      factory User.fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-        return _User.fromMap(data, database);
-      }
-
-      // Typed accessors will be available via the generated extension
-      String get name => _user.name;
-      set name(String value) => _user.name = value;
+      // Typed accessors will be generated automatically
+      // Generated extension will provide:
+      // String get name => getValue('name')!;
+      // set name(String value) => setValue('name', value);
+      // int get age => getValue('age')!;
+      // set age(int value) => setValue('age', value);
+    }
+    
+    // Schema definition (separate file recommended)
+    // lib/database/schema.dart
+    @DbSchema()
+    void buildUserSchema(SchemaBuilder builder) {
+      builder.table('users', (table) {
+        table.guid('id');
+        table.text('name');
+        table.integer('age');
+        table.text('email');
+        table.key(['id']).primary();
+      });
     }
     ```
 
-2.  **Create a `build.yaml` file:**
-    In your project's root directory, create a `build.yaml` file to configure the generator. This tells `build_runner` where to find your schema definition.
-
-    ```yaml
-    targets:
-      $default:
-        builders:
-          declarative_sqlite_generator:
-            options:
-              # Path to the file containing your schema definition function
-              schema_definition_file: "lib/schema.dart"
-    ```
-
-3.  **Run the generator:**
+2.  **Run the generator:**
     Execute the `build_runner` command to generate the necessary files.
 
     ```bash
@@ -73,21 +71,33 @@ dev_dependencies:
     *   `lib/user.db.dart` (the generated part file with the extension)
     *   `lib/sqlite_factory_registration.dart` (the factory registration helper)
 
-4.  **Initialize Factory Registration:**
-    In your app's main entry point, call the generated `initFactoryRegistration()` function before you initialize your database.
+4.  **Use the Generated Code:**
+    The generated extensions provide typed access to your record properties.
 
     ```dart
     import 'package:declarative_sqlite/declarative_sqlite.dart';
-    import 'sqlite_factory_registration.dart'; // Import generated file
+    import 'user.dart';
 
-    void main() {
-      // Register all your generated factories
-      initFactoryRegistration();
+    void main() async {
+      // Initialize your database
+      final schemaBuilder = SchemaBuilder();
+      // ... define your schema
+      final schema = schemaBuilder.build();
+      
+      final database = await DeclarativeDatabase.open(
+        'app.db',
+        schema: schema,
+        databaseFactory: databaseFactory,
+        fileRepository: FilesystemFileRepository('files'),
+      );
 
-      // Now you can initialize your database
-      final database = DeclarativeDatabase(...);
-      // ...
+      // Create and use your typed records
+      final user = User({}, 'users', database);
+      user.name = 'Alice';
+      user.setValue('age', 30);
+      
+      await database.insert('users', user.data);
     }
     ```
 
-Now, when you query the database, it can automatically return instances of your typed `User` class without needing to pass a `mapper` function.
+The generated extensions provide type-safe access to your record properties, reducing runtime errors and improving development experience with better IDE support.

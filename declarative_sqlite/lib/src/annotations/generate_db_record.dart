@@ -6,15 +6,13 @@
 /// Example:
 /// ```dart
 /// @GenerateDbRecord('users')
-/// @RegisterFactory()  // Optional: for automatic factory registration
 /// class User extends DbRecord {
 ///   User(Map<String, Object?> data, DeclarativeDatabase database)
 ///       : super(data, 'users', database);
 ///
-///   // Optional redirect to generated extension
-///   static User fromMap(Map<String, Object?> data, DeclarativeDatabase database) {
-///     return UserGenerated.fromMap(data, database);
-///   }
+///   // The generator creates a `fromMap` constructor on the class itself,
+///   // and typed getters/setters in an extension.
+///   // No need to write them manually.
 /// }
 /// ```
 class GenerateDbRecord {

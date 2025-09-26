@@ -8,56 +8,63 @@ sidebar_position: 4
 
 ## Insert
 
-To add a new record to a table, use the `insert` method. It takes the table name and a `Map<String, Object?>` representing the data to be inserted.
+To add a new record to a table, use the `insert` method. It takes the table name and a `DbRecord` or `Map<String, Object?>` representing the data to be inserted.
 
 ```dart
 final database = DatabaseProvider.of(context);
 
 await database.insert('tasks', {
-  'id': Uuid().v4(),
+  'id': const Uuid().v4(),
   'user_id': 'user-123',
   'title': 'Write documentation',
   'is_completed': 0,
 });
 ```
 
-If the table has system columns enabled (`withSystemColumns: true`), the `insert` method will automatically generate and populate the `system_id`, `system_created_at`, and `system_version` fields.
-
 ## Query (Read)
 
-To read data from the database, use the `query` method. It returns a `Future<List<Map<String, Object?>>>`.
+### Query for DbRecord objects
 
-### Simple Query
-
-Fetch all records from a table.
+The `query` method returns `Future<List<DbRecord>>` for working with typed record objects:
 
 ```dart
-final List<Map<String, Object?>> tasks = await database.query('tasks');
-print(tasks);
-// Output: [{'id': '...', 'title': 'Write documentation', ...}]
+final List<DbRecord> tasks = await database.query((q) => q.from('tasks'));
+for (final task in tasks) {
+  print('Task: ${task.getValue('title')}');
+}
 ```
 
-### Using the Query Builder
+### Query for raw maps
 
-For more complex queries involving `WHERE` clauses, `JOIN`s, `ORDER BY`, etc., you can use the powerful query builder.
+The `queryMaps` method returns `Future<List<Map<String, Object?>>>` for simple data access:
 
 ```dart
-// Find all incomplete tasks for a specific user, ordered by due date.
-final incompleteTasks = await database.query(
-  'tasks',
-  where: 'user_id = ? AND is_completed = ?',
-  whereArgs: ['user-123', 0],
-  orderBy: 'due_date ASC',
+final List<Map<String, Object?>> taskMaps = await database.queryMaps((q) => q.from('tasks'));
+for (final task in taskMaps) {
+  print('Task: ${task['title']}');
+}
+```
+
+### Using WHERE clauses
+
+For filtered queries, use `RawSqlWhereClause`:
+
+```dart
+// Find incomplete tasks for a specific user
+final incompleteTasks = await database.query((q) => 
+  q.from('tasks').where(RawSqlWhereClause(
+    'user_id = ? AND is_completed = ?', 
+    ['user-123', 0]
+  ))
 );
 
 // Using the fluent query builder for more complex scenarios
-final results = await database.queryWithBuilder((q) {
-  q
-      .select('t.title, u.name as author')
-      .from('tasks', as: 't')
-      .join('users', on: 't.user_id = u.id', as: 'u')
-      .where(col('t.is_completed').eq(0))
-      .orderBy('t.due_date');
+final results = await database.query((q) {
+  q.select('t.title, u.name as author')
+    .from('tasks', 't')
+    .innerJoin('users', col('t.user_id').eq(col('u.id')), 'u')
+    .where(col('t.is_completed').eq(0))
+    .orderBy(['t.due_date']);
 });
 ```
 

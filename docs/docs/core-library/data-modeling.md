@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # Data Modeling with DbRecord
 
-While working with raw `Map<String, Object?>` objects is flexible, it's not type-safe and can be error-prone. `declarative_sqlite` provides a `DbRecord` base class to help you create strongly-typed data models that map directly to your database tables.
+While working with raw `Map<String, Object?>` objects is flexible, it's not type-safe and can be error-prone. `declarative_sqlite` provides a `DbRecord` base class to help you create strongly-typed data models that map directly to your database tables and work seamlessly with the query system.
 
 When combined with the `declarative_sqlite_generator` package, you can automate most of the boilerplate, giving you a clean, type-safe, and maintainable way to work with your data.
 
@@ -40,8 +40,10 @@ The `DbRecord` class tracks which fields have been modified. You can persist the
 
 ```dart
 // Fetch a record and map it to a Task object
-final taskMap = (await database.query('tasks', where: 'id = ?', whereArgs: ['task-1']))[0];
-final task = Task(taskMap, database);
+final tasks = await database.query((q) {
+  q.from('tasks').where(col('id').eq('task-1'));
+});
+final task = Task(tasks.first.data, database);
 
 // Modify the object
 task.title = 'A new and improved title';
@@ -70,11 +72,6 @@ part 'task.db.dart'; // Generated file
 class Task extends DbRecord {
   Task(super.data, super.database) : super(tableName: 'tasks');
 
-  // Convenience factory to use the generated fromMap
-  factory Task.fromMap(Map<String, Object?> data, DeclarativeDatabase db) {
-    return _Task.fromMap(data, db);
-  }
-
   // You can still define your own computed properties or methods
   bool get isOverdue => dueDate != null && dueDate!.isBefore(DateTime.now());
 }
@@ -90,17 +87,16 @@ dart run build_runner build --delete-conflicting-outputs
 
 ### 3. Use the Generated Code
 
-The generator will create a `task.db.dart` file containing a private extension `_Task` on your `Task` class. This extension has:
+The generator will create a `task.db.dart` file containing a private extension `TaskGenerated` on your `Task` class. This extension has:
 - A typed getter for every column in the `tasks` table.
 - A typed setter for every column.
-- A static `fromMap` factory.
 
-You can now access the properties in a fully type-safe way. The generator automatically handles type conversions (e.g., for `DateTime` and `bool`).
+You can now access the properties in a fully type-safe way. The generator automatically handles type conversions (e.g., for `DateTime`).
 
 ```dart
 // The generated extension is private to the library, but the properties
 // are accessible on your Task instance.
-final task = Task.fromMap(taskMap, database);
+final task = Task(taskMap, database);
 
 // Accessing generated properties
 String title = task.title; // Type-safe getter
@@ -111,13 +107,13 @@ await task.save();
 
 ### Factory Registration
 
-The generator also creates a `sqlite_factory_registration.dart` file. By calling `initFactoryRegistration()` at startup, you register all your generated `fromMap` factories.
+The generator also creates a `sqlite_factory_registration.dart` file. By calling `SqliteFactoryRegistration.registerAllFactories()` at startup, you register all your generated type factories.
 
-This allows the database to automatically map query results to your typed `DbRecord` objects without you needing to provide a `mapper` function to `query()` or `streamQuery()`.
+This allows the database to automatically map query results to your typed `DbRecord` objects without you needing to provide a `mapper` function to `query()` or `streamRecords()`.
 
 ```dart
 // No mapper function needed if factories are registered!
-final Stream<List<Task>> taskStream = database.streamQuery('tasks');
+final Stream<List<Task>> taskStream = database.streamTyped<Task>((q) => q.from('tasks'));
 
 taskStream.listen((List<Task> tasks) {
   // The stream now emits lists of strongly-typed Task objects directly.

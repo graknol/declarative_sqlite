@@ -25,4 +25,22 @@ class DbKey {
       'foreignColumns': foreignColumns,
     };
   }
+
+  Map<String, dynamic> toJson() => {
+        'columns': columns,
+        'type': type.toString(),
+        'foreignTable': foreignTable,
+        'foreignColumns': foreignColumns,
+      };
+
+  factory DbKey.fromJson(Map<String, dynamic> json) => DbKey(
+        columns: (json['columns'] as List)
+            .map((c) => c as String)
+            .toList(),
+        type: KeyType.values.firstWhere((e) => e.toString() == json['type']),
+        foreignTable: json['foreignTable'],
+        foreignColumns: (json['foreignColumns'] as List?)
+            ?.map((c) => c as String)
+            .toList(),
+      );
 }

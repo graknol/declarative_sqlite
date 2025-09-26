@@ -1,0 +1,17 @@
+targets:
+  $default:
+    builders:
+      declarative_sqlite_generator:schema_generator:
+        enabled: true
+        options:
+          schema_definition_file: "test_simple|lib/simple_test.dart"
+      declarative_sqlite_generator:declarative_sqlite_generator:
+        enabled: true
+        generate_for:
+          - lib/**
+      declarative_sqlite_generator:registration_scanner:
+        enabled: true
+        generate_for:
+          - lib/**
+      declarative_sqlite_generator:registration_aggregator:
+        enabled: true

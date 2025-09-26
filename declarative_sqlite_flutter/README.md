@@ -1,25 +1,24 @@
-# Declarative SQLite for Flutter
+# DeclarativeSQLite Flutter
 
-Flutter-specific widgets and utilities to easily integrate the `declarative_sqlite` core library into your Flutter applications.
-
-This package provides helpful widgets that simplify state management and UI updates when working with a reactive SQLite database.
+Flutter integration for DeclarativeSQLite, providing reactive widgets for database operations.
 
 ## Features
 
-- **`DatabaseProvider`**: An `InheritedWidget` that manages the lifecycle of your `DeclarativeDatabase` instance and provides easy access to it from anywhere in the widget tree.
-- **`QueryListView`**: A reactive `ListView` that listens to a streaming query and automatically rebuilds itself with smooth animations when the underlying data changes. It handles all the boilerplate of subscribing to a stream and updating the UI.
+- **`DatabaseProvider`**: Provides database context to widget tree and manages database lifecycle
+- **`QueryListView`**: Reactive list widget that updates automatically when database changes
+- **Stream integration**: Works with DeclarativeDatabase streaming queries
+- **Automatic lifecycle management**: Handles database opening/closing
 
-## Getting Started
+## Installation
 
-Add the packages to your `pubspec.yaml`:
+Add both packages to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
   flutter:
     sdk: flutter
-  declarative_sqlite: ^1.0.1
-  declarative_sqlite_flutter: ^1.0.1
-  sqflite: ^2.3.3 # The standard SQLite plugin for Flutter
+  declarative_sqlite: ^1.0.0
+  declarative_sqlite_flutter: ^1.0.0
 ```
 
 ### Example Usage
@@ -29,22 +28,31 @@ import 'package:flutter/material.dart';
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
 
-// 1. Define your schema (can be in a separate file)
-void buildSchema(SchemaBuilder builder) {
+## Usage
+
+### 1. Define your schema
+
+```dart
+import 'package:declarative_sqlite/declarative_sqlite.dart';
+
+void buildTaskSchema(SchemaBuilder builder) {
   builder.table('tasks', (table) {
-    table.guid('id').notNull();
-    table.text('title').notNull();
-    table.integer('completed').notNull().defaultValue(0);
+    table.guid('id');
+    table.text('title');
+    table.integer('completed');
     table.key(['id']).primary();
   });
 }
+```
 
-// 2. Wrap your app with DatabaseProvider
+### 2. Wrap your app with DatabaseProvider
+
+```dart
 void main() {
   runApp(
     DatabaseProvider(
       databaseName: 'tasks.db',
-      schema: buildSchema,
+      schema: buildTaskSchema,
       child: const MyApp(),
     ),
   );
@@ -57,40 +65,44 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Task Manager',
-      home: TaskScreen(),
+      home: const TaskScreen(),
     );
   }
 }
+```
 
-// 3. Use QueryListView to display reactive data
+### 3. Use QueryListView for reactive data
+
+```dart
 class TaskScreen extends StatelessWidget {
   const TaskScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final database = DatabaseProvider.of(context);
-
+    
     return Scaffold(
       appBar: AppBar(title: const Text('Tasks')),
-      body: QueryListView(
-        database: database,
-        query: (q) => q.from('tasks').orderBy('title'),
-        itemBuilder: (context, record) {
-          final isCompleted = record.data['completed'] == 1;
+      body: QueryListView<DbRecord>(
+        query: (q) => q.from('tasks'),
+        mapper: (row, db) => DbRecord(row, 'tasks', db),
+        loadingBuilder: (context) => const CircularProgressIndicator(),
+        errorBuilder: (context, error) => Text('Error: $error'),
+        itemBuilder: (context, task) {
           return ListTile(
             title: Text(
-              record.data['title'] as String,
+              task.getValue('title')!,
               style: TextStyle(
-                decoration: isCompleted ? TextDecoration.lineThrough : null,
+                decoration: task.getValue('completed') == 1 
+                    ? TextDecoration.lineThrough : null,
               ),
             ),
             onTap: () {
               // Toggle completion status
-              database.update(
-                'tasks',
+              final isCompleted = task.getValue('completed') == 1;
+              database.update('tasks', 
                 {'completed': isCompleted ? 0 : 1},
-                where: 'id = ?',
-                whereArgs: [record.data['id']],
+                where: 'id = ?', whereArgs: [task.getValue('id')],
               );
             },
           );
@@ -100,7 +112,7 @@ class TaskScreen extends StatelessWidget {
         onPressed: () {
           // Add a new task
           database.insert('tasks', {
-            'id': Uuid().v4(),
+            'id': generateGuid(),
             'title': 'New Task at ${DateTime.now().toIso8601String()}',
           });
         },

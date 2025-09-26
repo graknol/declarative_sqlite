@@ -57,8 +57,8 @@ part 'document.db.dart';
 class Document extends DbRecord {
   Document(super.data, super.database) : super(tableName: 'documents');
 
-  factory Document.fromMap(Map<String, Object?> data, DeclarativeDatabase db) {
-    return _Document.fromMap(data, db);
+  factory Document.fromDbRecord(DbRecord record) {
+    return _Document.fromDbRecord(record);
   }
 
   // The generator creates this property for you

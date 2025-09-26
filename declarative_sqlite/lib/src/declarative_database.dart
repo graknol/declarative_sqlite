@@ -49,16 +49,11 @@ class DeclarativeDatabase {
   /// The Hybrid Logical Clock for generating timestamps.
   final HlcClock hlcClock;
 
-  final String? transactionId;
-
   /// API for interacting with filesets.
   late final FileSet files;
 
   /// Manager for streaming queries.
   late final QueryStreamManager _streamManager;
-
-  /// Tracks table names that need notifications (used in transactions)
-  final Set<String> _pendingNotifications = <String>{};
 
   final Map<String, DbRecord> _recordCache = {};
 
@@ -68,21 +63,9 @@ class DeclarativeDatabase {
     this.dirtyRowStore,
     this.hlcClock,
     this.fileRepository,
-  ) : transactionId = null {
+  ) {
     files = FileSet(this);
     _streamManager = QueryStreamManager();
-  }
-
-  DeclarativeDatabase._inTransaction(
-    this._db,
-    this.schema,
-    this.dirtyRowStore,
-    this.hlcClock,
-    this.fileRepository,
-    this.transactionId, {
-    QueryStreamManager? sharedStreamManager,
-  }) : _streamManager = sharedStreamManager ?? QueryStreamManager() {
-    files = FileSet(this);
   }
 
   // Cache and registry methods
@@ -729,51 +712,20 @@ class DeclarativeDatabase {
     );
   }
 
-  /// Creates a transaction and runs the given [action] in it.
+  /// Transactions are not supported in DeclarativeDatabase.
   ///
-  /// The [action] is provided with a new [DeclarativeDatabase] instance that
-  /// is bound to the transaction.
+  /// Due to the complexity of handling edge cases like dirty row rollbacks,
+  /// change notifications, and state management, transactions have been
+  /// intentionally disabled. Use separate operations instead.
   Future<T> transaction<T>(
     Future<T> Function(DeclarativeDatabase txn) action, {
     bool? exclusive,
   }) async {
-    return await DbExceptionWrapper.wrapTransaction(() async {
-      if (_db is! sqflite.Database) {
-        throw StateError('Cannot start a transaction within a transaction.');
-      }
-      final txnId = Uuid().v4();
-      return _db.transaction(
-        (txn) async {
-          final db = DeclarativeDatabase._inTransaction(
-            txn,
-            schema,
-            dirtyRowStore,
-            hlcClock,
-            fileRepository,
-            txnId,
-            sharedStreamManager: _streamManager,
-          );
-          
-          try {
-            final result = await action(db);
-            
-            // Transaction succeeded - notify for all pending changes
-            await Future.wait(
-              db._pendingNotifications.map(
-                (tableName) => _streamManager.notifyTableChanged(tableName)
-              )
-            );
-            
-            return result;
-          } catch (e) {
-            // Transaction failed - clear pending notifications without sending
-            db._pendingNotifications.clear();
-            rethrow;
-          }
-        },
-        exclusive: exclusive,
-      );
-    });
+    throw UnsupportedError(
+      'Transactions are not supported in DeclarativeDatabase. '
+      'This is intentional due to complexity with dirty rows, notifications, '
+      'and other edge cases. Please use separate database operations instead.'
+    );
   }
 
   /// Inserts a row into the given [tableName].
@@ -789,12 +741,8 @@ class DeclarativeDatabase {
       final systemId = await _insert(tableName, serializedValues, now);
       await dirtyRowStore?.add(tableName, systemId, now);
 
-      // Notify streaming queries of the change (or defer if in transaction)
-      if (transactionId != null) {
-        _pendingNotifications.add(tableName);
-      } else {
-        await _streamManager.notifyTableChanged(tableName);
-      }
+      // Notify streaming queries of the change
+      await _streamManager.notifyTableChanged(tableName);
 
       return systemId;
     }, tableName: tableName);
@@ -869,12 +817,8 @@ class DeclarativeDatabase {
           await dirtyRowStore?.add(
               tableName, row.getValue<String>('system_id')!, now);
         }
-        // Notify streaming queries of the change (or defer if in transaction)
-        if (transactionId != null) {
-          _pendingNotifications.add(tableName);
-        } else {
-          await _streamManager.notifyTableChanged(tableName);
-        }
+        // Notify streaming queries of the change
+        await _streamManager.notifyTableChanged(tableName);
       }
 
       return result;
@@ -981,12 +925,8 @@ class DeclarativeDatabase {
           await dirtyRowStore?.add(
               tableName, row.getValue<String>('system_id')!, now);
         }
-        // Notify streaming queries of the change (or defer if in transaction)
-        if (transactionId != null) {
-          _pendingNotifications.add(tableName);
-        } else {
-          await _streamManager.notifyTableChanged(tableName);
-        }
+        // Notify streaming queries of the change
+        await _streamManager.notifyTableChanged(tableName);
       }
 
       return result;
@@ -1113,77 +1053,71 @@ class DeclarativeDatabase {
     final lwwColumns =
         tableDef.columns.where((c) => c.isLww).map((c) => c.name).toSet();
 
-    await transaction((db) async {
-      for (final row in rows) {
-        final systemId = row['system_id'] as String?;
-        if (systemId == null) continue;
+    for (final row in rows) {
+      final systemId = row['system_id'] as String?;
+      if (systemId == null) continue;
 
-        final existing = await db.query(
-          (q) => q
-              .from(tableName)
-              .where(RawSqlWhereClause('system_id = ?', [systemId])).limit(1),
-        );
+      final existing = await query(
+        (q) => q
+            .from(tableName)
+            .where(RawSqlWhereClause('system_id = ?', [systemId])).limit(1),
+      );
 
-        if (existing.isNotEmpty) {
-          // UPDATE logic
-          final existingRow = existing.first;
-          final valuesToUpdate = <String, Object?>{};
-          final now = hlcClock.now();
+      if (existing.isNotEmpty) {
+        // UPDATE logic
+        final existingRow = existing.first;
+        final valuesToUpdate = <String, Object?>{};
+        final now = hlcClock.now();
 
-          for (final entry in row.entries) {
-            final colName = entry.key;
-            if (pkColumns.contains(colName) || colName.endsWith('__hlc')) {
-              continue;
-            }
+        for (final entry in row.entries) {
+          final colName = entry.key;
+          if (pkColumns.contains(colName) || colName.endsWith('__hlc')) {
+            continue;
+          }
 
-            if (lwwColumns.contains(colName)) {
-              final hlcColName = '${colName}__hlc';
-              final remoteHlcString = row[hlcColName] as String?;
+          if (lwwColumns.contains(colName)) {
+            final hlcColName = '${colName}__hlc';
+            final remoteHlcString = row[hlcColName] as String?;
 
-              if (remoteHlcString != null) {
-                // If HLC is provided, do a proper LWW comparison.
-                final localHlcString =
-                    existingRow.getValue<String?>(hlcColName);
-                final localHlc =
-                    localHlcString != null ? Hlc.parse(localHlcString) : null;
-                final remoteHlc = Hlc.parse(remoteHlcString);
+            if (remoteHlcString != null) {
+              // If HLC is provided, do a proper LWW comparison.
+              final localHlcString =
+                  existingRow.getValue<String?>(hlcColName);
+              final localHlc =
+                  localHlcString != null ? Hlc.parse(localHlcString) : null;
+              final remoteHlc = Hlc.parse(remoteHlcString);
 
-                if (localHlc == null || remoteHlc.compareTo(localHlc) > 0) {
-                  valuesToUpdate[colName] = entry.value;
-                  valuesToUpdate[hlcColName] = remoteHlc.toString();
-                }
-              } else {
-                // If no HLC is provided, the server value wins (non-LWW update).
+              if (localHlc == null || remoteHlc.compareTo(localHlc) > 0) {
                 valuesToUpdate[colName] = entry.value;
+                valuesToUpdate[hlcColName] = remoteHlc.toString();
               }
             } else {
-              // Regular column, always update.
+              // If no HLC is provided, the server value wins (non-LWW update).
               valuesToUpdate[colName] = entry.value;
             }
+          } else {
+            // Regular column, always update.
+            valuesToUpdate[colName] = entry.value;
           }
-
-          if (valuesToUpdate.isNotEmpty) {
-            await db._update(
-              tableName,
-              valuesToUpdate,
-              now,
-              where: 'system_id = ?',
-              whereArgs: [systemId],
-            );
-          }
-        } else {
-          // INSERT logic
-          await db._insert(tableName, row, hlcClock.now());
         }
-      }
-    });
 
-    // Notify streaming queries of the change (or defer if in transaction)
-    if (transactionId != null) {
-      _pendingNotifications.add(tableName);
-    } else {
-      await _streamManager.notifyTableChanged(tableName);
+        if (valuesToUpdate.isNotEmpty) {
+          await _update(
+            tableName,
+            valuesToUpdate,
+            now,
+            where: 'system_id = ?',
+            whereArgs: [systemId],
+          );
+        }
+      } else {
+        // INSERT logic
+        await _insert(tableName, row, hlcClock.now());
+      }
     }
+
+    // Notify streaming queries of the change
+    await _streamManager.notifyTableChanged(tableName);
   }
 
   /// Retrieves all dirty rows from the dirty row store.

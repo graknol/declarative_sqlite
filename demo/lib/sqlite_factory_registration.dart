@@ -3,8 +3,8 @@
 
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
-import 'post.dart';
-import 'user.dart';
+import 'package:demo/post.dart';
+import 'package:demo/user.dart';
 
 /// Auto-generated registration for all DbRecord classes
 class SqliteFactoryRegistration {

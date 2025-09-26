@@ -1,0 +1,4 @@
+class DbSchema {
+
+  const DbSchema();
+}

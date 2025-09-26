@@ -33,7 +33,6 @@ This adds several system columns to your table, including:
 - `system_id`: A unique, client-generated ID for the row.
 - `system_version`: The HLC timestamp of the last modification.
 - `system_created_at`: The HLC timestamp of when the row was created.
-- `is_deleted`: A soft-delete flag.
 
 With this enabled, every `insert`, `update`, and `delete` operation is automatically recorded in a special `_dirty_rows` table. This table acts as an outbox of pending changes to be sent to the server.
 

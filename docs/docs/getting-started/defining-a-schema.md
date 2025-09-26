@@ -16,7 +16,7 @@ Let's create a file for our schema definition.
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 
 /// Defines the database schema for the application.
-void appSchema(SchemaBuilder builder) {
+void buildAppSchema(SchemaBuilder builder) {
   // Table definitions will go here
 }
 ```
@@ -57,13 +57,13 @@ Let's define a schema for a simple to-do list application with `users` and `task
 import 'package:declarative_sqlite/declarative_sqlite.dart';
 import 'package:uuid/uuid.dart';
 
-void appSchema(SchemaBuilder builder) {
+void buildAppSchema(SchemaBuilder builder) {
   // Users table
   builder.table('users', (table) {
-    table.guid('id').notNull();
-    table.text('name').notNull();
-    table.text('email').notNull();
-    table.date('created_at').notNull().defaultValue(DateTime.now);
+    table.guid('id');
+    table.text('name');
+    table.text('email');
+    table.date('created_at');
 
     // Define a primary key on the 'id' column
     table.key(['id']).primary();
@@ -73,11 +73,11 @@ void appSchema(SchemaBuilder builder) {
 
   // Tasks table
   builder.table('tasks', (table) {
-    table.guid('id').notNull().defaultValue(() => Uuid().v4());
-    table.guid('user_id').notNull();
-    table.text('title').notNull();
+    table.guid('id');
+    table.guid('user_id');
+    table.text('title');
     table.text('description');
-    table.integer('is_completed').notNull().defaultValue(0); // 0 for false, 1 for true
+    table.integer('is_completed'); // 0 for false, 1 for true
     table.date('due_date');
 
     // Define primary key
@@ -88,37 +88,25 @@ void appSchema(SchemaBuilder builder) {
 }
 ```
 
-## System Columns for Synchronization
+## Usage in Your Application
 
-If you plan to use the built-in data synchronization features, `declarative_sqlite` can automatically add system columns to your tables. These columns are used for change tracking and conflict resolution using a Hybrid Logical Clock (HLC).
-
-To enable this, set `withSystemColumns: true` when defining a table.
+Once you've defined your schema function, you'll use it when opening the database:
 
 ```dart
-builder.table('tasks', (table) {
-  // ... column definitions
-},
-// This will add system_id, system_created_at, system_modified_at, etc.
-withSystemColumns: true);
+final schemaBuilder = SchemaBuilder();
+buildAppSchema(schemaBuilder);
+final schema = schemaBuilder.build();
+
+final database = await DeclarativeDatabase.open(
+  'app.db',
+  databaseFactory: databaseFactoryFfi,
+  schema: schema,
+  fileRepository: FilesystemFileRepository('files'),
+);
 ```
-
-## Defining Views
-
-Views are virtual tables based on the result-set of a SQL statement. They are useful for simplifying complex queries. You can define a view using `builder.view()`.
-
-```dart
-builder.view('active_tasks', (view) {
-  view
-      .select('t.id, t.title, t.due_date, u.name as user_name')
-      .from('tasks', as: 't')
-      .join('users', on: 't.user_id = u.id', as: 'u')
-      .where(col('is_completed').eq(0));
-});
-```
-This creates a view named `active_tasks` that shows incomplete tasks along with the name of the assigned user.
 
 ## Next Steps
 
-Now that you have a schema, the next step is to initialize the database and see automatic migrations in action.
+Now that you have a schema, the next step is to initialize the database.
 
 - **Next**: [Initializing the Database](./initializing-the-database.md)

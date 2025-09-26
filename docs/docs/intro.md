@@ -19,10 +19,10 @@ The ecosystem is built as a monorepo containing several key packages:
 
 ## Core Philosophy
 
-1.  **Declarative Schema as the Source of Truth**: Define your entire database schema—tables, columns, keys, and views—in one place using a fluent Dart API. The library uses this definition to automatically generate and apply migration scripts.
-2.  **Reactivity by Default**: Data is dynamic. The library is built around `Stream`s, enabling you to build reactive applications where the UI updates automatically in response to data changes.
-3.  **Productivity and Type Safety**: Through a powerful query builder and code generation, the library aims to provide maximum type safety and autocompletion, catching errors at compile-time instead of runtime.
-4.  **Offline-First Synchronization**: With built-in support for Hybrid Logical Clocks (HLCs), the library provides a robust foundation for building offline-first applications that can sync data with a server without conflicts.
+1.  **Declarative Schema Management**: Define your database schema using a fluent Dart API. The library handles schema creation and management automatically.
+2.  **Reactive Data Access**: Built around `Stream`s for reactive applications where UI updates automatically when data changes.
+3.  **Type Safety**: Query builder and code generation provide compile-time type checking and autocompletion.
+4.  **Simple Integration**: Easy integration with Flutter widgets for data-driven UIs.
 
 ## Who is this for?
 

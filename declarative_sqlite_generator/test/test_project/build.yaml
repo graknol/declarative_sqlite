@@ -1,0 +1,15 @@
+builders:
+  declarative_sqlite_generator:
+    import: "package:declarative_sqlite_generator/declarative_sqlite_generator.dart"
+    builder_factories: ["declarativeSqliteGenerator"]
+    build_extensions: { ".dart": [".db.dart"] }
+    auto_apply: dependents
+    build_to: cache
+    applies_builders: ["source_gen|combining_builder"]
+
+  schema_generator:
+    import: "package:declarative_sqlite_generator/declarative_sqlite_generator.dart"
+    builder_factories: ["schemaGenerator"]
+    build_extensions: { ".dart": [".schema.json"] }
+    auto_apply: root_package
+    build_to: source

@@ -20,7 +20,6 @@ Code generation solves these problems by reading your schema directly and creati
 For each class annotated with `@GenerateDbRecord`, the generator produces a `.db.dart` part file containing a private extension. This extension includes:
 1.  **Typed Getters**: A getter for each column in the associated table, with the correct Dart type.
 2.  **Typed Setters**: A setter for each column, with type validation.
-3.  **`fromMap` Factory**: A static `fromMap` method that correctly instantiates your `DbRecord` subclass and handles type conversions (e.g., parsing dates, creating `FilesetField` instances).
 
 Additionally, it generates a single `sqlite_factory_registration.dart` file for your entire project, which allows the database to automatically map query results to your typed objects.
 
@@ -39,18 +38,29 @@ dev_dependencies:
   declarative_sqlite_generator: ^1.0.1
 ```
 
-### 2. Create `build.yaml`
+### 2. Define Your Schema with @DbSchema
 
-Create a `build.yaml` file in your project's root directory. This configuration file is essential as it tells the generator where to find your schema definition.
+Create a separate schema file and mark your schema function with the `@DbSchema()` annotation:
 
-```yaml title="build.yaml"
-targets:
-  $default:
-    builders:
-      declarative_sqlite_generator:
-        options:
-          # Provide the relative path to the file containing your schema function.
-          schema_definition_file: "lib/database/schema.dart"
+```dart title="lib/database/schema.dart"
+import 'package:declarative_sqlite/declarative_sqlite.dart';
+
+@DbSchema()
+void buildAppSchema(SchemaBuilder builder) {
+  builder.table('tasks', (table) {
+    table.guid('id');
+    table.text('title');
+    table.integer('completed');
+    table.key(['id']).primary();
+  });
+  
+  builder.table('users', (table) {
+    table.guid('id');
+    table.text('name');
+    table.text('email');
+    table.key(['id']).primary();
+  });
+}
 ```
 
 ### 3. Annotate Your Models
@@ -65,13 +75,16 @@ part 'task.db.dart';
 
 @GenerateDbRecord('tasks')
 class Task extends DbRecord {
-  // The constructor must pass the table name to super.
-  Task(super.data, super.database) : super(tableName: 'tasks');
+  // The constructor must match the DbRecord signature.
+  Task(Map<String, Object?> data, String tableName, DeclarativeDatabase database)
+      : super(data, tableName, database);
 
-  // It's good practice to add a factory that redirects to the generated one.
-  factory Task.fromMap(Map<String, Object?> data, DeclarativeDatabase db) {
-    return _Task.fromMap(data, db);
-  }
+  // Convenient getters and setters using the base class methods
+  String get title => getValue('title')!;
+  set title(String value) => setValue('title', value);
+  
+  bool get completed => getValue('completed') == 1;
+  set completed(bool value) => setValue('completed', value ? 1 : 0);
 }
 ```
 
@@ -93,49 +106,54 @@ This will create the `task.db.dart` and `sqlite_factory_registration.dart` files
 
 ### Initialize Factory Registration
 
-In your application's entry point (`main.dart`), import and call the generated `initFactoryRegistration` function. This must be done before you initialize your database.
+In your application's entry point (`main.dart`), import and call the generated `SqliteFactoryRegistration.registerAllFactories()` function. This must be done before you initialize your database.
 
 ```dart title="lib/main.dart"
 import 'package:flutter/material.dart';
 import 'package:declarative_sqlite_flutter/declarative_sqlite_flutter.dart';
-// Import the generated registration file
+import 'models/task.dart';
 import 'sqlite_factory_registration.dart';
 import 'database/schema.dart';
 
 void main() {
   // Register all generated DbRecord factories
-  initFactoryRegistration();
+  SqliteFactoryRegistration.registerAllFactories();
 
   runApp(
     DatabaseProvider(
       databaseName: 'app.db',
-      schema: appSchema,
+      schema: buildAppSchema,
       child: const MyApp(),
     ),
   );
 }
 ```
 
-### Accessing Typed Properties
+### Using Typed Properties
 
-Now you can interact with your `Task` object in a fully type-safe manner. The generated getters and setters are available directly on the instance.
+Now you can interact with your `Task` object in a type-safe manner using the generated extensions and base class methods.
 
 ```dart
-// No mapper function is needed because the factory is registered.
-final Stream<List<Task>> taskStream = database.streamQuery('tasks');
+// Create a task instance
+final task = Task({}, 'tasks', database);
 
-taskStream.listen((tasks) {
-  final firstTask = tasks.first;
+// Use the typed getters and setters
+task.title = 'Complete the documentation';
+task.completed = false;
 
-  // Use the generated type-safe getter
-  String title = firstTask.title;
-  print('Task title: $title');
+// Insert the task
+await database.insert('tasks', task.data);
 
-  // Use the generated type-safe setter
-  firstTask.isCompleted = true;
+// Query tasks with type-safe mapping
+final taskStream = database.streamQuery<Task>(
+  (q) => q.from('tasks'),
+  mapper: (row, db) => Task(row, 'tasks', db),
+);
 
-  // Save the changes
-  firstTask.save();
+taskStream.stream.listen((tasks) {
+  for (final task in tasks) {
+    print('Task: ${task.title}, Completed: ${task.completed}');
+  }
 });
 ```
 

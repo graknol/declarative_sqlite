@@ -26,27 +26,27 @@ class TaskList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final database = DatabaseProvider.of(context);
-
-    return QueryListView<Task>( // Specify the typed DbRecord if using one
-      database: database,
-      // The query to be executed and streamed
-      query: (q) => q.from('tasks').orderBy('created_at DESC'),
-      // A builder for each item in the list
+    return QueryListView<DbRecord>(
+      query: (q) => q.from('tasks'),
+      mapper: (row, db) => DbRecord(row, 'tasks', db),
       itemBuilder: (context, task) {
         return ListTile(
-          title: Text(task.title),
-          subtitle: Text('Due: ${task.dueDate}'),
+          title: Text(task.getValue('title') as String),
+          subtitle: Text('Due: ${task.getValue('due_date')}'),
           trailing: Checkbox(
-            value: task.isCompleted,
-            onChanged: (isCompleted) {
-              task.isCompleted = isCompleted ?? false;
-              task.save(); // Save the change back to the database
+            value: (task.getValue('is_completed') as int) == 1,
+            onChanged: (isCompleted) async {
+              final database = DatabaseProvider.of(context);
+              await database.update(
+                'tasks',
+                {'is_completed': isCompleted == true ? 1 : 0},
+                where: 'id = ?',
+                whereArgs: [task.getValue('id')],
+              );
             },
           ),
         );
       },
-      // Optional: A widget to show while the initial data is loading
       loadingBuilder: (context) => const Center(child: CircularProgressIndicator()),
       // Optional: A widget to show when the query returns no results
       emptyBuilder: (context) => const Center(child: Text('No tasks yet!')),
@@ -62,13 +62,13 @@ class TaskList extends StatelessWidget {
 -   `itemBuilder` (required): A function that builds the widget for each record in the result set. It receives the `BuildContext` and the data item (as a `DbRecord` or a typed subclass).
 -   `loadingBuilder` (optional): A widget to display while waiting for the first set of results from the stream.
 -   `emptyBuilder` (optional): A widget to display if the stream emits an empty list.
--   `mapper` (optional): If you are not using generated and registered factories, you can provide a custom function to map the raw `Map<String, Object?>` to your typed object.
+-   `mapper` (optional): If you are not using generated and registered factories, you can provide a custom function to map the `DbRecord` to your typed object.
 -   `sort` (optional): A client-side sort function to apply to the results after they are fetched from the database.
 -   `reverse`: Whether to reverse the order of the list.
 
 ## How It Works
 
-1.  **Initialization**: When `QueryListView` is built, it calls `database.streamQueryWithBuilder()` with the provided `query`.
+1.  **Initialization**: When `QueryListView` is built, it calls `database.streamRecords()` with the provided `query`.
 2.  **Subscription**: It subscribes to the returned stream.
 3.  **Initial Build**: While waiting for the first event, it shows the `loadingBuilder`. When the first list of data arrives, it builds the list of items using `itemBuilder`.
 4.  **Reactive Updates**: The underlying `QueryStreamManager` monitors the database for changes relevant to the query.

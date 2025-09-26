@@ -1,6 +1,10 @@
 targets:
   $default:
     builders:
+      declarative_sqlite_generator:schema_generator:
+        enabled: true
+        options:
+          schema_definition_file: "dart_demo_test|lib/schema.dart"
       declarative_sqlite_generator:declarative_sqlite_generator:
         enabled: true
         generate_for:
