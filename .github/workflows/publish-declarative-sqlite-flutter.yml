@@ -1,0 +1,80 @@
+name: Publish declarative_sqlite_flutter to pub.dev
+
+on:
+  push:
+    tags:
+      - 'declarative_sqlite_flutter-*'
+  # Allow manual dispatch with version input
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 1.1.1)'
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Flutter SDK
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: 'stable'
+
+    - name: Extract version from tag or input
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/declarative_sqlite_flutter-}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Publishing version: $VERSION"
+
+    - name: Verify package directory
+      run: |
+        cd declarative_sqlite_flutter
+        ls -la
+        cat pubspec.yaml
+
+    - name: Get dependencies
+      run: |
+        cd declarative_sqlite_flutter
+        flutter pub get
+
+    - name: Run tests
+      run: |
+        cd declarative_sqlite_flutter
+        flutter test
+
+    - name: Verify package version matches tag
+      run: |
+        cd declarative_sqlite_flutter
+        PUBSPEC_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: *//')
+        TAG_VERSION="${{ steps.version.outputs.version }}"
+        echo "Pubspec version: $PUBSPEC_VERSION"
+        echo "Tag version: $TAG_VERSION"
+        if [ "$PUBSPEC_VERSION" != "$TAG_VERSION" ]; then
+          echo "Error: Version in pubspec.yaml ($PUBSPEC_VERSION) does not match tag version ($TAG_VERSION)"
+          exit 1
+        fi
+
+    - name: Check package score and publish
+      env:
+        PUB_TOKEN: ${{ secrets.PUB_TOKEN }}
+      run: |
+        cd declarative_sqlite_flutter
+        # Setup pub credentials
+        mkdir -p ~/.config/dart
+        echo '{"accessToken":"${{ secrets.PUB_TOKEN }}","refreshToken":"${{ secrets.PUB_REFRESH_TOKEN }}","tokenEndpoint":"https://accounts.google.com/o/oauth2/token","scopes":["openid","https://www.googleapis.com/auth/userinfo.email"],"expiration":4070908800000}' > ~/.config/dart/pub-credentials.json
+        
+        # Analyze package
+        flutter pub publish --dry-run
+        
+        # Publish to pub.dev
+        flutter pub publish --force

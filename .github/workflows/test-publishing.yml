@@ -1,0 +1,71 @@
+name: Test Publishing Workflows
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to test'
+        required: true
+        type: choice
+        options:
+          - declarative_sqlite
+          - declarative_sqlite_flutter
+          - declarative_sqlite_generator
+      dry_run_only:
+        description: 'Only run dry-run (no actual publishing)'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  test-publish:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Dart SDK
+      uses: dart-lang/setup-dart@v1
+      with:
+        sdk: stable
+      if: inputs.package != 'declarative_sqlite_flutter'
+
+    - name: Setup Flutter SDK
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: 'stable'
+      if: inputs.package == 'declarative_sqlite_flutter'
+
+    - name: Test package setup
+      run: |
+        cd ${{ inputs.package }}
+        echo "Testing package: ${{ inputs.package }}"
+        ls -la
+        cat pubspec.yaml
+        
+        # Get dependencies
+        if [ "${{ inputs.package }}" = "declarative_sqlite_flutter" ]; then
+          flutter pub get
+        else
+          dart pub get
+        fi
+
+    - name: Run dry-run test
+      run: |
+        cd ${{ inputs.package }}
+        echo "Running dry-run for ${{ inputs.package }}"
+        
+        if [ "${{ inputs.package }}" = "declarative_sqlite_flutter" ]; then
+          flutter pub publish --dry-run
+        else
+          dart pub publish --dry-run
+        fi
+
+    - name: Validate workflow readiness
+      run: |
+        echo "✅ Package ${{ inputs.package }} is ready for publishing"
+        echo "✅ Dependencies resolve correctly"
+        echo "✅ pub publish --dry-run succeeds"
+        echo ""
+        echo "The package is ready for publication when needed."

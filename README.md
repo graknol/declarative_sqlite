@@ -95,6 +95,10 @@ Contributions are welcome! If you'd like to contribute, please follow these step
 4.  Ensure all tests pass (`dart test` or `flutter test`).
 5.  Submit a pull request.
 
+## Publishing
+
+For maintainers publishing new versions to pub.dev, see the [Publishing Guide](PUBLISHING.md) for detailed instructions on using the automated publishing workflows.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
