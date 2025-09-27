@@ -1080,9 +1080,11 @@ class DeclarativeDatabase {
   /// - If a local row with the same `system_id` exists, it's an UPDATE.
   ///   - LWW columns are only updated if the incoming HLC is newer.
   ///   - Regular columns are always updated.
-  /// - If no local row exists, it's an INSERT.
+  ///   - The `system_is_local_origin` flag is preserved (not overwritten).
+  /// - If no local row exists, it's an INSERT marked as server origin.
   ///
-  /// Rows processed by this method are NOT marked as dirty.
+  /// Rows processed by this method are NOT marked as dirty, as they represent
+  /// data coming from the server rather than local changes to be synchronized.
   Future<void> bulkLoad(
       String tableName, List<Map<String, Object?>> rows) async {
     final tableDef = _getTableDefinition(tableName);
@@ -1111,7 +1113,7 @@ class DeclarativeDatabase {
 
         for (final entry in row.entries) {
           final colName = entry.key;
-          if (pkColumns.contains(colName) || colName.endsWith('__hlc')) {
+          if (pkColumns.contains(colName) || colName.endsWith('__hlc') || colName == 'system_is_local_origin') {
             continue;
           }
 

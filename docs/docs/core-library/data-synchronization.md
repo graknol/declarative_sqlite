@@ -33,8 +33,29 @@ This adds several system columns to your table, including:
 - `system_id`: A unique, client-generated ID for the row.
 - `system_version`: The HLC timestamp of the last modification.
 - `system_created_at`: The HLC timestamp of when the row was created.
+- `system_is_local_origin`: Tracks whether the row was created locally (1) or came from the server (0).
 
 With this enabled, every `insert`, `update`, and `delete` operation is automatically recorded in a special `_dirty_rows` table. This table acts as an outbox of pending changes to be sent to the server.
+
+## Column Update Restrictions
+
+To maintain data consistency in distributed systems, the library enforces specific rules about which columns can be updated:
+
+- **Newly created rows**: All columns can be set during initial creation
+- **Locally created rows**: All columns can be updated after creation
+- **Server-originating rows**: Only columns marked as LWW (Last-Write-Wins) can be updated
+
+This prevents conflicts and ensures that only appropriate data synchronizes between clients and servers.
+
+```dart
+// Example: Define a table with both LWW and non-LWW columns
+builder.table('tasks', (table) {
+  table.guid('id').notNull().primary();
+  table.text('title').notNull().lww(); // Can be updated on server rows
+  table.text('notes').notNull();       // Cannot be updated on server rows
+  table.integer('priority').notNull(); // Cannot be updated on server rows
+});
+```
 
 ## 3. Implementing Synchronization Logic
 
@@ -50,8 +71,33 @@ Each `DirtyRow` object contains:
 - `tableName`: The name of the table that was changed.
 - `rowId`: The `system_id` of the row that was changed.
 - `hlc`: The Hybrid Logical Clock timestamp of the change.
+- `isFullRow`: Whether the full row should be synchronized (true for local origin) or only LWW columns (false for server origin).
 
-You can then use this information to fetch the full record from the database and send it to your server.
+You can then use this information to fetch the full record from the database and send it to your server. The `isFullRow` field helps determine what data to include in the sync payload.
+
+## Handling Update Restrictions
+
+When working with records that originated from the server, attempting to update non-LWW columns will throw a `StateError`:
+
+```dart
+// This will work - 'title' is marked as LWW
+record.setValue('title', 'New Title');
+
+// This will throw StateError - 'notes' is not LWW and row came from server
+record.setValue('notes', 'New Notes'); // StateError!
+```
+
+To check if a record allows unrestricted updates:
+
+```dart
+if (record.isLocalOrigin) {
+  // Can update any column
+  record.setValue('notes', 'New Notes');
+} else {
+  // Can only update LWW columns
+  record.setValue('title', 'New Title'); // Only if 'title' is LWW
+}
+```
 
 ### Example Synchronization Service
 
