@@ -433,6 +433,185 @@ await database.insert('users', user.toMap());
 - Batch bulk operations for better performance
 - Consider view materialization for expensive computations
 
+## Package Publishing to pub.dev
+
+The declarative_sqlite ecosystem consists of three packages that can be published independently to pub.dev. Automated publishing is set up through GitHub Actions with workflow_dispatch triggers.
+
+### Package Overview
+
+The three publishable packages are:
+
+1. **`declarative_sqlite`** (Core library)
+   - Path: `/declarative_sqlite/`
+   - Current version: 1.0.2
+   - Tag pattern: `declarative_sqlite-{{version}}`
+
+2. **`declarative_sqlite_flutter`** (Flutter integration)
+   - Path: `/declarative_sqlite_flutter/`
+   - Current version: 1.0.2  
+   - Tag pattern: `declarative_sqlite_flutter-{{version}}`
+
+3. **`declarative_sqlite_generator`** (Code generation)
+   - Path: `/declarative_sqlite_generator/`
+   - Current version: 1.0.2
+   - Tag pattern: `declarative_sqlite_generator-{{version}}`
+
+### Publishing Instructions
+
+**When asked to publish a new version of any package, follow these steps:**
+
+#### 1. Version Increment Guidelines
+
+Follow semantic versioning (semver) principles:
+
+- **Patch version (x.y.Z)**: Bug fixes, documentation updates, minor improvements
+- **Minor version (x.Y.z)**: New features, non-breaking API additions
+- **Major version (X.y.z)**: Breaking changes, major API redesigns
+
+**Examples:**
+- `1.0.2` → `1.0.3` (patch: bug fix)
+- `1.0.2` → `1.1.0` (minor: new feature)
+- `1.0.2` → `2.0.0` (major: breaking change)
+
+#### 2. Update Package Version
+
+For each package being published, update the following files:
+
+**Required files to update:**
+1. `pubspec.yaml` - Update the `version:` field
+2. `CHANGELOG.md` - Add new version entry with changes
+
+**Example for declarative_sqlite:**
+```yaml
+# In /declarative_sqlite/pubspec.yaml
+name: declarative_sqlite
+description: A dart package for declaratively creating SQLite tables and automatically migrating them.
+version: 1.0.3  # Updated version
+```
+
+```markdown
+# In /declarative_sqlite/CHANGELOG.md
+## 1.0.3
+
+### Bug Fixes
+- Fixed issue with schema migration edge case
+- Improved error handling in query builder
+
+## 1.0.2
+# ... existing entries
+```
+
+#### 3. Update Inter-package Dependencies
+
+**Critical**: When publishing core packages, ensure dependent packages reference the correct versions:
+
+- If publishing `declarative_sqlite`, check and update:
+  - `declarative_sqlite_flutter/pubspec.yaml` dependency
+  - `declarative_sqlite_generator/pubspec.yaml` dependency
+  - Demo app and test project dependencies
+
+**Example dependency update:**
+```yaml
+# In declarative_sqlite_flutter/pubspec.yaml
+dependencies:
+  flutter:
+    sdk: flutter
+  declarative_sqlite: ^1.0.3  # Updated to match published version
+```
+
+#### 4. Create Git Tags
+
+Create properly formatted git tags for each package being published:
+
+**Single package:**
+```bash
+git tag declarative_sqlite-1.0.3
+git push origin declarative_sqlite-1.0.3
+```
+
+**Multiple packages (if publishing together):**
+```bash
+git tag declarative_sqlite-1.0.3
+git tag declarative_sqlite_flutter-1.0.3
+git tag declarative_sqlite_generator-1.0.3
+git push origin --tags
+```
+
+#### 5. Trigger Automated Publishing
+
+The publishing process is automated through GitHub Actions workflow_dispatch. The tags created in step 4 will trigger the appropriate publishing workflows on pub.dev.
+
+**Verification steps:**
+1. Check that tags were pushed successfully: `git ls-remote --tags origin`
+2. Monitor GitHub Actions for workflow execution
+3. Verify packages appear on pub.dev with correct versions
+4. Test installation of newly published packages
+
+#### 6. Example Publishing Scenarios
+
+**Scenario 1: Bug fix in core library**
+```
+User request: "Publish a patch version of declarative_sqlite with the recent bug fixes"
+
+Actions:
+1. Update declarative_sqlite/pubspec.yaml: 1.0.2 → 1.0.3
+2. Update declarative_sqlite/CHANGELOG.md with bug fix details
+3. Create tag: declarative_sqlite-1.0.3
+4. Push tag to trigger automated publishing
+```
+
+**Scenario 2: New feature in Flutter package**
+```
+User request: "Publish a minor version of declarative_sqlite_flutter with the new widget"
+
+Actions:
+1. Update declarative_sqlite_flutter/pubspec.yaml: 1.0.2 → 1.1.0
+2. Update declarative_sqlite_flutter/CHANGELOG.md with feature details
+3. Create tag: declarative_sqlite_flutter-1.1.0
+4. Push tag to trigger automated publishing
+```
+
+**Scenario 3: Coordinated release of all packages**
+```
+User request: "Publish new versions of all packages with the latest changes"
+
+Actions:
+1. Increment versions appropriately for each package
+2. Update all pubspec.yaml files and CHANGELOGs
+3. Update inter-package dependencies
+4. Create all three tags
+5. Push all tags simultaneously
+```
+
+### Publishing Best Practices
+
+**Pre-publishing Checklist:**
+- [ ] Version numbers follow semantic versioning
+- [ ] CHANGELOG.md entries are comprehensive and accurate
+- [ ] Inter-package dependencies are updated and consistent
+- [ ] All tests pass (`dart test` or `flutter test`)
+- [ ] Documentation is updated if API changes occurred
+- [ ] No breaking changes in patch/minor versions
+
+**Post-publishing Verification:**
+- [ ] New versions appear on pub.dev
+- [ ] Package scores and analysis are acceptable
+- [ ] Installation works: `dart pub add package_name:^new_version`
+- [ ] Demo applications work with new versions
+
+**Common Pitfalls to Avoid:**
+- Publishing with outdated inter-package dependencies
+- Forgetting to update CHANGELOG.md
+- Using incorrect tag patterns (must match workflow expectations)
+- Publishing breaking changes as minor/patch versions
+- Not testing packages before publishing
+
+**When Multiple Packages Need Updates:**
+- Always publish core library (`declarative_sqlite`) first
+- Then publish dependent packages (`declarative_sqlite_flutter`, `declarative_sqlite_generator`)
+- Ensure version consistency across the ecosystem
+- Consider whether changes require coordinated releases
+
 By following these instructions, GitHub Copilot can act as an expert on this specific codebase, providing suggestions that are not just syntactically correct but also align with the project's sophisticated architecture, distributed data patterns, and design philosophy.
 
 **Remember:** Always think about the problem holistically first, considering schema design, data flow, conflict resolution, and user experience. Then apply these specific patterns and guidelines to create robust, maintainable solutions.
