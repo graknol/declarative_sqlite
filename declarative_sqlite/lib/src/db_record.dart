@@ -78,6 +78,7 @@ abstract class DbRecord {
   }
 
   /// Gets whether this record was created locally (true) or came from server (false)
+  /// Returns true if system_is_local_origin is 1 or true, false otherwise (including null)
   bool get isLocalOrigin {
     final value = getRawValue('system_is_local_origin');
     return value == 1 || value == true;
