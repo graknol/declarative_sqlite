@@ -144,11 +144,19 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
         continue;
       }
 
-      final setterMethod = _getSetterMethodForColumn(col.logicalType);
-      buffer.writeln('  /// Sets the ${col.name} column value.');
-      buffer.writeln(
-          '  set $propertyName($dartType value) => $setterMethod(\'${col.name}\', value);');
-      buffer.writeln();
+      // Only generate setters for LWW columns to minimize risk of developers
+      // accidentally updating non-LWW columns on server-origin rows
+      if (col.isLww) {
+        final setterMethod = _getSetterMethodForColumn(col.logicalType);
+        buffer.writeln('  /// Sets the ${col.name} column value (LWW column).');
+        buffer.writeln(
+            '  set $propertyName($dartType value) => $setterMethod(\'${col.name}\', value);');
+        buffer.writeln();
+      } else {
+        buffer.writeln('  /// Note: ${col.name} is not an LWW column, so no setter is generated.');
+        buffer.writeln('  /// Use setValue(\'${col.name}\', value) for local-origin rows.');
+        buffer.writeln();
+      }
     }
   }
 
