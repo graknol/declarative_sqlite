@@ -1,3 +1,17 @@
+## 1.1.0
+
+### Features
+- **LWW-Only Setter Generation**: Enhanced code generation to only create setters for LWW (Last-Write-Wins) columns
+  - Provides compile-time safety against accidentally updating non-LWW columns on server-origin rows
+  - Non-LWW columns get read-only getters with helpful documentation comments
+  - Generated setters automatically use the appropriate typed setter methods (`setText`, `setInteger`, etc.)
+- **Enhanced Documentation**: Generated code includes helpful comments explaining why certain columns don't have setters
+
+### Code Generation Improvements
+- Improved column analysis to distinguish between LWW and non-LWW columns
+- Enhanced generated code documentation for better developer experience
+- Updated to work with declarative_sqlite ^1.1.0 non-LWW column protection features
+
 ## 1.0.2
 
 ### Updates
