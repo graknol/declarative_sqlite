@@ -99,6 +99,23 @@ if (record.isLocalOrigin) {
 }
 ```
 
+### Generated Code Safety
+
+When using the code generator, setters are only generated for LWW columns. This provides compile-time safety against accidental non-LWW updates:
+
+```dart
+// Generated extension provides setters only for LWW columns
+task.title = "New Title";    // ✅ Works (LWW column has setter)
+// task.notes = "New Notes"; // ❌ Compile error (no setter generated)
+
+// For non-LWW columns, use setValue() explicitly
+if (task.isLocalOrigin) {
+  task.setValue('notes', 'New Notes'); // ✅ Explicit intent for local rows
+}
+```
+
+This design prevents most synchronization errors at compile time while still allowing explicit updates to non-LWW columns when appropriate.
+
 ### Example Synchronization Service
 
 Here is an example of a simple synchronization service that sends pending changes to a server.

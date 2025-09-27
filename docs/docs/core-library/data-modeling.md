@@ -22,9 +22,14 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 class Task extends DbRecord {
   Task(super.data, super.database) : super(tableName: 'tasks');
 
-  // Typed getters and setters
+  // Typed getters and setters (for manual implementation)
   String get title => get('title');
-  set title(String value) => set('title', value);
+  // Only create setters manually for LWW columns
+  set title(String value) => set('title', value); // Only if title is LWW
+  
+  // For non-LWW columns, provide only getters
+  String get notes => get('notes');
+  // No setter for non-LWW columns to prevent sync conflicts
 
   bool get isCompleted => get('is_completed') == 1;
   set isCompleted(bool value) => set('is_completed', value ? 1 : 0);
@@ -54,6 +59,27 @@ task.isCompleted = true;
 await task.save();
 ```
 The `save()` method is intelligent: if the record doesn't exist in the database (i.e., it was created locally and has no primary key), `save()` will perform an `INSERT` instead of an `UPDATE`.
+
+## LWW Columns and Update Safety
+
+When designing data models for distributed systems, it's important to understand the distinction between LWW (Last-Write-Wins) and non-LWW columns:
+
+- **LWW Columns**: Designed for conflict resolution in distributed systems. These columns can be safely updated on any row.
+- **Non-LWW Columns**: Regular columns that should only be updated on locally-created rows to prevent synchronization conflicts.
+
+When manually writing getters and setters, only create setters for LWW columns:
+
+```dart
+class Task extends DbRecord {
+  // LWW column - safe to update
+  String get title => get('title');
+  set title(String value) => set('title', value);
+  
+  // Non-LWW column - read-only via generated getter
+  String get notes => get('notes');
+  // No setter - use setValue() for local-origin rows only
+}
+```
 
 ## Automating with Code Generation
 
@@ -89,7 +115,7 @@ dart run build_runner build --delete-conflicting-outputs
 
 The generator will create a `task.db.dart` file containing a private extension `TaskGenerated` on your `Task` class. This extension has:
 - A typed getter for every column in the `tasks` table.
-- A typed setter for every column.
+- A typed setter for every LWW (Last-Write-Wins) column. Non-LWW columns only get getters to ensure data consistency in distributed systems.
 
 You can now access the properties in a fully type-safe way. The generator automatically handles type conversions (e.g., for `DateTime`).
 
@@ -99,8 +125,15 @@ You can now access the properties in a fully type-safe way. The generator automa
 final task = Task(taskMap, database);
 
 // Accessing generated properties
-String title = task.title; // Type-safe getter
-task.isCompleted = false; // Type-safe setter
+String title = task.title; // Type-safe getter (works for all columns)
+
+// Setters are only generated for LWW columns
+task.title = "New Title"; // ✅ Works if 'title' is marked as LWW
+
+// For non-LWW columns, use setValue() for local-origin rows
+if (task.isLocalOrigin) {
+  task.setValue('notes', 'New notes'); // ✅ Explicit update for local rows
+}
 
 await task.save();
 ```

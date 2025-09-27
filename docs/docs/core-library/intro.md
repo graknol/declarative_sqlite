@@ -15,7 +15,7 @@ This section provides a deep dive into the advanced features of the core library
 - **Streaming Queries**: The foundation for building reactive applications. These queries return a `StreamingQuery` that automatically emits a new list of results whenever the underlying data changes. The library performs sophisticated dependency analysis to ensure that streams are only updated when relevant data is modified.
 
 ### Data Modeling
-- **`DbRecord` and Code Generation**: A pattern for creating typed data models that map directly to your database tables. The `declarative_sqlite_generator` package can be used to automatically generate typed getters and setters, eliminating boilerplate and improving code safety.
+- **`DbRecord` and Code Generation**: A pattern for creating typed data models that map directly to your database tables. The `declarative_sqlite_generator` package can be used to automatically generate typed getters for all columns and setters for LWW columns, eliminating boilerplate and improving code safety.
 - **File Management**: A robust system for associating files with your database records. The `fileset` column type allows you to manage collections of files, with built-in support for adding, retrieving, deleting, and garbage-collecting file assets.
 
 ### LWW Conflict Resolution
