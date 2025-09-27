@@ -1,0 +1,102 @@
+name: Release Planning
+description: Plan a new release of Declarative SQLite packages
+title: "Release v[VERSION] - [RELEASE_TYPE]"
+labels: ["release", "planning"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to plan and track a new release of the Declarative SQLite packages.
+
+  - type: dropdown
+    id: release-type
+    attributes:
+      label: Release Type
+      description: What type of release is this?
+      options:
+        - Patch (bug fixes, documentation)
+        - Minor (new features, non-breaking changes)
+        - Major (breaking changes)
+      default: 0
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Target Version
+      description: What version will this be? (e.g., 1.1.2, 1.2.0, 2.0.0)
+      placeholder: "1.1.2"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: packages
+    attributes:
+      label: Packages to Release
+      description: Which packages will be included in this release?
+      options:
+        - label: declarative_sqlite (core library)
+        - label: declarative_sqlite_flutter (Flutter integration)
+        - label: declarative_sqlite_generator (code generator)
+
+  - type: textarea
+    id: changes
+    attributes:
+      label: Changes Summary
+      description: Describe the key changes, features, or fixes in this release
+      placeholder: |
+        - Fixed issue with schema migration edge cases
+        - Added support for new column type
+        - Improved error handling in query builder
+    validations:
+      required: true
+
+  - type: textarea
+    id: breaking-changes
+    attributes:
+      label: Breaking Changes
+      description: List any breaking changes (required for major releases)
+      placeholder: |
+        Only fill this out for major releases:
+        - Removed deprecated method X
+        - Changed API for feature Y
+        - Updated minimum Dart SDK version
+
+  - type: checkboxes
+    id: pre-release-tasks
+    attributes:
+      label: Pre-Release Tasks
+      description: Tasks to complete before publishing
+      options:
+        - label: Update version numbers in pubspec.yaml files
+        - label: Update CHANGELOG.md files with release notes
+        - label: Update inter-package dependencies (if needed)
+        - label: Run all tests locally
+        - label: Test with demo applications
+        - label: Review documentation for accuracy
+        - label: Run dry-run publishing test
+
+  - type: checkboxes
+    id: release-tasks
+    attributes:
+      label: Release Tasks
+      description: Publishing and post-release tasks
+      options:
+        - label: Create git tags
+        - label: Push tags to trigger workflows
+        - label: Monitor GitHub Actions for successful publishing
+        - label: Verify packages appear on pub.dev
+        - label: Test installation of new versions
+        - label: Update main README.md version references (if needed)
+        - label: Announce release (if significant)
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes
+      description: Any other information or special considerations for this release
+      placeholder: |
+        - Dependencies on external package updates
+        - Special testing requirements
+        - Coordination with other releases
