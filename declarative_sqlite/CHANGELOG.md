@@ -1,3 +1,18 @@
+## 1.1.0
+
+### Features
+- **Non-LWW Column Protection**: Added protection against updating non-LWW columns on server-origin rows
+  - Prevents data corruption in distributed systems by restricting updates to LWW columns only on rows that originated from server
+  - Local-origin rows can still update all columns freely
+  - Throws `StateError` when attempting to update non-LWW columns on server-origin rows
+  - Enhanced `DbRecord.setValue()` with origin validation
+- **Improved Dirty Row Tracking**: Enhanced dirty row tracking to differentiate between full row updates (local origin) and partial updates (server origin)
+
+### Data Safety
+- Added `isLocalOrigin` property to `DbRecord` for checking row origin
+- Enhanced synchronization safety with column-level update restrictions
+- Maintained backward compatibility for existing local data operations
+
 ## 1.0.2
 
 ### Breaking Changes

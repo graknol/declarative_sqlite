@@ -1,3 +1,10 @@
+## 1.1.0
+
+### Updates
+- Updated to use declarative_sqlite ^1.1.0
+- Enhanced compatibility with non-LWW column protection features
+- Improved data safety when working with server-origin data in Flutter widgets
+
 ## 1.0.2
 
 ### Updates
