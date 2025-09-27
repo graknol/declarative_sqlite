@@ -19,7 +19,7 @@ Code generation solves these problems by reading your schema directly and creati
 
 For each class annotated with `@GenerateDbRecord`, the generator produces a `.db.dart` part file containing a private extension. This extension includes:
 1.  **Typed Getters**: A getter for each column in the associated table, with the correct Dart type.
-2.  **Typed Setters**: A setter for each column, with type validation.
+2.  **Typed Setters**: A setter for each LWW (Last-Write-Wins) column, with type validation. Non-LWW columns only get getters to enforce data consistency in distributed systems.
 
 Additionally, it generates a single `sqlite_factory_registration.dart` file for your entire project, which allows the database to automatically map query results to your typed objects.
 
@@ -49,15 +49,16 @@ import 'package:declarative_sqlite/declarative_sqlite.dart';
 void buildAppSchema(SchemaBuilder builder) {
   builder.table('tasks', (table) {
     table.guid('id');
-    table.text('title');
+    table.text('title').lww(); // LWW column - will get both getter and setter
+    table.text('notes');       // Non-LWW column - will only get getter
     table.integer('completed');
     table.key(['id']).primary();
   });
   
   builder.table('users', (table) {
     table.guid('id');
-    table.text('name');
-    table.text('email');
+    table.text('name').lww(); // LWW column - will get both getter and setter
+    table.text('email');      // Non-LWW column - will only get getter
     table.key(['id']).primary();
   });
 }
@@ -129,9 +130,20 @@ Now you can interact with your `Task` object in a type-safe manner using the gen
 // Create a task instance
 final task = Task({}, 'tasks', database);
 
-// Use the typed getters and setters
-task.title = 'Complete the documentation';
-task.completed = false;
+// Use the typed getters for all columns
+print('Current title: ${task.title}');
+print('Current notes: ${task.notes}');
+
+// Use typed setters for LWW columns only
+task.title = 'Complete the documentation'; // ✅ Works (LWW column)
+
+// For non-LWW columns, use setValue() method for local-origin rows
+if (task.isLocalOrigin) {
+  task.setValue('notes', 'Additional notes'); // ✅ Works for local rows
+} else {
+  // task.notes = 'value'; // ❌ Compile error - no setter generated
+  // task.setValue('notes', 'value'); // ❌ Runtime error on server rows
+}
 
 // Insert the task
 await database.insert('tasks', task.data);
@@ -144,8 +156,70 @@ final taskStream = database.streamQuery<Task>(
 
 taskStream.stream.listen((tasks) {
   for (final task in tasks) {
-    print('Task: ${task.title}, Completed: ${task.completed}');
+    print('Task: ${task.title}, Notes: ${task.notes}');
   }
+});
+```
+
+### Generated Code Structure
+
+The generator creates different code for LWW and non-LWW columns:
+
+```dart
+// Generated extension in task.db.dart
+extension TaskGenerated on Task {
+  // LWW column - gets both getter and setter
+  String get title => getTextNotNull('title');
+  set title(String value) => setText('title', value);
+  
+  // Non-LWW column - only getter, with explanation
+  String get notes => getTextNotNull('notes');
+  /// Note: notes is not an LWW column, so no setter is generated.
+  /// Use setValue('notes', value) for local-origin rows.
+  
+  // Primary key - only getter (immutable)
+  String get id => getTextNotNull('id');
+}
+```
+
+This design ensures data consistency by preventing accidental updates to non-LWW columns on server-origin rows, while still allowing typed read access to all columns.
+
+This design ensures data consistency by preventing accidental updates to non-LWW columns on server-origin rows, while still allowing typed read access to all columns.
+
+## Understanding LWW Columns and Generated Setters
+
+The generator only creates setters for columns marked as LWW (Last-Write-Wins) to maintain data consistency in distributed systems:
+
+### LWW vs Non-LWW Columns
+
+- **LWW Columns**: Designed for conflict resolution in distributed systems. Updates to these columns are safe on both local and server-origin rows.
+- **Non-LWW Columns**: Regular columns that should only be updated on locally-created rows to prevent synchronization conflicts.
+
+### Why This Matters
+
+In distributed applications, most data rows originate from the server. Generating setters for all columns would make it easy to accidentally update non-LWW columns on server-origin rows, causing data consistency issues.
+
+```dart
+// With LWW column - safe to update anytime
+task.title = "New Title"; // ✅ Always works
+
+// With non-LWW column - requires explicit handling
+if (task.isLocalOrigin) {
+  task.setValue('notes', 'New Notes'); // ✅ Safe for local rows
+} else {
+  // Cannot update - would cause sync conflicts
+  // task.setValue('notes', 'New Notes'); // ❌ Throws StateError
+}
+```
+
+### Marking Columns as LWW
+
+To generate setters for a column, mark it as LWW in your schema:
+
+```dart
+builder.table('tasks', (table) {
+  table.text('title').lww(); // Gets setter
+  table.text('notes');       // No setter generated
 });
 ```
 
