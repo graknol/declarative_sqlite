@@ -739,7 +739,7 @@ class DeclarativeDatabase {
       final serializedValues = _serializeValuesForTable(tableName, values);
       
       final systemId = await _insert(tableName, serializedValues, now);
-      await dirtyRowStore?.add(tableName, systemId, now);
+      await dirtyRowStore?.add(tableName, systemId, now, true); // Full row for new inserts
 
       // Notify streaming queries of the change
       await _streamManager.notifyTableChanged(tableName);
@@ -766,6 +766,44 @@ class DeclarativeDatabase {
     if (valuesToInsert['system_created_at'] == null) {
       valuesToInsert['system_created_at'] = hlc.toString();
     }
+    // Mark as local origin (created by client)
+    if (valuesToInsert['system_is_local_origin'] == null) {
+      valuesToInsert['system_is_local_origin'] = 1;
+    }
+
+    for (final col in tableDef.columns) {
+      if (col.isLww) {
+        valuesToInsert['${col.name}__hlc'] = hlc.toString();
+      }
+    }
+
+    await _db.insert(tableName, valuesToInsert);
+
+    return valuesToInsert['system_id']! as String;
+  }
+
+  /// Internal method for inserting rows from server during bulkLoad
+  /// Marks the row as non-local origin (came from server)
+  Future<String> _insertFromServer(
+      String tableName, Map<String, Object?> values, Hlc hlc) async {
+    final tableDef = _getTableDefinition(tableName);
+
+    // Convert FilesetField values to database strings
+    final convertedValues = _convertFilesetFieldsToValues(tableName, values);
+
+    // Apply default values for missing columns
+    final valuesToInsert = _applyDefaultValues(tableName, convertedValues);
+    
+    // Add system columns
+    valuesToInsert['system_version'] = hlc.toString();
+    if (valuesToInsert['system_id'] == null) {
+      valuesToInsert['system_id'] = Uuid().v4();
+    }
+    if (valuesToInsert['system_created_at'] == null) {
+      valuesToInsert['system_created_at'] = hlc.toString();
+    }
+    // Mark as server origin (not created locally)
+    valuesToInsert['system_is_local_origin'] = 0;
 
     for (final col in tableDef.columns) {
       if (col.isLww) {
@@ -793,7 +831,7 @@ class DeclarativeDatabase {
     return await DbExceptionWrapper.wrapUpdate(() async {
       final rowsToUpdate = await query(
         (q) {
-          q.from(tableName).select('system_id');
+          q.from(tableName).select('system_id, system_is_local_origin');
           if (where != null) {
             q.where(RawSqlWhereClause(where, whereArgs));
           }
@@ -814,8 +852,9 @@ class DeclarativeDatabase {
 
       if (result > 0) {
         for (final row in rowsToUpdate) {
+          final isLocalOrigin = row.getValue<int>('system_is_local_origin') == 1;
           await dirtyRowStore?.add(
-              tableName, row.getValue<String>('system_id')!, now);
+              tableName, row.getValue<String>('system_id')!, now, isLocalOrigin);
         }
         // Notify streaming queries of the change
         await _streamManager.notifyTableChanged(tableName);
@@ -906,7 +945,7 @@ class DeclarativeDatabase {
 
       final rowsToDelete = await query(
         (q) {
-          q.from(tableName).select('system_id');
+          q.from(tableName).select('system_id, system_is_local_origin');
           if (where != null) {
             q.where(RawSqlWhereClause(where, whereArgs));
           }
@@ -922,8 +961,9 @@ class DeclarativeDatabase {
       if (result > 0) {
         final now = hlcClock.now();
         for (final row in rowsToDelete) {
+          final isLocalOrigin = row.getValue<int>('system_is_local_origin') == 1;
           await dirtyRowStore?.add(
-              tableName, row.getValue<String>('system_id')!, now);
+              tableName, row.getValue<String>('system_id')!, now, isLocalOrigin);
         }
         // Notify streaming queries of the change
         await _streamManager.notifyTableChanged(tableName);
@@ -1111,8 +1151,8 @@ class DeclarativeDatabase {
           );
         }
       } else {
-        // INSERT logic
-        await _insert(tableName, row, hlcClock.now());
+        // INSERT logic - mark as server origin
+        await _insertFromServer(tableName, row, hlcClock.now());
       }
     }
 

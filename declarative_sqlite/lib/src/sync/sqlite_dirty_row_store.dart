@@ -16,24 +16,25 @@ class SqliteDirtyRowStore implements DirtyRowStore {
   }
 
   @override
-  Future<void> add(String tableName, String rowId, Hlc hlc) async {
+  Future<void> add(String tableName, String rowId, Hlc hlc, bool isFullRow) async {
     await _db.rawInsert('''
-      INSERT OR REPLACE INTO $_tableName (table_name, row_id, hlc)
-      VALUES (?, ?, ?)
-    ''', [tableName, rowId, hlc.toString()]);
+      INSERT OR REPLACE INTO $_tableName (table_name, row_id, hlc, is_full_row)
+      VALUES (?, ?, ?, ?)
+    ''', [tableName, rowId, hlc.toString(), isFullRow ? 1 : 0]);
   }
 
   @override
   Future<List<DirtyRow>> getAll() async {
     final results = await _db.query(
       _tableName,
-      columns: ['table_name', 'row_id', 'hlc'],
+      columns: ['table_name', 'row_id', 'hlc', 'is_full_row'],
     );
     return results.map((row) {
       return DirtyRow(
         tableName: row['table_name'] as String,
         rowId: row['row_id'] as String,
         hlc: Hlc.parse(row['hlc'] as String),
+        isFullRow: (row['is_full_row'] as int) == 1,
       );
     }).toList();
   }
@@ -48,11 +49,12 @@ class SqliteDirtyRowStore implements DirtyRowStore {
     for (final operation in operations) {
       await _db.delete(
         _tableName,
-        where: 'table_name = ? AND row_id = ? AND hlc = ?',
+        where: 'table_name = ? AND row_id = ? AND hlc = ? AND is_full_row = ?',
         whereArgs: [
           operation.tableName,
           operation.rowId,
-          operation.hlc.toString()
+          operation.hlc.toString(),
+          operation.isFullRow ? 1 : 0,
         ],
       );
     }

@@ -77,6 +77,12 @@ abstract class DbRecord {
     return value != null ? Hlc.parse(value as String) : null;
   }
 
+  /// Gets whether this record was created locally (true) or came from server (false)
+  bool get isLocalOrigin {
+    final value = getRawValue('system_is_local_origin');
+    return value == 1 || value == true;
+  }
+
   /// Gets a raw value from the data map without type conversion
   Object? getRawValue(String columnName) {
     return _data[columnName];
@@ -127,6 +133,15 @@ abstract class DbRecord {
       if (column == null) {
         throw ArgumentError(
           'Column $columnName does not exist in update table $_updateTableName',
+        );
+      }
+      
+      // Restrict updates to LWW columns only for rows that came from server
+      if (!isLocalOrigin && !column.isLww && !columnName.startsWith('system_')) {
+        throw StateError(
+          'Column $columnName is not marked as LWW and cannot be updated on rows that originated from server. '
+          'Only LWW columns can be updated on existing server rows. '
+          'This row is marked as non-local origin (system_is_local_origin = ${getRawValue('system_is_local_origin')})',
         );
       }
     }

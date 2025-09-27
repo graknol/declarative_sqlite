@@ -86,6 +86,15 @@ class TableBuilder {
               isParent: false,
               isLww: false,
             ),
+            DbColumn(
+              name: 'system_is_local_origin',
+              logicalType: 'integer',
+              type: 'INTEGER', // Boolean as 0/1
+              isNotNull: true,
+              defaultValue: '1', // Default to local origin for new rows
+              isParent: false,
+              isLww: false,
+            ),
           ];
 
     return DbTable(

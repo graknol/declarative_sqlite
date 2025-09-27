@@ -8,7 +8,7 @@ abstract class DirtyRowStore {
   Future<void> init(DatabaseExecutor db);
 
   /// Adds an operation to the store.
-  Future<void> add(String tableName, String rowId, Hlc hlc);
+  Future<void> add(String tableName, String rowId, Hlc hlc, bool isFullRow);
 
   /// Retrieves all pending operations from the store.
   Future<List<DirtyRow>> getAll();
