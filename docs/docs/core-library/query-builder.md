@@ -2,7 +2,7 @@
 sidebar_position: 2
 ---
 
-# Query Builder
+# 🔍 Query Builder
 
 The query builder provides a fluent, type-safe API for constructing SQL queries. It helps prevent syntax errors and makes your data access logic more readable and maintainable than raw SQL strings.
 
@@ -10,7 +10,7 @@ You can access the query builder in two ways:
 1.  By passing a callback to `database.query()`.
 2.  By creating a `QueryBuilder` instance directly to generate a raw SQL string.
 
-## Selecting Columns (`select`)
+## 📝 Selecting Columns (`select`)
 
 The `select` method specifies which columns to return. You can pass simple column names, aliases, or even complex expressions.
 
@@ -25,7 +25,7 @@ q.select('u.name as author_name, p.title as post_title')
 q.select('COUNT(*) as total_tasks, AVG(priority) as avg_priority')
 ```
 
-## Specifying the Source (`from`)
+## 🗂️ Specifying the Source (`from`)
 
 The `from` method specifies the main table for the query. You can also provide an alias for the table, which is highly recommended, especially when performing joins.
 
@@ -37,7 +37,7 @@ q.from('tasks')
 q.from('tasks', 't')
 ```
 
-## Joining Tables (`join`)
+## 🔗 Joining Tables (`join`)
 
 You can join additional tables using the `join`, `leftJoin`, `rightJoin`, and `innerJoin` methods.
 
@@ -47,7 +47,7 @@ q.select('t.title, u.name as author')
   .innerJoin('users', col('t.user_id').eq(col('u.id')), 'u')
 ```
 
-## Filtering Results (`where`)
+## 🎯 Filtering Results (`where`)
 
 The `where` method filters the results. It accepts a `WhereClause` object, which can be constructed using helper functions.
 

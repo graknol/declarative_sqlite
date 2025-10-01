@@ -2,7 +2,7 @@
 sidebar_position: 3
 ---
 
-# Streaming Queries
+# 🌊 Streaming Queries
 
 Streaming queries are the cornerstone of building reactive applications with `declarative_sqlite`. Instead of fetching data just once, a streaming query returns a `Stream` that automatically emits a new, updated list of results whenever the underlying data changes.
 

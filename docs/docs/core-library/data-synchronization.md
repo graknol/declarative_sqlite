@@ -2,7 +2,7 @@
 sidebar_position: 6
 ---
 
-# Data Synchronization
+# 🔄 Data Synchronization
 
 `declarative_sqlite` provides a powerful, built-in framework for implementing offline-first data synchronization. This allows your application to work seamlessly offline and sync its data with a remote server whenever a network connection is available.
 

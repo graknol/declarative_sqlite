@@ -2,7 +2,7 @@
 sidebar_position: 5
 ---
 
-# File Management
+# 📁 File Management
 
 `declarative_sqlite` provides a robust, integrated system for managing file attachments associated with your database records. This is useful for any application that needs to store user-generated content like images, documents, or other binary data.
 

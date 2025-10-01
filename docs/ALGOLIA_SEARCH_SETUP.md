@@ -26,6 +26,22 @@ algolia: {
 },
 ```
 
+### Sitemap Configuration
+
+A sitemap is automatically generated to help the Algolia crawler efficiently index the documentation. The sitemap configuration is in the preset options:
+
+```typescript
+sitemap: {
+  lastmod: 'date',
+  changefreq: 'weekly',
+  priority: 0.5,
+  ignorePatterns: ['/tags/**'],
+  filename: 'sitemap.xml',
+},
+```
+
+The generated sitemap is available at `https://declarative-sqlite.linden.no/sitemap.xml` after deployment. This helps Algolia's crawler discover and index all documentation pages more efficiently.
+
 ## Setup Steps
 
 To complete the Algolia search setup with your open source key:

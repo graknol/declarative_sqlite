@@ -2,11 +2,11 @@
 sidebar_position: 3
 ---
 
-# Initializing the Database
+# 🚀 Initializing the Database
 
 Once you have defined your schema, the next step is to create and initialize a `DeclarativeDatabase` instance using the `DatabaseProvider` widget. This process involves connecting to the database file, analyzing the existing schema, and automatically applying any necessary migrations.
 
-## Using `DatabaseProvider`
+## 🎯 Using `DatabaseProvider`
 
 In a Flutter application, the easiest way to manage the database lifecycle is with the `DatabaseProvider` widget. It handles initialization, closing the connection, and making the database instance available to the entire widget tree.
 

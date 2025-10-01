@@ -2,11 +2,11 @@
 sidebar_position: 4
 ---
 
-# CRUD Operations
+# ✏️ CRUD Operations
 
 `DeclarativeDatabase` provides straightforward methods for Create, Read, Update, and Delete (CRUD) operations. These methods wrap the underlying `sqflite` calls with additional features like exception mapping and automatic change notifications for streaming queries.
 
-## Insert
+## ➕ Insert
 
 To add a new record to a table, use the `insert` method. It takes the table name and a `DbRecord` or `Map<String, Object?>` representing the data to be inserted.
 
@@ -21,7 +21,7 @@ await database.insert('tasks', {
 });
 ```
 
-## Query (Read)
+## 🔍 Query (Read)
 
 ### Query for DbRecord objects
 
