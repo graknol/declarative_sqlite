@@ -2,7 +2,7 @@
 sidebar_position: 2
 ---
 
-# DatabaseProvider
+# 🗄️ DatabaseProvider
 
 `DatabaseProvider` is an `InheritedWidget` that simplifies the management and accessibility of your `DeclarativeDatabase` instance within a Flutter application.
 

@@ -2,11 +2,11 @@
 sidebar_position: 2
 ---
 
-# Defining a Schema
+# 🏗️ Defining a Schema
 
 The schema is the blueprint for your database. In `declarative_sqlite`, you define your entire schema—including tables, columns, keys, and views—using a fluent Dart API. This declarative approach makes your schema easy to read, manage, and version control.
 
-## The Schema Builder Function
+## 📝 The Schema Builder Function
 
 Everything starts with a schema builder function. This is a top-level function that takes a `SchemaBuilder` instance and uses it to define the database structure.
 
@@ -21,11 +21,11 @@ void buildAppSchema(SchemaBuilder builder) {
 }
 ```
 
-## Defining Tables
+## 🗄️ Defining Tables
 
 You define a table using the `builder.table()` method. It takes the table name and a callback where you define the table's columns and keys.
 
-### Column Types
+### 🔤 Column Types
 
 The library provides methods for all standard SQLite column types:
 - `text(name)`
@@ -35,14 +35,14 @@ The library provides methods for all standard SQLite column types:
 - `guid(name)`: for UUIDs
 - `fileset(name)`: a special type for managing collections of files
 
-### Column Constraints
+### 🔒 Column Constraints
 
 Each column builder provides methods to add constraints:
 - `.notNull()`: Makes the column required.
 - `.defaultValue(value)`: Sets a default value for the column.
 - `.min(value)` / `.max(value)`: Adds validation constraints (for `integer` and `real` types).
 
-### Keys and Indexes
+### 🔑 Keys and Indexes
 
 You can define primary keys, unique constraints, and indexes using the `table.key()` method.
 - `key([...]).primary()`: Defines a primary key.

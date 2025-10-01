@@ -2,7 +2,7 @@
 sidebar_position: 3
 ---
 
-# QueryListView
+# 📋 QueryListView
 
 `QueryListView` is a specialized Flutter widget that simplifies the process of displaying a list of data from a `declarative_sqlite` streaming query. It's a reactive `ListView` that automatically updates its contents when the underlying data in the database changes.
 

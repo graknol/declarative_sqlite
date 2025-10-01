@@ -2,7 +2,7 @@
 sidebar_position: 4
 ---
 
-# Data Modeling with DbRecord
+# 🎯 Data Modeling with DbRecord
 
 While working with raw `Map<String, Object?>` objects is flexible, it's not type-safe and can be error-prone. `declarative_sqlite` provides a `DbRecord` base class to help you create strongly-typed data models that map directly to your database tables and work seamlessly with the query system.
 

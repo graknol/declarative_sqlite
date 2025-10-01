@@ -2,11 +2,11 @@
 sidebar_position: 1
 ---
 
-# Installation
+# 📦 Installation
 
 Setting up `declarative_sqlite` for Flutter involves adding the required packages to your `pubspec.yaml`. The library uses the standard `sqflite` plugin for Android and iOS compatibility.
 
-## Add Dependencies
+## ➕ Add Dependencies
 
 For a Flutter application, you'll need the core library, the Flutter integration package, and the `sqflite` driver. If you plan to use code generation (recommended), you'll also need the generator and `build_runner`.
 
@@ -30,11 +30,11 @@ dev_dependencies:
 
 After adding the dependencies, run `flutter pub get` to install them.
 
-## Database Initialization
+## 🎯 Database Initialization
 
 Flutter projects using the `sqflite` package do **not** need any special initialization steps. The SQLite driver is automatically available on Android and iOS platforms.
 
-## Next Steps
+## ➡️ Next Steps
 
 With the installation complete, you're ready to define your first schema.
 

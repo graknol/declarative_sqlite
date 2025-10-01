@@ -2,11 +2,11 @@
 sidebar_position: 1
 ---
 
-# Code Generation
+# ⚙️ Code Generation
 
 The `declarative_sqlite_generator` package is a powerful tool that uses `build_runner` to automate the creation of boilerplate code. By using code generation, you can significantly improve type safety, reduce manual coding, and make your data models more robust and easier to maintain.
 
-## Why Use Code Generation?
+## 🤔 Why Use Code Generation?
 
 When working with `DbRecord`, you could write typed getters and setters manually for each column. However, this has several drawbacks:
 -   It's tedious and repetitive.
@@ -15,7 +15,7 @@ When working with `DbRecord`, you could write typed getters and setters manually
 
 Code generation solves these problems by reading your schema directly and creating the necessary code for you.
 
-## What It Generates
+## ✨ What It Generates
 
 For each class annotated with `@GenerateDbRecord`, the generator produces a `.db.dart` part file containing a private extension. This extension includes:
 1.  **Typed Getters**: A getter for each column in the associated table, with the correct Dart type.
@@ -23,9 +23,9 @@ For each class annotated with `@GenerateDbRecord`, the generator produces a `.db
 
 Additionally, it generates a single `sqlite_factory_registration.dart` file for your entire project, which allows the database to automatically map query results to your typed objects.
 
-## Setup and Configuration
+## 🛠️ Setup and Configuration
 
-### 1. Add Dependencies
+### 1️⃣ Add Dependencies
 
 Ensure you have `declarative_sqlite_generator` and `build_runner` in your `dev_dependencies`.
 
