@@ -46,6 +46,7 @@ final schema = schemaBuilder.build();
 - Suggest appropriate data types: `guid()`, `text()`, `integer()`, `real()`, `date()`, `fileset()`.
 - Recommend using `.lww()` for columns that need conflict resolution in distributed scenarios.
 - Suggest `fileset()` columns for managing file attachments with built-in versioning and metadata.
+- **Allow explicit system column keys**: Users can define keys on automatically generated system columns like `table.key(['system_id']).primary()` for explicit schema documentation.
 
 ### 2. Automatic Migration System
 
@@ -291,6 +292,14 @@ final schema = SchemaBuilder()
     table.real('quantity').notNull(0.0).lww();
     table.key(['work_order_id', 'line_no']).primary();
     table.key(['work_order_id']).index(); // Performance index for queries
+  })
+  .table('audit_log', (table) {
+    table.text('action').notNull('');
+    table.text('details').notNull('');
+    // Explicit system_id primary key for documentation
+    table.key(['system_id']).primary();
+    // Index on system_created_at for time-based queries
+    table.key(['system_created_at']).index();
   })
   .view('work_order_summary', (view) {
     view
