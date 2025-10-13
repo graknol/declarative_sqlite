@@ -1,3 +1,8 @@
+## 1.1.1
+
+### Bug Fixes
+- Fixed the getHlc issue in generated code
+
 ## 1.1.0
 
 ### Features
