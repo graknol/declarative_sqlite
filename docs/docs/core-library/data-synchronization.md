@@ -17,25 +17,25 @@ At the heart of the sync system is the Hybrid Logical Clock. An HLC is a special
 
 When you use `declarative_sqlite`'s sync features, every row modification is stamped with an HLC value. This allows the server and client to determine which version of a row is newer, resolving conflicts using a "last-write-wins" strategy.
 
-## 2. Enabling Change Tracking
+## 2. Automatic Change Tracking
 
-To enable synchronization for a table, you must define it with `withSystemColumns: true` in your schema.
+All user tables in `declarative_sqlite` automatically include system columns for synchronization. These columns are added automatically when you define a table:
 
 ```dart
 builder.table('tasks', (table) {
-  // ... column definitions
-},
-// This is crucial for synchronization
-withSystemColumns: true);
+  table.guid('id').notNull().primary();
+  table.text('title').notNull();
+  // ... other column definitions
+});
 ```
 
-This adds several system columns to your table, including:
+The library automatically adds several system columns to your table, including:
 - `system_id`: A unique, client-generated ID for the row.
 - `system_version`: The HLC timestamp of the last modification.
 - `system_created_at`: The HLC timestamp of when the row was created.
 - `system_is_local_origin`: Tracks whether the row was created locally (1) or came from the server (0).
 
-With this enabled, every `insert`, `update`, and `delete` operation is automatically recorded in a special `_dirty_rows` table. This table acts as an outbox of pending changes to be sent to the server.
+With these system columns, every `insert`, `update`, and `delete` operation is automatically recorded in a special `__dirty_rows` table. This table acts as an outbox of pending changes to be sent to the server.
 
 ## Column Update Restrictions
 
@@ -59,7 +59,7 @@ builder.table('tasks', (table) {
 
 ## 3. Implementing Synchronization Logic
 
-With change tracking enabled, you can now implement your own synchronization logic. The core of this is the `_dirty_rows` table, which acts as an outbox of pending changes.
+With change tracking enabled, you can now implement your own synchronization logic. The core of this is the `__dirty_rows` table, which acts as an outbox of pending changes.
 
 You can get the list of dirty rows by calling `database.getDirtyRows()`.
 
@@ -187,9 +187,9 @@ class MySyncService {
 1.  **Local Change**: A user modifies a task in the app.
     - `declarative_sqlite` performs the `UPDATE` on the `tasks` table.
     - It automatically stamps the row with a new HLC timestamp.
-    - It records the operation (e.g., `UPDATE tasks WHERE id = '...'`) in the `_dirty_rows` table.
+    - It records the operation (e.g., `UPDATE tasks WHERE id = '...'`) in the `__dirty_rows` table.
 2.  **Trigger Sync**: You trigger the synchronization process, for example, by calling `MySyncService.performSync()` periodically or in response to network status changes.
-3.  **Send Local Changes**: The service pulls the pending operations from `_dirty_rows`, fetches the full records, and sends them to your server.
+3.  **Send Local Changes**: The service pulls the pending operations from `__dirty_rows`, fetches the full records, and sends them to your server.
 4.  **Server Processing**: The server receives the records. For each row, it compares the HLC timestamp from the client with the HLC timestamp it has for that row. It accepts the change only if the client's timestamp is newer (last-write-wins).
 5.  **Fetch Remote Changes**: The service calls your `onFetch` function, providing the last known server timestamps. Your API client fetches any changes from the server that have occurred since the last sync.
 6.  **Apply Server Changes**: The fetched changes are applied to the local database using `database.bulkLoad()`. This method intelligently inserts or updates records based on the incoming data, again respecting HLC timestamps to prevent overwriting newer local changes with older server data.

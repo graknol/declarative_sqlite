@@ -53,7 +53,7 @@ This precise, column-level dependency tracking ensures that queries are only re-
 
 ## Caching and Performance
 
-To further improve performance, streaming queries use an internal cache. For queries on tables with system columns (`withSystemColumns: true`), the manager can perform optimizations:
+To further improve performance, streaming queries use an internal cache. For queries on user tables (which automatically include system columns), the manager can perform optimizations:
 
 1.  **Initial Fetch**: The query is run, and the results are mapped to objects and stored in a cache, indexed by their `system_id`.
 2.  **On Data Change**: Instead of re-running the entire query, the manager can often fetch only the rows that have changed (based on their `system_version`).

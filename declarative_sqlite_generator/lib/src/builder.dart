@@ -130,6 +130,11 @@ class DeclarativeSqliteGenerator extends GeneratorForAnnotation<GenerateDbRecord
         continue;
       }
 
+      // Skip HLC columns - they are internal implementation details for LWW sync
+      if (col.name.endsWith('__hlc')) {
+        continue;
+      }
+
       final propertyName = _camelCase(col.name);
       final dartType = _getDartTypeForColumn(col.logicalType, col.isNotNull);
       final getterMethod =
