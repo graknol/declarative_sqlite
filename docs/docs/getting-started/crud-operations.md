@@ -6,9 +6,13 @@ sidebar_position: 4
 
 `DeclarativeDatabase` provides straightforward methods for Create, Read, Update, and Delete (CRUD) operations. These methods wrap the underlying `sqflite` calls with additional features like exception mapping and automatic change notifications for streaming queries.
 
-## ➕ Insert
+## ➕ Create (Insert)
 
-To add a new record to a table, use the `insert` method. It takes the table name and a `DbRecord` or `Map<String, Object?>` representing the data to be inserted.
+There are two ways to insert records: using the database `insert` method directly, or using `DbRecord.save()` for a more object-oriented approach.
+
+### Using Database Insert
+
+The `insert` method takes the table name and a `Map<String, Object?>` representing the data to be inserted.
 
 ```dart
 final database = DatabaseProvider.of(context);
@@ -20,6 +24,27 @@ await database.insert('tasks', {
   'is_completed': 0,
 });
 ```
+
+### Using DbRecord.save() (Recommended)
+
+When working with `DbRecord` objects, use the unified `save()` method which automatically handles both insert and update:
+
+```dart
+// Create a new task record
+final task = Task({
+  'user_id': 'user-123',
+  'title': 'Write documentation',
+  'is_completed': 0,
+}, database);
+
+// save() automatically detects this is a new record and performs an INSERT
+await task.save();
+
+// After save, the record has a system_id and is no longer new
+print('Created task with ID: ${task.systemId}');
+```
+
+The `save()` method is intelligent and works for both new and existing records - see the Update section below for details.
 
 ## 🔍 Query (Read)
 
@@ -68,9 +93,13 @@ final results = await database.query((q) {
 });
 ```
 
-## Update
+## ✏️ Update
 
-To modify existing records, use the `update` method. It takes the table name, a `Map` of the new values, and an optional `where` clause to specify which records to update.
+There are multiple ways to update records: using the database `update` method directly, or using `DbRecord.save()` for object-oriented updates.
+
+### Using Database Update
+
+The `update` method takes the table name, a `Map` of the new values, and an optional `where` clause to specify which records to update.
 
 ```dart
 // Mark a specific task as completed
@@ -85,6 +114,46 @@ await database.update(
 If you omit the `where` clause, **all records in the table will be updated**.
 
 When updating a record in a table with system columns, the `system_version` and `system_modified_at` fields are automatically updated to reflect the change.
+
+### Using DbRecord.save() (Recommended)
+
+When working with `DbRecord` objects, the unified `save()` method provides the most convenient approach:
+
+```dart
+// Load an existing task
+final tasks = await database.query((q) => 
+  q.from('tasks').where(col('id').eq('task-guid-123'))
+);
+final task = Task(tasks.first.data, database);
+
+// Modify the record
+task.title = 'Updated title';
+task.isCompleted = true;
+
+// save() automatically detects this is an existing record and performs an UPDATE
+await task.save();
+```
+
+The `save()` method tracks which fields have been modified and only updates those fields, making it efficient for partial updates.
+
+#### Unified Save Approach
+
+The beauty of `save()` is that you can use it for both insert and update without thinking about which operation to perform:
+
+```dart
+// Create or update a task - same code works for both!
+final task = Task({'title': 'My task'}, database);
+
+await task.save(); // INSERT (new record)
+
+task.title = 'Updated task';
+await task.save(); // UPDATE (existing record)
+
+task.isCompleted = true;
+await task.save(); // UPDATE again (existing record)
+```
+
+The `save()` method automatically determines the correct operation based on whether the record has a `system_id`.
 
 ## Delete
 

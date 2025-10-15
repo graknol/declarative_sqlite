@@ -1,3 +1,24 @@
+## 1.2.0
+
+### Features
+- **Unified Save Method**: Enhanced `DbRecord.save()` to automatically handle both insert and update operations
+  - `save()` now intelligently detects whether a record is new (needs INSERT) or existing (needs UPDATE)
+  - Eliminates the need to manually choose between `insert()` and `save()` for updates
+  - Added `isNewRecord` property to check whether a record needs insertion
+  - Deprecated explicit `insert()` method in favor of unified `save()` approach
+  - After successful insert via `save()`, record data is automatically refreshed with all system columns
+  - Multiple consecutive `save()` calls work seamlessly on the same record
+
+### Developer Experience
+- Simplified CRUD workflow - just use `save()` for everything
+- Reduced cognitive load - no need to track insert vs update state manually
+- Better API consistency across create and update operations
+
+### Documentation
+- Updated data modeling guide with unified save examples
+- Enhanced CRUD operations documentation with recommended patterns
+- Added comprehensive example demonstrating unified save approach
+
 ## 1.1.0
 
 ### Features

@@ -23,13 +23,19 @@ abstract class DbRecord {
 
   /// Map to track which fields have been modified since creation
   final Set<String> _modifiedFields = <String>{};
+  
+  /// Tracks whether this is a new record (needs insert) or existing (needs update)
+  /// True if record was created without a system_id (new record to be inserted)
+  /// False if record was loaded from database (existing record to be updated)
+  bool _isNewRecord;
 
   DbRecord(Map<String, Object?> data, this._tableName, this._database)
     : _data = Map<String, Object?>.from(data), 
     _tableDefinition = _database.schema.userTables.firstWhereOrNull(
         (table) => table.name == _tableName,
       ),
-      _updateTableName = _tableName;
+      _updateTableName = _tableName,
+      _isNewRecord = data['system_id'] == null;
 
   /// Gets the table name for this record
   String get tableName => _tableName;
@@ -61,6 +67,10 @@ abstract class DbRecord {
 
   /// Gets the set of fields that have been modified (read-only copy)
   Set<String> get modifiedFields => Set.unmodifiable(_modifiedFields);
+  
+  /// Returns true if this record needs to be inserted (new record)
+  /// Returns false if this record already exists and needs to be updated
+  bool get isNewRecord => _isNewRecord;
 
   /// Gets the system_id for this record
   String? get systemId => getRawValue('system_id') as String?;
@@ -285,21 +295,37 @@ abstract class DbRecord {
   void setFilesetField(String columnName, FilesetField? value) =>
       setValue(columnName, value);
 
-  /// Saves any modified fields back to the database
+  /// Saves the record to the database.
+  /// 
+  /// Automatically determines whether to insert (for new records) or update (for existing records).
+  /// - For new records (created without system_id): performs an INSERT
+  /// - For existing records (loaded from database): performs an UPDATE of modified fields only
+  /// 
   /// Throws StateError if the target table doesn't support CRUD operations
   Future<void> save() async {
     _checkCrudPermission('save');
 
+    if (_isNewRecord) {
+      // New record - perform insert
+      await _performInsert();
+    } else {
+      // Existing record - perform update of modified fields
+      await _performUpdate();
+    }
+  }
+  
+  /// Internal method to perform the actual update operation
+  Future<void> _performUpdate() async {
     if (_modifiedFields.isEmpty) return;
 
     final systemId = this.systemId;
     if (systemId == null) {
-      throw StateError('Cannot save record without system_id');
+      throw StateError('Cannot update record without system_id');
     }
 
     final systemVersion = this.systemVersion;
     if (systemVersion == null) {
-      throw StateError('Cannot save record without system_version');
+      throw StateError('Cannot update record without system_version');
     }
 
     // Build update map with only modified fields (excluding system columns)
@@ -323,9 +349,41 @@ abstract class DbRecord {
     // Clear modified fields after successful save
     _modifiedFields.clear();
   }
+  
+  /// Internal method to perform the actual insert operation
+  Future<void> _performInsert() async {
+    // Remove system columns - they'll be added by the database layer
+    final insertData = Map<String, Object?>.from(_data);
+    insertData.removeWhere((key, value) => key.startsWith('system_'));
+
+    final systemId = await _database.insert(_updateTableName ?? _tableName, insertData);
+    
+    // Reload the record from database to get all system columns
+    final results = await _database.queryTable(
+      _updateTableName ?? _tableName,
+      where: 'system_id = ?',
+      whereArgs: [systemId],
+    );
+    
+    if (results.isEmpty) {
+      throw StateError('Failed to reload record after insert');
+    }
+    
+    // Update the record's data with fresh data from database
+    _data.clear();
+    _data.addAll(results.first);
+    _isNewRecord = false;
+
+    // Clear modified fields since this is now persisted
+    _modifiedFields.clear();
+  }
 
   /// Creates a new record in the database with the current data
+  /// 
+  /// Note: Consider using `save()` instead, which automatically handles both insert and update.
+  /// 
   /// Throws StateError if the target table doesn't support CRUD operations
+  @Deprecated('Use save() instead, which automatically handles insert vs update')
   Future<void> insert() async {
     _checkCrudPermission('insert');
 
@@ -333,9 +391,13 @@ abstract class DbRecord {
     final insertData = Map<String, Object?>.from(_data);
     insertData.removeWhere((key, value) => key.startsWith('system_'));
 
-    await _database.insert(_updateTableName ?? _tableName, insertData);
+    final systemId = await _database.insert(_updateTableName ?? _tableName, insertData);
+    
+    // Update the record's data with the new system_id and mark as no longer new
+    _data['system_id'] = systemId;
+    _isNewRecord = false;
 
-    // Clear modified fields since this is a new record
+    // Clear modified fields since this is now persisted
     _modifiedFields.clear();
   }
 
@@ -381,6 +443,9 @@ abstract class DbRecord {
     // Update the data map with fresh data
     _data.clear();
     _data.addAll(results.first);
+    
+    // Mark as existing record since we just loaded from database
+    _isNewRecord = false;
 
     // Clear modified fields since we have fresh data
     _modifiedFields.clear();

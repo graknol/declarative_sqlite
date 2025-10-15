@@ -41,24 +41,79 @@ class Task extends DbRecord {
 
 ### Saving Changes
 
-The `DbRecord` class tracks which fields have been modified. You can persist these changes to the database by calling the `save()` method.
+The `DbRecord` class tracks which fields have been modified and provides a unified `save()` method that automatically determines whether to insert or update the record.
+
+#### Unified Save Method
+
+The `save()` method intelligently handles both insert and update operations:
 
 ```dart
-// Fetch a record and map it to a Task object
+// Example 1: Creating a new record
+final newTask = Task({
+  'title': 'Write documentation',
+  'is_completed': 0,
+}, database);
+
+// save() automatically performs an INSERT for new records
+await newTask.save();
+
+// Example 2: Updating an existing record
 final tasks = await database.query((q) {
   q.from('tasks').where(col('id').eq('task-1'));
 });
-final task = Task(tasks.first.data, database);
+final existingTask = Task(tasks.first.data, database);
 
 // Modify the object
-task.title = 'A new and improved title';
-task.isCompleted = true;
+existingTask.title = 'Updated title';
+existingTask.isCompleted = true;
 
-// Save the changes to the database
-// This will generate and run an UPDATE statement.
-await task.save();
+// save() automatically performs an UPDATE for existing records
+await existingTask.save();
+
+// Example 3: Multiple saves on the same record
+final task = Task({
+  'title': 'My task',
+  'is_completed': 0,
+}, database);
+
+await task.save(); // First call inserts the record
+task.title = 'Updated task';
+await task.save(); // Subsequent calls update the record
 ```
-The `save()` method is intelligent: if the record doesn't exist in the database (i.e., it was created locally and has no primary key), `save()` will perform an `INSERT` instead of an `UPDATE`.
+
+#### How It Works
+
+The `save()` method uses the presence of `system_id` to determine the operation:
+- **New records** (no `system_id`): Performs an INSERT operation
+- **Existing records** (has `system_id`): Performs an UPDATE operation for modified fields only
+
+You can check whether a record is new using the `isNewRecord` property:
+
+```dart
+final newTask = Task({'title': 'New task'}, database);
+print(newTask.isNewRecord); // true
+
+await newTask.save();
+print(newTask.isNewRecord); // false (now has system_id)
+```
+
+#### Legacy Methods (Deprecated)
+
+The traditional `insert()` method is still available but deprecated in favor of the unified `save()` approach:
+
+```dart
+// Old way (deprecated)
+final task = Task({'title': 'My task'}, database);
+await task.insert(); // Explicit insert
+task.title = 'Updated';
+await task.save(); // Must use save() for updates
+
+// New way (recommended)
+final task = Task({'title': 'My task'}, database);
+await task.save(); // Works for both insert and update!
+task.title = 'Updated';
+await task.save(); // Works for both insert and update!
+```
 
 ## LWW Columns and Update Safety
 
