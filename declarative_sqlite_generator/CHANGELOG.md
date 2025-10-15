@@ -1,3 +1,10 @@
+## 1.2.0
+
+### Updates
+- Updated to use declarative_sqlite ^1.2.0
+- Enhanced compatibility with unified save() method
+- Generated code now works seamlessly with the new unified save() approach
+
 ## 1.1.1
 
 ### Bug Fixes

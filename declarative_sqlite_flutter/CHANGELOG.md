@@ -1,3 +1,10 @@
+## 1.2.0
+
+### Updates
+- Updated to use declarative_sqlite ^1.2.0
+- Enhanced compatibility with unified save() method
+- Improved developer experience with simplified CRUD operations in Flutter widgets
+
 ## 1.1.0
 
 ### Updates
