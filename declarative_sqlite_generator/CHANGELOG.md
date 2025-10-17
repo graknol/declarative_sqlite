@@ -1,3 +1,10 @@
+## 1.3.0
+
+### Updates
+- Updated to use declarative_sqlite ^1.3.0
+- Enhanced compatibility with new constraint violation handling features
+- Generated code now works seamlessly with improved bulkLoad constraint handling
+
 ## 1.2.0
 
 ### Updates

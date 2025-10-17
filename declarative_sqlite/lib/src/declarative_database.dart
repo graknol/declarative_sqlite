@@ -26,6 +26,15 @@ import 'sync/hlc.dart';
 import 'sync/dirty_row_store.dart';
 import 'sync/dirty_row.dart';
 
+/// Strategy for handling constraint violations during bulk load operations
+enum ConstraintViolationStrategy {
+  /// Throw the original exception (default behavior)
+  throwException,
+  
+  /// Silently skip the problematic row and continue processing
+  skip,
+}
+
 /// A declarative SQLite database.
 class DeclarativeDatabase {
   /// The underlying sqflite database.
@@ -1085,8 +1094,23 @@ class DeclarativeDatabase {
   ///
   /// Rows processed by this method are NOT marked as dirty, as they represent
   /// data coming from the server rather than local changes to be synchronized.
+  ///
+  /// ## Constraint Violation Handling
+  ///
+  /// The [onConstraintViolation] parameter controls how constraint violations
+  /// are handled when they occur:
+  ///
+  /// - `ConstraintViolationStrategy.throwException` (default): Throws the original exception
+  /// - `ConstraintViolationStrategy.skip`: Silently skips the problematic row
+  ///
+  /// The `skip` strategy is useful when loading data from a server where some
+  /// rows might conflict with local data, and you want to preserve existing
+  /// local data while still loading non-conflicting rows.
   Future<void> bulkLoad(
-      String tableName, List<Map<String, Object?>> rows) async {
+    String tableName,
+    List<Map<String, Object?>> rows, {
+    ConstraintViolationStrategy onConstraintViolation = ConstraintViolationStrategy.throwException,
+  }) async {
     final tableDef = _getTableDefinition(tableName);
     final pkColumns = tableDef.keys
         .where((k) => k.isPrimary)
@@ -1144,17 +1168,45 @@ class DeclarativeDatabase {
         }
 
         if (valuesToUpdate.isNotEmpty) {
-          await _update(
-            tableName,
-            valuesToUpdate,
-            now,
-            where: 'system_id = ?',
-            whereArgs: [systemId],
-          );
+          try {
+            await _update(
+              tableName,
+              valuesToUpdate,
+              now,
+              where: 'system_id = ?',
+              whereArgs: [systemId],
+            );
+          } catch (e) {
+            if (_isConstraintViolation(e)) {
+              await _handleConstraintViolation(
+                onConstraintViolation,
+                e,
+                tableName,
+                'UPDATE',
+                row,
+              );
+            } else {
+              rethrow;
+            }
+          }
         }
       } else {
         // INSERT logic - mark as server origin
-        await _insertFromServer(tableName, row, hlcClock.now());
+        try {
+          await _insertFromServer(tableName, row, hlcClock.now());
+        } catch (e) {
+          if (_isConstraintViolation(e)) {
+            await _handleConstraintViolation(
+              onConstraintViolation,
+              e,
+              tableName,
+              'INSERT',
+              row,
+            );
+          } else {
+            rethrow;
+          }
+        }
       }
     }
 
@@ -1170,6 +1222,41 @@ class DeclarativeDatabase {
       return [];
     }
     return await dirtyRowStore!.getAll();
+  }
+
+  /// Checks if an exception is a constraint violation
+  bool _isConstraintViolation(dynamic exception) {
+    final errorMessage = exception.toString().toLowerCase();
+    return errorMessage.contains('constraint') ||
+           errorMessage.contains('unique') ||
+           errorMessage.contains('primary key') ||
+           errorMessage.contains('foreign key') ||
+           errorMessage.contains('check constraint') ||
+           errorMessage.contains('not null constraint') ||
+           errorMessage.contains('sqlite_constraint');
+  }
+
+  /// Handles constraint violations based on the specified strategy
+  Future<void> _handleConstraintViolation(
+    ConstraintViolationStrategy strategy,
+    dynamic exception,
+    String tableName,
+    String operation,
+    Map<String, Object?> row,
+  ) async {
+    switch (strategy) {
+      case ConstraintViolationStrategy.throwException:
+        throw exception;
+
+      case ConstraintViolationStrategy.skip:
+        // Log the skip and continue silently
+        developer.log(
+          '⚠️ Skipping row due to constraint violation in $operation on table $tableName: ${exception.toString()}',
+          name: 'BulkLoadConstraintViolation',
+          level: 900, // WARNING level
+        );
+        return;
+    }
   }
 }
 

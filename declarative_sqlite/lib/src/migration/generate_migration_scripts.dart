@@ -83,10 +83,17 @@ List<String> _generateCreateTableScripts(CreateTable change) {
   scripts.add(_generateCreateTableScript(change));
 
   final indexKeys = table.keys.where((k) => k.type == KeyType.indexed);
+  final uniqueKeys = table.keys.where((k) => k.type == KeyType.unique);
+  
   if (indexKeys.isNotEmpty) {
     developer.log('    📊 Creating ${indexKeys.length} indexes for table ${table.name}', name: 'Migration');
   }
   
+  if (uniqueKeys.isNotEmpty) {
+    developer.log('    📊 Creating ${uniqueKeys.length} unique constraints for table ${table.name}', name: 'Migration');
+  }
+  
+  // Create regular indexes
   for (final key in indexKeys) {
     var indexName = 'idx_${table.name}_${key.columns.join('_')}';
     if (indexName.length > 62) {
@@ -99,6 +106,21 @@ List<String> _generateCreateTableScripts(CreateTable change) {
     }
     scripts.add(
         'CREATE INDEX $indexName ON ${table.name} (${key.columns.join(', ')});');
+  }
+  
+  // Create unique indexes
+  for (final key in uniqueKeys) {
+    var indexName = 'uniq_${table.name}_${key.columns.join('_')}';
+    if (indexName.length > 62) {
+      final hash =
+          sha1.convert(utf8.encode(indexName)).toString().substring(0, 10);
+      indexName = 'uniq_${table.name}_$hash';
+      developer.log('      • Unique index name truncated: $indexName (${key.columns.join(', ')})', name: 'Migration');
+    } else {
+      developer.log('      • Unique index: $indexName (${key.columns.join(', ')})', name: 'Migration');
+    }
+    scripts.add(
+        'CREATE UNIQUE INDEX $indexName ON ${table.name} (${key.columns.join(', ')});');
   }
   
   return scripts;

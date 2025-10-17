@@ -1,3 +1,28 @@
+## 1.3.0
+
+### Features
+- **Constraint Violation Handling in bulkLoad**: Added graceful constraint violation handling with `ConstraintViolationStrategy`
+  - `throwException` (default): Maintains existing behavior - throws on constraint violations
+  - `skip`: Silently skips problematic rows and continues processing valid ones
+  - Comprehensive constraint detection for unique, primary key, check, foreign key, and NOT NULL violations
+  - Detailed logging for monitoring and debugging constraint violation events
+- **Fixed Unique Constraint Generation**: Resolved issue where unique keys weren't properly creating `CREATE UNIQUE INDEX` statements
+  - Unique constraints now generate proper SQL: `CREATE UNIQUE INDEX uniq_table_column ON table (column)`
+  - Improved migration script generation to handle both regular indexes and unique constraints
+
+### Developer Experience
+- Enhanced bulkLoad method for server synchronization scenarios
+- Better error handling and logging for constraint violations
+- Safer bulk loading operations with granular control over error handling
+
+### Bug Fixes
+- Fixed missing unique constraint generation in schema migration scripts
+- Improved constraint violation detection and categorization
+
+### Documentation
+- Updated bulkLoad method documentation with constraint violation handling examples
+- Enhanced migration guide with unique constraint best practices
+
 ## 1.2.0
 
 ### Features

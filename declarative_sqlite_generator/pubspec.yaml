@@ -1,6 +1,6 @@
 name: declarative_sqlite_generator
 description: A build generator that generates data classes for interacting with table rows and view rows from declarative_sqlite schemas.
-version: 1.2.0
+version: 1.3.0
 repository: https://github.com/graknol/declarative_sqlite
 
 environment:
@@ -23,7 +23,7 @@ dependencies:
   path: ^1.9.1
 
   # Reference to the main library for schema metadata
-  declarative_sqlite: ^1.1.0
+  declarative_sqlite: ^1.3.0
 
 dev_dependencies:
   lints: ^3.0.0

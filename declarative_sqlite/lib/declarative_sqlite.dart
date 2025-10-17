@@ -29,8 +29,12 @@ export 'src/record_map_factory_registry.dart';
 export 'src/files/filesystem_file_repository.dart';
 
 // Schema classes
-export 'src/schema/db_table.dart';
 export 'src/schema/schema.dart';
+export 'src/schema/db_table.dart';
+export 'src/schema/db_view.dart';
+export 'src/schema/db_column.dart';
+export 'src/schema/db_key.dart';
+export 'src/schema/live_schema.dart';
 
 // Streaming queries
 export 'src/streaming/query_dependency_analyzer.dart';

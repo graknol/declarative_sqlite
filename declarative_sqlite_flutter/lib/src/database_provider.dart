@@ -164,6 +164,7 @@ class _DatabaseProviderState extends State<DatabaseProvider> {
             'files',
           ),
         ),
+        recreateDatabase: widget.recreateDatabase,
       );
       setState(() {
         _database = db;

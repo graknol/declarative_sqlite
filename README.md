@@ -18,6 +18,7 @@ The foundation of the ecosystem. It provides all the core functionality for sche
 - **Type-Safe Queries**: Build complex SQL queries with type safety and autocompletion.
 - **Streaming Queries**: Create reactive queries that automatically emit new results when underlying data changes.
 - **Conflict-Free Sync**: Built-in support for data synchronization using a Hybrid Logical Clock (HLC) to ensure conflict-free, last-write-wins data merging.
+- **Graceful Error Handling**: Robust constraint violation handling during bulk operations with configurable strategies.
 - **File Management**: Integrated support for attaching and managing files linked to database records.
 
 ### 📱 Flutter Integration (`declarative_sqlite_flutter`)
@@ -48,12 +49,12 @@ To get started, add the necessary packages to your `pubspec.yaml`:
 dependencies:
   flutter:
     sdk: flutter
-  declarative_sqlite: ^1.0.2
-  declarative_sqlite_flutter: ^1.0.2
+  declarative_sqlite: ^1.3.0
+  declarative_sqlite_flutter: ^1.3.0
 
 dev_dependencies:
   build_runner: ^2.4.10
-  declarative_sqlite_generator: ^1.0.2
+  declarative_sqlite_generator: ^1.3.0
 ```
 
 For a detailed guide, please refer to our [**official documentation**](https://graknol.github.io/declarative_sqlite/).

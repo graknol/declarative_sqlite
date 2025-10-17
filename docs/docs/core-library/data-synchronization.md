@@ -171,6 +171,22 @@ class MySyncService {
     await _setLastSyncTimestamp(DateTime.now());
   }
 
+  Future<void> _fetchRemoteChangesWithErrorHandling() async {
+    final lastSyncTimestamp = await _getLastSyncTimestamp();
+    final remoteChanges = await apiClient.fetchChanges(lastSyncTimestamp);
+
+    // Handle constraint violations gracefully during sync
+    for (final tableName in remoteChanges.keys) {
+      await database.bulkLoad(
+        tableName, 
+        remoteChanges[tableName]!,
+        onConstraintViolation: ConstraintViolationStrategy.skip,
+      );
+    }
+
+    await _setLastSyncTimestamp(DateTime.now());
+  }
+
   Future<DateTime?> _getLastSyncTimestamp() async {
     // Implementation to get the last sync timestamp from storage
     return null;
@@ -195,3 +211,79 @@ class MySyncService {
 6.  **Apply Server Changes**: The fetched changes are applied to the local database using `database.bulkLoad()`. This method intelligently inserts or updates records based on the incoming data, again respecting HLC timestamps to prevent overwriting newer local changes with older server data.
 
 This robust, two-way process ensures that data remains consistent across the client and server, even with intermittent network connectivity.
+
+## Handling Constraint Violations During Sync
+
+When synchronizing data from a server, you may encounter constraint violations (unique constraints, primary key conflicts, etc.). The `bulkLoad` method provides graceful handling of these scenarios through the `onConstraintViolation` parameter.
+
+### Constraint Violation Strategies
+
+```dart
+enum ConstraintViolationStrategy {
+  throwException, // Default: Throws the original exception
+  skip,          // Silently skips problematic rows and continues
+}
+```
+
+### Usage Examples
+
+**Default Behavior (Throw on Violations):**
+```dart
+// This will throw an exception if any row violates constraints
+await database.bulkLoad(tableName, serverData);
+```
+
+**Skip Problematic Rows:**
+```dart
+// This will skip rows that violate constraints and continue processing valid ones
+await database.bulkLoad(
+  tableName, 
+  serverData,
+  onConstraintViolation: ConstraintViolationStrategy.skip,
+);
+```
+
+### Common Synchronization Scenarios
+
+**Scenario 1: Preserve Local Data**
+When you want to keep existing local data and only add new records from the server:
+
+```dart
+await database.bulkLoad(
+  'users', 
+  serverUsers,
+  onConstraintViolation: ConstraintViolationStrategy.skip,
+);
+// Local users with conflicting emails/IDs remain unchanged
+// New users from server are added successfully
+```
+
+**Scenario 2: Audit and Handle Conflicts**
+When you need to know about conflicts for business logic or user notification:
+
+```dart
+try {
+  await database.bulkLoad('products', serverProducts);
+} catch (e) {
+  if (e.toString().contains('constraint violation')) {
+    // Handle conflict - maybe prompt user or log for review
+    await _handleDataConflict(e);
+  }
+}
+```
+
+### Monitoring Constraint Violations
+
+When using `ConstraintViolationStrategy.skip`, violations are automatically logged for monitoring:
+
+```dart
+// Logs appear as:
+// ⚠️ Skipping row due to constraint violation in INSERT on table users: 
+// UNIQUE constraint failed: users.email
+```
+
+This logging helps you:
+- Monitor data quality issues
+- Identify frequent constraint violations
+- Debug synchronization problems
+- Audit skipped records for business review

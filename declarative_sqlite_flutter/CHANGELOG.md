@@ -1,3 +1,11 @@
+## 1.3.0
+
+### Updates
+- Updated to use declarative_sqlite ^1.3.0
+- Enhanced compatibility with new constraint violation handling features
+- Improved data safety when working with server synchronization and constraint violations in Flutter widgets
+- Fixed the `recreateDatabase` parameter not getting passed from the `DatabaseProvider` widget to the `DeclarativeDatabase.open(...)` call
+
 ## 1.2.0
 
 ### Updates
