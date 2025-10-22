@@ -10,6 +10,7 @@ For Flutter-specific features, see [`declarative_sqlite_flutter`](../declarative
 - **Automatic Migrations**: The library automatically detects schema changes and generates and applies the necessary migration scripts. No more manual `ALTER TABLE` statements.
 - **Type-Safe Queries**: Build complex SQL queries with type safety and autocompletion using a powerful query builder.
 - **Streaming Queries**: Create reactive queries that automatically emit new results when underlying data changes, perfect for building responsive UIs.
+- **Reactive Synchronization**: Stream-based dirty row notifications enable efficient, real-time sync with external systems without polling.
 - **LWW Columns**: Built-in support for Last-Writer-Wins (LWW) columns using Hybrid Logical Clock (HLC) timestamps for conflict resolution.
 - **File Management**: Integrated support for attaching and managing files linked to database records, with garbage collection for orphaned files.
 
@@ -22,9 +23,9 @@ dependencies:
   flutter:
     sdk: flutter
   # Core library
-  declarative_sqlite: ^1.0.2
+  declarative_sqlite: ^1.4.0
   # Flutter integration package
-  declarative_sqlite_flutter: ^1.0.2
+  declarative_sqlite_flutter: ^1.4.0
   # Standard SQLite plugin for Flutter (Android/iOS)
   sqflite: ^2.3.3
 ```
@@ -109,5 +110,29 @@ class HomeScreen extends StatelessWidget {
   }
 }
 ```
+
+## Reactive Synchronization (New in 1.4.0)
+
+The library now includes built-in reactive synchronization capabilities, eliminating the need for polling:
+
+```dart
+// Set up reactive sync when your app starts
+database.onDirtyRowAdded?.listen((dirtyRow) {
+  print('Data changed: ${dirtyRow.tableName} - ${dirtyRow.rowId}');
+  
+  // Trigger your sync logic immediately
+  syncService.performSync();
+});
+
+// Your data changes are now instantly detected
+await database.insert('users', {'name': 'Alice'}); // Triggers sync
+await database.update('users', {'age': 30}, where: '...'); // Triggers sync
+```
+
+**Benefits:**
+- ⚡ **Immediate sync** - no polling delays
+- 🔋 **Better battery life** - no unnecessary checks
+- 🎯 **Zero overhead** when no changes occur
+- 🌐 **Perfect for offline-first apps**
 
 For more detailed examples and API documentation, please refer to our [**official documentation**](https://graknol.github.io/declarative_sqlite/docs/core-library/intro).

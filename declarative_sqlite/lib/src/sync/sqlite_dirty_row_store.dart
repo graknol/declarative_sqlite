@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:declarative_sqlite/src/sync/dirty_row.dart';
 import 'package:declarative_sqlite/src/sync/dirty_row_store.dart';
 import 'package:declarative_sqlite/src/sync/hlc.dart';
@@ -7,6 +9,9 @@ import 'package:sqflite_common/sqflite.dart';
 class SqliteDirtyRowStore implements DirtyRowStore {
   late final DatabaseExecutor _db;
   final String _tableName = '__dirty_rows';
+  
+  /// Stream controller for broadcasting when dirty rows are added
+  final StreamController<DirtyRow> _rowAddedController = StreamController<DirtyRow>.broadcast();
 
   SqliteDirtyRowStore();
 
@@ -21,7 +26,19 @@ class SqliteDirtyRowStore implements DirtyRowStore {
       INSERT OR REPLACE INTO $_tableName (table_name, row_id, hlc, is_full_row)
       VALUES (?, ?, ?, ?)
     ''', [tableName, rowId, hlc.toString(), isFullRow ? 1 : 0]);
+    
+    // Emit the dirty row to the stream
+    final dirtyRow = DirtyRow(
+      tableName: tableName,
+      rowId: rowId,
+      hlc: hlc,
+      isFullRow: isFullRow,
+    );
+    _rowAddedController.add(dirtyRow);
   }
+
+  @override
+  Stream<DirtyRow> get onRowAdded => _rowAddedController.stream;
 
   @override
   Future<List<DirtyRow>> getAll() async {
@@ -63,5 +80,10 @@ class SqliteDirtyRowStore implements DirtyRowStore {
   @override
   Future<void> clear() async {
     await _db.delete(_tableName);
+  }
+
+  @override
+  Future<void> dispose() async {
+    await _rowAddedController.close();
   }
 }

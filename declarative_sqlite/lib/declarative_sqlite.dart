@@ -28,6 +28,10 @@ export 'src/record_factory.dart';
 export 'src/record_map_factory_registry.dart';
 export 'src/files/filesystem_file_repository.dart';
 
+// Exception handling
+export 'src/exceptions/db_exceptions.dart';
+export 'src/exceptions/db_exception_mapper.dart';
+
 // Schema classes
 export 'src/schema/schema.dart';
 export 'src/schema/db_table.dart';

@@ -1,3 +1,50 @@
+## 1.4.0
+
+### 🚀 Major Features
+- **Reactive Synchronization**: Added stream-based dirty row notifications for efficient, real-time sync
+  - New `onDirtyRowAdded` stream on `DeclarativeDatabase` for immediate change notifications
+  - Eliminates need for polling - get instant notifications when data changes
+  - Zero overhead when no changes occur, perfect for offline-first applications
+  - Broadcast stream support for multiple listeners
+  - Enhanced `DirtyRowStore` interface with `Stream<DirtyRow> get onRowAdded`
+  - Automatic cleanup and disposal of stream resources
+- **Enhanced Exception Handling**: Exported comprehensive database exception classes for advanced error handling
+  - `DbOperationType` and `DbErrorCategory` enums for categorizing errors
+  - Specific exception types: `DbCreateException`, `DbReadException`, `DbUpdateException`, `DbDeleteException`
+  - `DbTransactionException`, `DbConnectionException`, `DbMigrationException` for system-level errors
+  - `DbExceptionMapper` utility for platform-specific exception mapping
+
+### 🎯 Developer Experience
+- **Real-time Sync**: Replace inefficient polling with reactive streams
+  ```dart
+  // Old way: Poll every 30 seconds
+  Timer.periodic(Duration(seconds: 30), (_) => checkForChanges());
+  
+  // New way: Immediate reactive response
+  database.onDirtyRowAdded?.listen((dirtyRow) => triggerSync());
+  ```
+- **Production-Ready Patterns**: Built-in support for debouncing, error isolation, and resource cleanup
+- **Type-Safe Error Handling**: Catch specific database exception types for better error recovery
+- **Better Battery Life**: No periodic checks when no data changes occur
+
+### 🛠️ Technical Improvements
+- Enhanced `SqliteDirtyRowStore` with `StreamController<DirtyRow>.broadcast()`
+- Proper stream disposal in `DeclarativeDatabase.close()`
+- Comprehensive test coverage for reactive streams with 9 test scenarios
+- Backward compatibility maintained - all existing APIs unchanged
+
+### 📚 Documentation
+- Updated data synchronization guide with reactive patterns and best practices
+- Added comparison between polling vs reactive approaches
+- Production examples with debouncing and error handling
+- Enhanced README with reactive synchronization feature
+
+### ✅ Quality Assurance
+- All existing tests continue to pass
+- New comprehensive test suite for reactive functionality
+- Static analysis verification
+- Export verification for all new functionality
+
 ## 1.3.0
 
 ### Features

@@ -52,6 +52,24 @@ class DeclarativeDatabase {
   /// The query stream manager for this database instance
   QueryStreamManager get streamManager => _streamManager;
 
+  /// A stream that emits dirty rows as they are added to the dirty row store.
+  /// 
+  /// This stream allows you to reactively respond to database changes instead
+  /// of polling for dirty rows. Each emission contains the DirtyRow that was
+  /// just added to the store.
+  /// 
+  /// Returns null if no dirty row store is configured.
+  /// 
+  /// Example usage:
+  /// ```dart
+  /// database.onDirtyRowAdded?.listen((dirtyRow) {
+  ///   print('New dirty row: ${dirtyRow.tableName} ${dirtyRow.rowId}');
+  ///   // Trigger sync logic here
+  ///   syncService.sync();
+  /// });
+  /// ```
+  Stream<DirtyRow>? get onDirtyRowAdded => dirtyRowStore?.onRowAdded;
+
   /// The repository for storing and retrieving file content.
   final IFileRepository fileRepository;
 
@@ -211,6 +229,7 @@ class DeclarativeDatabase {
   /// Closes the database.
   Future<void> close() async {
     await _streamManager.dispose();
+    await dirtyRowStore?.dispose();
     if (_db is sqflite.Database) {
       await _db.close();
     }

@@ -20,7 +20,7 @@ The ecosystem is built as a monorepo containing several key packages:
 ## 💡 Core Philosophy
 
 1.  **Declarative Schema Management**: Define your database schema using a fluent Dart API. The library handles schema creation and management automatically.
-2.  **Reactive Data Access**: Built around `Stream`s for reactive applications where UI updates automatically when data changes.
+2.  **Reactive Data Access**: Built around `Stream`s for reactive applications where UI updates automatically when data changes. Includes reactive synchronization streams for efficient change detection.
 3.  **Type Safety**: Query builder and code generation provide compile-time type checking and autocompletion.
 4.  **Simple Integration**: Easy integration with Flutter widgets for data-driven UIs.
 

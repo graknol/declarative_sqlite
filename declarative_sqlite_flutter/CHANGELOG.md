@@ -1,3 +1,22 @@
+## 1.4.0
+
+### 🚀 Major Updates
+- Updated to use declarative_sqlite ^1.4.0
+- **Enhanced Reactive UI**: Full compatibility with new reactive synchronization streams
+- **Real-time Sync Integration**: Flutter widgets can now leverage reactive dirty row streams for instant UI updates
+- **Improved Exception Handling**: Access to comprehensive database exception types for better error handling in Flutter apps
+
+### 🎯 Flutter-Specific Benefits
+- Reactive widgets automatically benefit from zero-overhead change detection
+- Better performance with stream-based updates instead of polling
+- Enhanced error handling capabilities for Flutter applications
+- Perfect integration with offline-first Flutter app patterns
+
+### 🛠️ Technical Improvements
+- All Flutter widgets maintain full compatibility with new reactive features
+- Enhanced `DatabaseProvider` for managing reactive database connections
+- `QueryListView` benefits from improved change detection performance
+
 ## 1.3.0
 
 ### Updates

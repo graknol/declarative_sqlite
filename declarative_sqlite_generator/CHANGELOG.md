@@ -1,3 +1,21 @@
+## 1.4.0
+
+### 🚀 Major Updates
+- Updated to use declarative_sqlite ^1.4.0
+- **Enhanced Reactive Compatibility**: Generated code now fully supports reactive synchronization features
+- **Improved Exception Handling**: Generated code works seamlessly with new comprehensive database exception types
+- **Stream-Ready Generated Classes**: All generated record classes are compatible with reactive dirty row streams
+
+### 🎯 Code Generation Improvements
+- Generated getters and setters work perfectly with reactive change detection
+- Enhanced type safety with new exception handling capabilities
+- Maintained full backward compatibility with existing generated code
+
+### 🛠️ Technical Enhancements
+- Code generation now leverages improved schema analysis from core library
+- Generated code benefits from enhanced constraint violation handling
+- Better integration with real-time synchronization patterns
+
 ## 1.3.0
 
 ### Updates

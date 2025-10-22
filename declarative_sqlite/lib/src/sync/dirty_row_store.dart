@@ -19,4 +19,26 @@ abstract class DirtyRowStore {
 
   /// Clears all pending operations from the store.
   Future<void> clear();
+
+  /// A stream that emits dirty rows as they are added to the store.
+  /// 
+  /// This stream allows consumers to reactively respond to database changes
+  /// instead of polling for dirty rows. Each emission contains the DirtyRow
+  /// that was just added to the store.
+  /// 
+  /// Example usage:
+  /// ```dart
+  /// database.dirtyRowStore?.onRowAdded.listen((dirtyRow) {
+  ///   print('New dirty row: ${dirtyRow.tableName} ${dirtyRow.rowId}');
+  ///   // Trigger sync logic here
+  ///   syncService.sync();
+  /// });
+  /// ```
+  Stream<DirtyRow> get onRowAdded;
+
+  /// Disposes of any resources used by the store.
+  /// 
+  /// This should be called when the store is no longer needed to clean up
+  /// stream controllers and other resources.
+  Future<void> dispose();
 }

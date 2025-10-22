@@ -6,10 +6,11 @@ sidebar_position: 6
 
 `declarative_sqlite` provides a powerful, built-in framework for implementing offline-first data synchronization. This allows your application to work seamlessly offline and sync its data with a remote server whenever a network connection is available.
 
-The synchronization mechanism is built on three core concepts:
+The synchronization mechanism is built on four core concepts:
 1.  **Hybrid Logical Clocks (HLCs)**: For conflict-free timestamping.
 2.  **Automatic Change Tracking**: To record all local database modifications.
-3.  **A Sync Manager**: To orchestrate communication with your server.
+3.  **Reactive Streams**: For real-time change notification without polling.
+4.  **A Sync Manager**: To orchestrate communication with your server.
 
 ## 1. Hybrid Logical Clocks (HLCs)
 
@@ -57,7 +58,79 @@ builder.table('tasks', (table) {
 });
 ```
 
-## 3. Implementing Synchronization Logic
+## 3. Reactive Change Streams
+
+For v1.4.0 and later, `declarative_sqlite` provides reactive streams that notify you immediately when dirty rows are added, eliminating the need for polling:
+
+```dart
+// Listen for dirty rows in real-time
+database.onDirtyRowAdded?.listen((dirtyRow) {
+  print('New change detected: ${dirtyRow.tableName} ${dirtyRow.rowId}');
+  // Trigger sync automatically
+  syncService.triggerSync();
+});
+```
+
+### Benefits of Reactive Synchronization
+
+**Traditional Polling Approach:**
+- Wastes resources checking for changes when none exist
+- Sync delay depends on polling interval
+- Battery drain from unnecessary periodic execution
+
+**Reactive Stream Approach:**
+- Zero overhead when no changes occur
+- Immediate response to data changes
+- Better battery life and performance
+- Real-time synchronization capability
+
+### Production Implementation Example
+
+```dart
+class ReactiveSyncService {
+  final DeclarativeDatabase database;
+  final MyApiClient apiClient;
+  StreamSubscription<DirtyRow>? _subscription;
+  Timer? _debounceTimer;
+  bool _isSyncing = false;
+
+  void startReactiveSync() {
+    _subscription = database.onDirtyRowAdded?.listen((_) {
+      _scheduleSync();
+    });
+  }
+
+  void _scheduleSync() {
+    if (_isSyncing) return; // Avoid concurrent syncs
+    
+    // Debounce to avoid excessive API calls
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(Duration(seconds: 3), () {
+      _performSyncIfConnected();
+    });
+  }
+
+  Future<void> _performSyncIfConnected() async {
+    if (!await _hasNetworkConnection()) return;
+
+    _isSyncing = true;
+    try {
+      await _performSync();
+    } catch (e) {
+      _scheduleRetry();
+    } finally {
+      _isSyncing = false;
+    }
+  }
+
+  void dispose() {
+    _subscription?.cancel();
+    _debounceTimer?.cancel();
+  }
+}
+```
+
+## 4. Implementing Synchronization Logic
 
 With change tracking enabled, you can now implement your own synchronization logic. The core of this is the `__dirty_rows` table, which acts as an outbox of pending changes.
 
@@ -197,6 +270,43 @@ class MySyncService {
   }
 }
 ```
+
+### Reactive vs Polling Synchronization
+
+The new `onDirtyRowAdded` stream provides significant advantages over traditional polling approaches:
+
+#### Polling Approach (Traditional)
+```dart
+// ❌ Inefficient polling every 30 seconds
+Timer.periodic(Duration(seconds: 30), (timer) async {
+  final dirtyRows = await database.getDirtyRows();
+  if (dirtyRows.isNotEmpty) {
+    await performSync();
+  }
+});
+```
+
+**Disadvantages:**
+- Wastes resources checking for changes when none exist
+- Sync delay depends on polling interval (up to 30 seconds)
+- Battery drain from unnecessary periodic execution
+- Cannot provide real-time sync without very frequent polling
+
+#### Reactive Approach (New)
+```dart
+// ✅ Efficient reactive sync
+database.onDirtyRowAdded?.listen((dirtyRow) {
+  // Immediate notification when data changes
+  debouncedSync.trigger();
+});
+```
+
+**Advantages:**
+- Zero overhead when no changes occur
+- Immediate response to data changes
+- Better battery life and performance
+- Real-time synchronization capability
+- Perfect for offline-first applications
 
 ## The Synchronization Flow
 
