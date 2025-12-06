@@ -38,5 +38,22 @@ export {
   FilesetColumnBuilder,
 } from './schema/builders/column-builders';
 
+// Migration
+export { SchemaMigrator } from './migration/schema-migrator';
+export { SchemaIntrospector } from './migration/schema-introspector';
+export { SchemaDiffer } from './migration/schema-differ';
+export { MigrationGenerator } from './migration/migration-generator';
+export type { 
+  MigrationPlan,
+} from './migration/schema-migrator';
+export type {
+  SchemaDiff,
+  TableAlterations,
+  ColumnModification,
+} from './migration/schema-differ';
+export type {
+  MigrationOperation,
+} from './migration/migration-generator';
+
 // Version
 export const VERSION = '0.1.0';
