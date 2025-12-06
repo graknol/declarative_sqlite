@@ -72,5 +72,16 @@ export type {
   JoinClause,
 } from './database/query-builder';
 
+// Synchronization
+export { Hlc } from './sync/hlc';
+export type { HlcTimestamp } from './sync/hlc';
+export { LwwOperations } from './sync/lww-operations';
+export type { LwwUpdateOptions } from './sync/lww-operations';
+export { SqliteDirtyRowStore } from './sync/dirty-row-store';
+export type {
+  DirtyRow,
+  DirtyRowStore,
+} from './sync/dirty-row-store';
+
 // Version
 export const VERSION = '0.1.0';
