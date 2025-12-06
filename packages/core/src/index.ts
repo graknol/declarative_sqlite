@@ -55,5 +55,22 @@ export type {
   MigrationOperation,
 } from './migration/migration-generator';
 
+// Database operations
+export { DeclarativeDatabase } from './database/declarative-database';
+export { QueryBuilder } from './database/query-builder';
+export { BetterSqlite3Adapter } from './database/better-sqlite3-adapter';
+export type {
+  DatabaseConfig,
+  InsertOptions,
+  UpdateOptions,
+  DeleteOptions,
+  QueryOptions,
+} from './database/declarative-database';
+export type {
+  WhereOperator,
+  WhereCondition,
+  JoinClause,
+} from './database/query-builder';
+
 // Version
 export const VERSION = '0.1.0';
