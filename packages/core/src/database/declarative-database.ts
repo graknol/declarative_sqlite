@@ -255,7 +255,7 @@ export class DeclarativeDatabase {
   /**
    * Create a new DbRecord instance
    */
-  createRecord<T>(tableName: string, initialData?: Partial<T>): DbRecord<T> & T {
+  createRecord<T extends Record<string, any>>(tableName: string, initialData?: Partial<T>): DbRecord<T> & T {
     this.ensureInitialized();
     return new DbRecord<T>(this, tableName, initialData) as DbRecord<T> & T;
   }
@@ -263,7 +263,7 @@ export class DeclarativeDatabase {
   /**
    * Load an existing record by ID
    */
-  async loadRecord<T>(tableName: string, id: string): Promise<DbRecord<T> & T> {
+  async loadRecord<T extends Record<string, any>>(tableName: string, id: string): Promise<DbRecord<T> & T> {
     this.ensureInitialized();
     const row = await this.queryOne(tableName, { where: 'id = ?', whereArgs: [id] });
     if (!row) {

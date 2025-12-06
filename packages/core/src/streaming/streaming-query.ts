@@ -82,7 +82,7 @@ export class StreamingQuery<T = any> extends Observable<T[]> {
     }
     
     const stmt = this.adapter.prepare(sql);
-    return stmt.all(...args) as T[];
+    return await stmt.all(...args) as T[];
   }
   
   /**

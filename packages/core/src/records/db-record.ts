@@ -6,7 +6,7 @@ import { Hlc } from '../sync/hlc';
  * Base class for database records with Proxy-based property access.
  * Eliminates the need for code generation while maintaining type safety.
  */
-export class DbRecord<T> {
+export class DbRecord<T extends Record<string, any>> {
   private _db: DeclarativeDatabase;
   private _tableName: string;
   private _values: Record<string, any> = {};
@@ -14,7 +14,7 @@ export class DbRecord<T> {
   private _filesets: Map<string, FileSet> = new Map();
   private _isNew: boolean = true;
   
-  constructor(db: DeclarativeDatabase, tableName: string, initialData?: Partial<T>) {
+  constructor(db: DeclarativeDatabase, tableName: string, initialData?: Partial<T & { system_id?: string }>) {
     this._db = db;
     this._tableName = tableName;
     
@@ -22,7 +22,7 @@ export class DbRecord<T> {
     if (initialData) {
       Object.assign(this._values, initialData);
       // If system_id is present, this is an existing record
-      if (initialData.system_id) {
+      if ((initialData as any).system_id) {
         this._isNew = false;
       }
     }
@@ -49,9 +49,9 @@ export class DbRecord<T> {
         // Handle fileset columns
         const table = target._db.schema.tables.find(t => t.name === target._tableName);
         const column = table?.columns.find(c => c.name === prop);
-        if (column?.type === 'fileset') {
+        if (column && column.type === 'FILESET') {
           if (!target._filesets.has(prop)) {
-            const fileset = target._db.getFileset(target._tableName, prop, target._values.system_id);
+            const fileset = target._db.getFileset(target._tableName, prop, target._values['system_id']);
             target._filesets.set(prop, fileset);
           }
           return target._filesets.get(prop);
@@ -83,7 +83,7 @@ export class DbRecord<T> {
         target._dirtyFields.add(prop);
         return true;
       }
-    }) as DbRecord<T> & T;
+    }) as unknown as DbRecord<T> & T;
   }
   
   /**
