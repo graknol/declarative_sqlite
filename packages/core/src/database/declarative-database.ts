@@ -1,6 +1,8 @@
 import { SQLiteAdapter } from '../adapters/adapter.interface';
 import { Schema } from '../schema/types';
 import { SchemaMigrator } from '../migration/schema-migrator';
+import { StreamingQuery, QueryOptions as StreamQueryOptions } from '../streaming/streaming-query';
+import { QueryStreamManager } from '../streaming/query-stream-manager';
 
 export interface DatabaseConfig {
   adapter: SQLiteAdapter;
@@ -38,11 +40,13 @@ export class DeclarativeDatabase {
   private schema: Schema;
   private autoMigrate: boolean;
   private isInitialized = false;
+  private streamManager: QueryStreamManager;
 
   constructor(config: DatabaseConfig) {
     this.adapter = config.adapter;
     this.schema = config.schema;
     this.autoMigrate = config.autoMigrate ?? true;
+    this.streamManager = new QueryStreamManager();
   }
 
   /**
@@ -81,6 +85,10 @@ export class DeclarativeDatabase {
 
     const stmt = this.adapter.prepare(sql);
     const result = await stmt.run(...Object.values(values));
+    
+    // Notify streaming queries
+    this.streamManager.notifyTableChanged(table);
+    
     return Number(result.lastInsertRowid);
   }
 
@@ -118,6 +126,10 @@ export class DeclarativeDatabase {
 
     const stmt = this.adapter.prepare(sql);
     const result = await stmt.run(...params);
+    
+    // Notify streaming queries
+    this.streamManager.notifyTableChanged(table);
+    
     return result.changes;
   }
 
@@ -139,6 +151,10 @@ export class DeclarativeDatabase {
 
     const stmt = this.adapter.prepare(sql);
     const result = await stmt.run(...params);
+    
+    // Notify streaming queries
+    this.streamManager.notifyTableChanged(table);
+    
     return result.changes;
   }
 
@@ -200,9 +216,22 @@ export class DeclarativeDatabase {
   }
 
   /**
+   * Create a streaming query that automatically refreshes on data changes
+   */
+  stream<T = any>(table: string, options?: StreamQueryOptions): StreamingQuery<T> {
+    this.ensureInitialized();
+    
+    const stream = new StreamingQuery<T>(this.adapter, table, options);
+    this.streamManager.registerStream(stream);
+    
+    return stream;
+  }
+
+  /**
    * Close the database
    */
   async close(): Promise<void> {
+    this.streamManager.clear();
     await this.adapter.close();
     this.isInitialized = false;
   }

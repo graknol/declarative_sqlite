@@ -60,11 +60,17 @@ export class BetterSqlite3Adapter implements SQLiteAdapter {
   async transaction<T>(callback: () => Promise<T>): Promise<T> {
     this.ensureOpen();
 
-    const transaction = this.db.transaction(() => {
-      return callback();
-    });
-
-    return await transaction();
+    // better-sqlite3 transactions must be synchronous, but our callback is async
+    // So we manually handle BEGIN/COMMIT/ROLLBACK
+    try {
+      this.db.exec('BEGIN');
+      const result = await callback();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   isOpen(): boolean {

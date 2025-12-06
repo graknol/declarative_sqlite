@@ -91,5 +91,10 @@ export type {
 export { FilesystemFileRepository } from './files/filesystem-file-repository';
 export { FileSet } from './files/fileset';
 
+// Streaming queries
+export { StreamingQuery } from './streaming/streaming-query';
+export { QueryStreamManager } from './streaming/query-stream-manager';
+export type { QueryOptions as StreamQueryOptions } from './streaming/streaming-query';
+
 // Version
 export const VERSION = '0.1.0';
