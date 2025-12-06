@@ -3,6 +3,8 @@ import { Schema } from '../schema/types';
 import { SchemaMigrator } from '../migration/schema-migrator';
 import { StreamingQuery, QueryOptions as StreamQueryOptions } from '../streaming/streaming-query';
 import { QueryStreamManager } from '../streaming/query-stream-manager';
+import { DbRecord } from '../records/db-record';
+import { FileSet } from '../files/fileset';
 
 export interface DatabaseConfig {
   adapter: SQLiteAdapter;
@@ -37,7 +39,7 @@ export interface QueryOptions {
  */
 export class DeclarativeDatabase {
   private adapter: SQLiteAdapter;
-  private schema: Schema;
+  public schema: Schema;
   private autoMigrate: boolean;
   private isInitialized = false;
   private streamManager: QueryStreamManager;
@@ -248,6 +250,35 @@ export class DeclarativeDatabase {
    */
   getSchema(): Schema {
     return this.schema;
+  }
+
+  /**
+   * Create a new DbRecord instance
+   */
+  createRecord<T>(tableName: string, initialData?: Partial<T>): DbRecord<T> & T {
+    this.ensureInitialized();
+    return new DbRecord<T>(this, tableName, initialData) as DbRecord<T> & T;
+  }
+
+  /**
+   * Load an existing record by ID
+   */
+  async loadRecord<T>(tableName: string, id: string): Promise<DbRecord<T> & T> {
+    this.ensureInitialized();
+    const row = await this.queryOne(tableName, { where: 'id = ?', whereArgs: [id] });
+    if (!row) {
+      throw new Error(`Record not found: ${tableName} with id=${id}`);
+    }
+    return new DbRecord<T>(this, tableName, row) as DbRecord<T> & T;
+  }
+
+  /**
+   * Get a FileSet for a fileset column
+   * @internal
+   */
+  getFileset(_tableName: string, _columnName: string, _recordId?: string): FileSet {
+    // Placeholder - would integrate with FilesystemFileRepository
+    throw new Error('FileSet integration not yet implemented');
   }
 
   private ensureInitialized(): void {
