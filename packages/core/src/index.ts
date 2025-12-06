@@ -25,5 +25,18 @@ export type {
   SchemaProvider
 } from './schema/types';
 
+// Schema builders
+export { SchemaBuilder } from './schema/builders/schema-builder';
+export { TableBuilder } from './schema/builders/table-builder';
+export { KeyBuilder } from './schema/builders/key-builder';
+export {
+  TextColumnBuilder,
+  IntegerColumnBuilder,
+  RealColumnBuilder,
+  GuidColumnBuilder,
+  DateColumnBuilder,
+  FilesetColumnBuilder,
+} from './schema/builders/column-builders';
+
 // Version
 export const VERSION = '0.1.0';
