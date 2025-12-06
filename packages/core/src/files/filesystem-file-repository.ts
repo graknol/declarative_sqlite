@@ -165,9 +165,9 @@ export class FilesystemFileRepository implements IFileRepository {
   private parseHlc(str: string): HlcTimestamp {
     const parts = str.split(':');
     return {
-      milliseconds: parseInt(parts[0], 10),
-      counter: parseInt(parts[1], 10),
-      nodeId: parts[2],
+      milliseconds: parseInt(parts[0] || '0', 10),
+      counter: parseInt(parts[1] || '0', 10),
+      nodeId: parts[2] || '',
     };
   }
 }
