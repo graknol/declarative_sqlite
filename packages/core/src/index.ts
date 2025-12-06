@@ -83,5 +83,13 @@ export type {
   DirtyRowStore,
 } from './sync/dirty-row-store';
 
+// File management
+export type { 
+  FileMetadata,
+  IFileRepository 
+} from './files/file-repository.interface';
+export { FilesystemFileRepository } from './files/filesystem-file-repository';
+export { FileSet } from './files/fileset';
+
 // Version
 export const VERSION = '0.1.0';
