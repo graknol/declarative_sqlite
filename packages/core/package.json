@@ -1,5 +1,5 @@
 {
-  "name": "@declarative-sqlite/core",
+  "name": "declarative-sqlite",
   "version": "1.0.0",
   "description": "TypeScript port of declarative_sqlite for PWA and Capacitor applications - Zero code generation, type-safe SQLite with automatic migration",
   "type": "module",
