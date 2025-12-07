@@ -1,4 +1,4 @@
-# Publishing Guide for @declarative-sqlite/core
+# Publishing Guide for declarative-sqlite
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ Manually update the version in `package.json`:
 
 ```json
 {
-  "name": "@declarative-sqlite/core",
+  "name": "declarative-sqlite",
   "version": "1.0.1",  // ← Update this
   ...
 }
@@ -74,14 +74,14 @@ Should NOT include:
 npm publish --access public
 ```
 
-**Note**: The `--access public` flag is required for scoped packages (@declarative-sqlite/core)
+**Note**: The `--access public` flag is required for scoped packages (declarative-sqlite)
 
 ### 5. Verify Publication
 
-1. Check on npm: https://www.npmjs.com/package/@declarative-sqlite/core
+1. Check on npm: https://www.npmjs.com/package/declarative-sqlite
 2. Test installation in a new project:
    ```bash
-   npm install @declarative-sqlite/core rxjs
+   npm install declarative-sqlite rxjs
    ```
 
 ## Automated Checks
@@ -148,10 +148,10 @@ npm publish --dry-run
 npm publish --tag beta
 
 # Check package version
-npm view @declarative-sqlite/core version
+npm view declarative-sqlite version
 
 # List all published versions
-npm view @declarative-sqlite/core versions
+npm view declarative-sqlite versions
 ```
 
 ## Manual Publishing Process

@@ -1,6 +1,6 @@
-# @declarative-sqlite/core
+# declarative-sqlite
 
-[![npm version](https://badge.fury.io/js/@declarative-sqlite%2Fcore.svg)](https://www.npmjs.com/package/@declarative-sqlite/core)
+[![npm version](https://badge.fury.io/js/declarative-sqlite.svg)](https://www.npmjs.com/package/declarative-sqlite)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 TypeScript port of `declarative_sqlite` for PWA and Capacitor applications with **zero code generation**, automatic schema migration, and built-in conflict resolution for offline-first apps.
@@ -19,13 +19,13 @@ TypeScript port of `declarative_sqlite` for PWA and Capacitor applications with 
 ## 📥 Installation
 
 ```bash
-npm install @declarative-sqlite/core rxjs
+npm install declarative-sqlite rxjs
 ```
 
 ## 🚀 Quick Start
 
 ```typescript
-import { SchemaBuilder, DeclarativeDatabase, BetterSqlite3Adapter } from '@declarative-sqlite/core';
+import { SchemaBuilder, DeclarativeDatabase, BetterSqlite3Adapter } from 'declarative-sqlite';
 import Database from 'better-sqlite3';
 
 // 1. Define your schema (declarative)
@@ -154,7 +154,7 @@ await db.insert('users', { id: 'u2', name: 'Bob', age: 25 });
 Built-in Hybrid Logical Clock (HLC) timestamps and Last-Write-Wins (LWW) conflict resolution:
 
 ```typescript
-import { Hlc, LwwOperations } from '@declarative-sqlite/core';
+import { Hlc, LwwOperations } from 'declarative-sqlite';
 
 const hlc = new Hlc('device-123');
 const lww = new LwwOperations(adapter, hlc);
@@ -181,7 +181,7 @@ const applied = await lww.updateLwwIfNewer(
 Built-in file storage with automatic versioning:
 
 ```typescript
-import { FilesystemFileRepository, FileSet } from '@declarative-sqlite/core';
+import { FilesystemFileRepository, FileSet } from 'declarative-sqlite';
 
 const fileRepo = new FilesystemFileRepository(adapter, hlc, '/data/files');
 
@@ -201,7 +201,7 @@ const content = await attachments.getFile(fileId);
 ### Node.js (better-sqlite3)
 
 ```typescript
-import { BetterSqlite3Adapter } from '@declarative-sqlite/core';
+import { BetterSqlite3Adapter } from 'declarative-sqlite';
 import Database from 'better-sqlite3';
 
 const adapter = new BetterSqlite3Adapter(Database);
@@ -211,7 +211,7 @@ await adapter.open('myapp.db');
 ### Browser/PWA (wa-sqlite) - Coming Soon
 
 ```typescript
-import { WaSqliteAdapter } from '@declarative-sqlite/core';
+import { WaSqliteAdapter } from 'declarative-sqlite';
 
 const adapter = new WaSqliteAdapter();
 await adapter.open('myapp.db');
@@ -220,7 +220,7 @@ await adapter.open('myapp.db');
 ### Capacitor (iOS/Android) - Coming Soon
 
 ```typescript
-import { CapacitorSqliteAdapter } from '@declarative-sqlite/core';
+import { CapacitorSqliteAdapter } from 'declarative-sqlite';
 
 const adapter = new CapacitorSqliteAdapter();
 await adapter.open('myapp.db');
