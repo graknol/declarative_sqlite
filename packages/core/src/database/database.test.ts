@@ -37,7 +37,7 @@ describe('DeclarativeDatabase', () => {
   });
 
   it('should insert a record', async () => {
-    const id = await db.insert('users', {
+    await db.insert('users', {
       id: '123',
       name: 'Alice',
       age: 30,
