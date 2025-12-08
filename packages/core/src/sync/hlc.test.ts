@@ -23,7 +23,7 @@ describe('Hlc', () => {
 
     it('should increment counter when physical time does not advance', () => {
       const ts1 = hlc.now();
-      const ts2 = hlc.now();
+      const _ts2 = hlc.now();
       const ts3 = hlc.now();
 
       // At least one should have an incremented counter

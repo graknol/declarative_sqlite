@@ -58,7 +58,7 @@ export type {
 // Database operations
 export { DeclarativeDatabase } from './database/declarative-database';
 export { QueryBuilder } from './database/query-builder';
-export { BetterSqlite3Adapter } from './database/better-sqlite3-adapter';
+export { SqliteWasmAdapter } from './database/sqlite-wasm-adapter';
 export type {
   DatabaseConfig,
   InsertOptions,
@@ -89,6 +89,7 @@ export type {
   IFileRepository 
 } from './files/file-repository.interface';
 export { FilesystemFileRepository } from './files/filesystem-file-repository';
+export { IndexedDBFileRepository } from './files/indexeddb-file-repository';
 export { FileSet } from './files/fileset';
 
 // Streaming queries

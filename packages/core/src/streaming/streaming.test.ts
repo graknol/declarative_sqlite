@@ -1,17 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { BetterSqlite3Adapter } from '../database/better-sqlite3-adapter';
+import { SqliteWasmAdapter } from '../database/sqlite-wasm-adapter';
 import { SchemaBuilder } from '../schema/builders/schema-builder';
 import { DeclarativeDatabase } from '../database/declarative-database';
 import { QueryStreamManager } from './query-stream-manager';
 import { StreamingQuery } from './streaming-query';
 
 describe('Streaming Queries', () => {
-  let adapter: BetterSqlite3Adapter;
+  let adapter: SqliteWasmAdapter;
   let db: DeclarativeDatabase;
   
   beforeEach(async () => {
-    adapter = new BetterSqlite3Adapter(Database);
+    adapter = new SqliteWasmAdapter();
     await adapter.open(':memory:');
     
     const schema = new SchemaBuilder()

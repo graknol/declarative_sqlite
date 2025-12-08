@@ -1,21 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import * as fs from 'fs';
-import * as path from 'path';
-import { BetterSqlite3Adapter } from '../database/better-sqlite3-adapter';
+import { SqliteWasmAdapter } from '../database/sqlite-wasm-adapter';
 import { Hlc } from '../sync/hlc';
-import { FilesystemFileRepository } from './filesystem-file-repository';
+import { IndexedDBFileRepository } from './indexeddb-file-repository';
 import { FileSet } from './fileset';
 
 describe('FileSet', () => {
-  let adapter: BetterSqlite3Adapter;
+  let adapter: SqliteWasmAdapter;
   let hlc: Hlc;
-  let repository: FilesystemFileRepository;
-  let testDir: string;
+  let repository: IndexedDBFileRepository;
 
   beforeEach(async () => {
     // Create adapter
-    adapter = new BetterSqlite3Adapter(Database);
+    adapter = new SqliteWasmAdapter();
     await adapter.open(':memory:');
 
     // Create __files table
@@ -36,24 +32,13 @@ describe('FileSet', () => {
     // Create HLC
     hlc = new Hlc('test-node');
 
-    // Create test directory
-    testDir = path.join(__dirname, '../../.test-files');
-    if (fs.existsSync(testDir)) {
-      fs.rmSync(testDir, { recursive: true });
-    }
-    fs.mkdirSync(testDir, { recursive: true });
-
-    // Create repository
-    repository = new FilesystemFileRepository(adapter, hlc, testDir);
+    // Create repository with unique database name for each test
+    const dbName = `test-files-${Date.now()}`;
+    repository = new IndexedDBFileRepository(adapter, hlc, dbName);
   });
 
   afterEach(async () => {
     await adapter.close();
-
-    // Clean up test directory
-    if (fs.existsSync(testDir)) {
-      fs.rmSync(testDir, { recursive: true });
-    }
   });
 
   it('should add files to fileset', async () => {
