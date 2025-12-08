@@ -13,8 +13,12 @@ Successfully migrated the `declarative-sqlite` core library from Node.js-specifi
 
 **Added:**
 - `@sqlite.org/sqlite-wasm` (v3.47.2-build1) - Official SQLite WASM build for browsers
-- `happy-dom` - Browser environment simulator for tests
+- `happy-dom` (v20.0.0) - Browser environment simulator for tests (updated from 12.10.3 to fix security vulnerabilities)
 - `fake-indexeddb` - IndexedDB polyfill for testing
+
+**Security Note:** Updated happy-dom from 12.10.3 to 20.0.0 to address:
+- CVE: VM Context Escape can lead to Remote Code Execution (< 20.0.0)
+- CVE: Server side code execution via `<script>` tag (< 15.10.2)
 
 ### 2. New Browser-Compatible Components
 
