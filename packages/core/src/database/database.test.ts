@@ -1,87 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DeclarativeDatabase } from './declarative-database';
 import { SchemaBuilder } from '../schema/builders/schema-builder';
-import { BetterSqlite3Adapter } from './better-sqlite3-adapter';
-
-// Mock better-sqlite3 for testing without actual dependency
-class MockDatabase {
-  private tables: Map<string, any[]> = new Map();
-  private lastId = 0;
-
-  exec(sql: string) {
-    // Simple table creation parsing
-    if (sql.includes('CREATE TABLE')) {
-      const match = sql.match(/CREATE TABLE ["']?(\w+)["']?/);
-      if (match) {
-        this.tables.set(match[1], []);
-      }
-    }
-  }
-
-  prepare(sql: string) {
-    const self = this;
-    return {
-      run(...params: any[]) {
-        // Simple INSERT parsing
-        if (sql.includes('INSERT INTO')) {
-          const match = sql.match(/INSERT (?:OR REPLACE )?INTO ["']?(\w+)["']?/);
-          if (match) {
-            const tableName = match[1];
-            const table = self.tables.get(tableName) || [];
-            const record = { id: ++self.lastId };
-            table.push(record);
-            self.tables.set(tableName, table);
-            return { lastInsertRowid: self.lastId, changes: 1 };
-          }
-        }
-        
-        // Simple UPDATE parsing
-        if (sql.includes('UPDATE')) {
-          return { changes: 1 };
-        }
-
-        // Simple DELETE parsing
-        if (sql.includes('DELETE')) {
-          return { changes: 1 };
-        }
-
-        return { lastInsertRowid: 0, changes: 0 };
-      },
-      get(...params: any[]) {
-        return null;
-      },
-      all(...params: any[]) {
-        // Simple SELECT parsing
-        if (sql.includes('SELECT')) {
-          const match = sql.match(/FROM ["']?(\w+)["']?/);
-          if (match) {
-            const tableName = match[1];
-            return self.tables.get(tableName) || [];
-          }
-        }
-        return [];
-      },
-    };
-  }
-
-  transaction(callback: Function) {
-    return () => callback();
-  }
-
-  close() {
-    this.tables.clear();
-  }
-
-  pragma() {}
-}
+import { SqliteWasmAdapter } from './sqlite-wasm-adapter';
 
 describe('DeclarativeDatabase', () => {
   let db: DeclarativeDatabase;
-  let adapter: BetterSqlite3Adapter;
+  let adapter: SqliteWasmAdapter;
 
   beforeEach(async () => {
-    // Create mock adapter
-    adapter = new BetterSqlite3Adapter(MockDatabase as any);
+    // Create sqlite-wasm adapter
+    adapter = new SqliteWasmAdapter();
     await adapter.open(':memory:');
 
     // Create simple schema
@@ -94,11 +22,11 @@ describe('DeclarativeDatabase', () => {
       })
       .build();
 
-    // Create database with auto-migrate disabled (we're testing CRUD, not migration)
+    // Create database with auto-migrate enabled
     db = new DeclarativeDatabase({
       adapter,
       schema,
-      autoMigrate: false,
+      autoMigrate: true,
     });
 
     await db.initialize();
@@ -124,8 +52,8 @@ describe('DeclarativeDatabase', () => {
       { id: '2', name: 'Bob', age: 25 },
     ]);
 
-    // In real scenario, we'd query to verify
-    expect(true).toBe(true);
+    const users = await db.query('users');
+    expect(users.length).toBe(2);
   });
 
   it('should update records', async () => {
@@ -160,6 +88,7 @@ describe('DeclarativeDatabase', () => {
     });
 
     expect(Array.isArray(users)).toBe(true);
+    expect(users.length).toBe(1);
   });
 
   it('should query a single record', async () => {
@@ -170,8 +99,8 @@ describe('DeclarativeDatabase', () => {
       whereArgs: ['123'],
     });
 
-    // In mock, this might return null, but structure is valid
-    expect(user === null || typeof user === 'object').toBe(true);
+    expect(user).toBeTruthy();
+    expect(user?.name).toBe('Alice');
   });
 
   it('should execute transactions', async () => {
@@ -180,7 +109,8 @@ describe('DeclarativeDatabase', () => {
       await db.insert('users', { id: '2', name: 'Bob', age: 25 });
     });
 
-    expect(true).toBe(true);
+    const users = await db.query('users');
+    expect(users.length).toBe(2);
   });
 
   it('should throw if not initialized', async () => {

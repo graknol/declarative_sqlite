@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DeclarativeDatabase } from '../database/declarative-database';
-import { BetterSqlite3Adapter } from '../database/better-sqlite3-adapter';
+import { SqliteWasmAdapter } from '../database/sqlite-wasm-adapter';
 import { SchemaBuilder } from '../schema/builders/schema-builder';
-import Database from 'better-sqlite3';
 
 interface User {
   id: string;
@@ -13,7 +12,7 @@ interface User {
 
 describe('DbRecord', () => {
   let db: DeclarativeDatabase;
-  let adapter: BetterSqlite3Adapter;
+  let adapter: SqliteWasmAdapter;
 
   beforeEach(async () => {
     const schema = new SchemaBuilder()
@@ -26,7 +25,7 @@ describe('DbRecord', () => {
       })
       .build();
 
-    adapter = new BetterSqlite3Adapter(Database);
+    adapter = new SqliteWasmAdapter();
     await adapter.open(':memory:');
     
     db = new DeclarativeDatabase({ adapter, schema, autoMigrate: true });
