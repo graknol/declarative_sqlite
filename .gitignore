@@ -189,4 +189,11 @@ $RECYCLE.BIN/
 # Zip files
 **/*.zip
 
+# TypeScript / Node.js
+node_modules/
+dist/
+*.tsbuildinfo
+.pnpm-store/
+pnpm-lock.yaml
+
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,linux,visualstudiocode,flutter,dart
