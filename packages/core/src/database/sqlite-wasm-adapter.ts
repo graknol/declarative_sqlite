@@ -1,5 +1,4 @@
 import { SQLiteAdapter, PreparedStatement, RunResult } from '../adapters/adapter.interface';
-import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 
 /**
  * Adapter for @sqlite.org/sqlite-wasm (Browser-compatible SQLite)
@@ -12,6 +11,28 @@ export class SqliteWasmAdapter implements SQLiteAdapter {
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
+    
+    // Dynamically import the appropriate SQLite module based on environment
+    let sqlite3InitModule: any;
+    
+    if (typeof window === 'undefined' || typeof process !== 'undefined') {
+      // Node.js environment (tests) - use direct file system access
+      try {
+        // Try to load node-specific module directly
+        const modulePath = '@sqlite.org/sqlite-wasm/sqlite-wasm/jswasm/sqlite3-node.mjs';
+        const nodeModule = await import(modulePath);
+        sqlite3InitModule = nodeModule.default;
+      } catch (error) {
+        // Fallback: Use standard module with createRequire workaround
+        console.warn('Using fallback SQLite initialization for Node.js environment');
+        const standardModule = await import('@sqlite.org/sqlite-wasm');
+        sqlite3InitModule = standardModule.default;
+      }
+    } else {
+      // Browser environment - use the standard build
+      const browserModule = await import('@sqlite.org/sqlite-wasm');
+      sqlite3InitModule = browserModule.default;
+    }
     
     this.sqlite3 = await sqlite3InitModule({
       print: console.log,
@@ -54,19 +75,42 @@ export class SqliteWasmAdapter implements SQLiteAdapter {
 
     return {
       run: async (...params: any[]): Promise<RunResult> => {
-        stmt.bind(params);
+        if (params.length > 0) {
+          // sqlite-wasm bind() expects each parameter individually
+          for (let i = 0; i < params.length; i++) {
+            stmt.bind(i + 1, params[i]);
+          }
+        }
         stmt.step();
+        
         const changes = this.db.changes();
-        const lastInsertRowid = this.db.lastInsertRowid;
+        let lastInsertRowid: number | bigint = 0;
+        
+        // Access lastInsertRowid property (must be called before reset())
+        if ('lastInsertRowid' in this.db) {
+          lastInsertRowid = this.db.lastInsertRowid;
+        } else if ('last_insert_rowid' in this.db) {
+          lastInsertRowid = this.db.last_insert_rowid;
+        }
+        
+        // Ensure lastInsertRowid is a number
+        if (typeof lastInsertRowid === 'bigint') {
+          lastInsertRowid = Number(lastInsertRowid);
+        }
+        
         stmt.reset();
         
         return {
-          lastInsertRowid,
+          lastInsertRowid: lastInsertRowid as number,
           changes,
         };
       },
       get: async <T = any>(...params: any[]): Promise<T | undefined> => {
-        stmt.bind(params);
+        if (params.length > 0) {
+          for (let i = 0; i < params.length; i++) {
+            stmt.bind(i + 1, params[i]);
+          }
+        }
         const hasRow = stmt.step();
         
         if (!hasRow) {
@@ -79,7 +123,11 @@ export class SqliteWasmAdapter implements SQLiteAdapter {
         return result as T;
       },
       all: async <T = any>(...params: any[]): Promise<T[]> => {
-        stmt.bind(params);
+        if (params.length > 0) {
+          for (let i = 0; i < params.length; i++) {
+            stmt.bind(i + 1, params[i]);
+          }
+        }
         const results: T[] = [];
         
         while (stmt.step()) {

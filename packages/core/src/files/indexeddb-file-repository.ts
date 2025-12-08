@@ -1,5 +1,6 @@
 import type { SQLiteAdapter } from '../adapters/adapter.interface';
-import type { Hlc, HlcTimestamp } from '../sync/hlc';
+import type { Hlc } from '../sync/hlc';
+import { Hlc as HlcClass } from '../sync/hlc';
 import type { FileMetadata, IFileRepository } from './file-repository.interface';
 
 /**
@@ -72,8 +73,8 @@ export class IndexedDBFileRepository implements IFileRepository {
       filename,
       mimeType || 'application/octet-stream',
       content.length,
-      timestamp,
-      timestamp,
+      HlcClass.toString(timestamp),
+      HlcClass.toString(timestamp),
       1,
       `indexeddb://${this.dbName}/${this.storeName}/${fileId}`
     );
@@ -166,7 +167,8 @@ export class IndexedDBFileRepository implements IFileRepository {
     }
 
     setClauses.push('"modified_at" = ?');
-    params.push(timestamp);
+    setClauses.push('"version" = "version" + 1');
+    params.push(HlcClass.toString(timestamp));
     params.push(fileId);
 
     const stmt = this.adapter.prepare(`

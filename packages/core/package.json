@@ -68,6 +68,7 @@
     "@vitest/coverage-v8": "^1.0.0",
     "@vitest/ui": "^1.0.0",
     "eslint": "^8.55.0",
+    "fake-indexeddb": "^6.2.5",
     "happy-dom": "^12.10.3",
     "rxjs": "^7.8.2",
     "tsup": "^8.0.1",

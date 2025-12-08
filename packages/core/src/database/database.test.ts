@@ -43,7 +43,10 @@ describe('DeclarativeDatabase', () => {
       age: 30,
     });
 
-    expect(id).toBeGreaterThan(0);
+    // For tables without INTEGER PRIMARY KEY, verify the insert by querying
+    const users = await db.query('users');
+    expect(users.length).toBe(1);
+    expect(users[0].name).toBe('Alice');
   });
 
   it('should insert multiple records', async () => {
