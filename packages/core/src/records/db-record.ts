@@ -126,7 +126,7 @@ export class DbRecord<T extends Record<string, any>> {
           whereArgs: [this._values[pkColumn]]
         });
         if (row) {
-          Object.assign(this._values, row);
+          Object.assign(this._values, row.toJSON());
         }
       }
       // Mark as no longer new
@@ -153,7 +153,7 @@ export class DbRecord<T extends Record<string, any>> {
             whereArgs: [this._values[pkColumn]]
           });
           if (row) {
-            Object.assign(this._values, row);
+            Object.assign(this._values, row.toJSON());
           }
         }
       }

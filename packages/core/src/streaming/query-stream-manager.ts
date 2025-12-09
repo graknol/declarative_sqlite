@@ -11,7 +11,7 @@ export class QueryStreamManager {
   /**
    * Register a new streaming query
    */
-  registerStream<T>(stream: StreamingQuery<T>): string {
+  registerStream<T extends Record<string, any>>(stream: StreamingQuery<T>): string {
     const id = `stream_${++this.streamCounter}`;
     this.streams.set(id, stream);
     return id;

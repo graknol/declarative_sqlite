@@ -32,7 +32,7 @@ describe('Streaming Queries', () => {
   });
   
   it('can create streaming query', async () => {
-    const stream = new StreamingQuery(adapter, 'users');
+    const stream = new StreamingQuery(db, 'users');
     
     let emittedData: any[] | null = null;
     stream.subscribe(data => {
@@ -50,7 +50,7 @@ describe('Streaming Queries', () => {
     await db.insert('users', { id: 'u1', name: 'Alice', age: 30 });
     await db.insert('users', { id: 'u2', name: 'Bob', age: 25 });
     
-    const stream = new StreamingQuery(adapter, 'users');
+    const stream = new StreamingQuery(db, 'users');
     
     let emittedData: any[] | null = null;
     stream.subscribe(data => {
@@ -66,7 +66,7 @@ describe('Streaming Queries', () => {
   });
   
   it('refreshes on manual refresh call', async () => {
-    const stream = new StreamingQuery(adapter, 'users');
+    const stream = new StreamingQuery(db, 'users');
     
     const emissions: any[][] = [];
     stream.subscribe(data => {
@@ -93,7 +93,7 @@ describe('Streaming Queries', () => {
   
   it('stream manager notifies relevant streams', async () => {
     const streamManager = new QueryStreamManager();
-    const usersStream = new StreamingQuery(adapter, 'users');
+    const usersStream = new StreamingQuery(db, 'users');
     const streamId = streamManager.registerStream(usersStream);
     
     const emissions: any[][] = [];
@@ -126,7 +126,7 @@ describe('Streaming Queries', () => {
     await db.insert('users', { id: 'u2', name: 'Bob', age: 25 });
     await db.insert('users', { id: 'u3', name: 'Charlie', age: 35 });
     
-    const stream = new StreamingQuery(adapter, 'users', {
+    const stream = new StreamingQuery(db, 'users', {
       where: 'age >= ?',
       whereArgs: [30],
       orderBy: 'name ASC'
@@ -147,8 +147,8 @@ describe('Streaming Queries', () => {
   
   it('handles multiple concurrent streams', async () => {
     const streamManager = new QueryStreamManager();
-    const stream1 = new StreamingQuery(adapter, 'users');
-    const stream2 = new StreamingQuery(adapter, 'users', {
+    const stream1 = new StreamingQuery(db, 'users');
+    const stream2 = new StreamingQuery(db, 'users', {
       where: 'age >= ?',
       whereArgs: [30]
     });
@@ -188,7 +188,7 @@ describe('Streaming Queries', () => {
   
   it('cleans up streams on unregister', () => {
     const streamManager = new QueryStreamManager();
-    const stream = new StreamingQuery(adapter, 'users');
+    const stream = new StreamingQuery(db, 'users');
     const streamId = streamManager.registerStream(stream);
     
     expect(streamManager.getStreamCount()).toBe(1);
@@ -201,8 +201,8 @@ describe('Streaming Queries', () => {
   
   it('clears all streams', () => {
     const streamManager = new QueryStreamManager();
-    const stream1 = new StreamingQuery(adapter, 'users');
-    const stream2 = new StreamingQuery(adapter, 'users');
+    const stream1 = new StreamingQuery(db, 'users');
+    const stream2 = new StreamingQuery(db, 'users');
     
     streamManager.registerStream(stream1);
     streamManager.registerStream(stream2);
