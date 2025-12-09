@@ -6,6 +6,7 @@ import { QueryStreamManager } from '../streaming/query-stream-manager';
 import { DbRecord } from '../records/db-record';
 import { FileSet } from '../files/fileset';
 import { Hlc, HlcTimestamp } from '../sync/hlc';
+import { DirtyRowStore, SqliteDirtyRowStore } from '../sync/dirty-row-store';
 
 export interface DatabaseConfig {
   adapter: SQLiteAdapter;
@@ -13,6 +14,7 @@ export interface DatabaseConfig {
   autoMigrate?: boolean;
   nodeId?: string;
   hlc?: Hlc;
+  dirtyRowStore?: DirtyRowStore;
 }
 
 export interface InsertOptions {
@@ -52,6 +54,7 @@ export class DeclarativeDatabase {
   private isInitialized = false;
   private streamManager: QueryStreamManager;
   public hlc: Hlc;
+  public dirtyRowStore: DirtyRowStore;
 
   constructor(config: DatabaseConfig) {
     this.adapter = config.adapter;
@@ -65,6 +68,8 @@ export class DeclarativeDatabase {
       const nodeId = config.nodeId || `node-${Math.random().toString(36).substring(2, 9)}`;
       this.hlc = new Hlc(nodeId);
     }
+
+    this.dirtyRowStore = config.dirtyRowStore || new SqliteDirtyRowStore(this.adapter);
   }
 
   /**
@@ -83,6 +88,8 @@ export class DeclarativeDatabase {
       const migrator = new SchemaMigrator(this.adapter);
       await migrator.migrate(this.schema);
     }
+
+    await this.dirtyRowStore.init();
 
     this.isInitialized = true;
   }

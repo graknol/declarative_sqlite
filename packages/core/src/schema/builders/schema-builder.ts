@@ -71,9 +71,9 @@ export class SchemaBuilder {
     const dirtyRowsBuilder = new TableBuilder('__dirty_rows');
     dirtyRowsBuilder.text('table_name').notNull('');
     dirtyRowsBuilder.guid('row_id').notNull('00000000-0000-0000-0000-000000000000');
-    dirtyRowsBuilder.text('operation').notNull('INSERT');
     dirtyRowsBuilder.text('hlc').notNull('');
-    dirtyRowsBuilder.key('table_name', 'row_id').primary();
+    dirtyRowsBuilder.integer('is_full_row').notNull(1);
+    dirtyRowsBuilder.key('table_name', 'row_id', 'hlc').primary();
     tables.push(dirtyRowsBuilder.build());
     
     return tables;
