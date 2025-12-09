@@ -97,10 +97,41 @@ export class DeclarativeDatabase {
   /**
    * Insert a record into a table
    */
-  async insert(table: string, values: Record<string, any>, options?: InsertOptions): Promise<number> {
+  async insert(table: string, values: Record<string, any>, options?: InsertOptions): Promise<string> {
     this.ensureInitialized();
 
-    const columns = Object.keys(values);
+    const now = this.hlc.now();
+    const hlcString = Hlc.toString(now);
+    
+    // Prepare values with system columns
+    const valuesToInsert = { ...values };
+    
+    if (!valuesToInsert['system_id']) {
+      valuesToInsert['system_id'] = crypto.randomUUID();
+    }
+    if (!valuesToInsert['system_created_at']) {
+      valuesToInsert['system_created_at'] = hlcString;
+    }
+    valuesToInsert['system_version'] = hlcString;
+    
+    if (valuesToInsert['system_is_local_origin'] === undefined) {
+      valuesToInsert['system_is_local_origin'] = 1;
+    }
+
+    // Handle LWW columns (if not already set)
+    const tableDef = this.schema.tables.find(t => t.name === table);
+    if (tableDef) {
+      for (const col of tableDef.columns) {
+        if (col.lww) {
+          const hlcCol = `${col.name}__hlc`;
+          if (!valuesToInsert[hlcCol]) {
+            valuesToInsert[hlcCol] = hlcString;
+          }
+        }
+      }
+    }
+
+    const columns = Object.keys(valuesToInsert);
     const placeholders = columns.map(() => '?').join(', ');
     const columnList = columns.map(c => `"${c}"`).join(', ');
 
@@ -109,12 +140,20 @@ export class DeclarativeDatabase {
       : `INSERT INTO "${table}" (${columnList}) VALUES (${placeholders})`;
 
     const stmt = this.adapter.prepare(sql);
-    const result = await stmt.run(...Object.values(values));
+    await stmt.run(...Object.values(valuesToInsert));
+    
+    // Mark dirty
+    await this.dirtyRowStore.markDirty({
+      tableName: table,
+      rowId: valuesToInsert['system_id'],
+      hlc: hlcString,
+      isFullRow: true
+    });
     
     // Notify streaming queries
     this.streamManager.notifyTableChanged(table);
     
-    return Number(result.lastInsertRowid);
+    return valuesToInsert['system_id'];
   }
 
   /**
@@ -136,11 +175,34 @@ export class DeclarativeDatabase {
   async update(table: string, values: Record<string, any>, options?: UpdateOptions): Promise<number> {
     this.ensureInitialized();
 
-    const columns = Object.keys(values);
+    // 1. Find rows to update to get their system_ids
+    let selectSql = `SELECT system_id, system_is_local_origin FROM "${table}"`;
+    const selectParams: any[] = [];
+    if (options?.where) {
+      selectSql += ` WHERE ${options.where}`;
+      if (options.whereArgs) {
+        selectParams.push(...options.whereArgs);
+      }
+    }
+    
+    const selectStmt = this.adapter.prepare(selectSql);
+    const rowsToUpdate = await selectStmt.all<{system_id: string, system_is_local_origin: number}>(...selectParams);
+    
+    if (rowsToUpdate.length === 0) {
+      return 0;
+    }
+
+    const now = this.hlc.now();
+    const hlcString = Hlc.toString(now);
+
+    const valuesToUpdate = { ...values };
+    valuesToUpdate['system_version'] = hlcString;
+
+    const columns = Object.keys(valuesToUpdate);
     const setClause = columns.map(c => `"${c}" = ?`).join(', ');
 
     let sql = `UPDATE "${table}" SET ${setClause}`;
-    const params: any[] = Object.values(values);
+    const params: any[] = Object.values(valuesToUpdate);
 
     if (options?.where) {
       sql += ` WHERE ${options.where}`;
@@ -151,6 +213,16 @@ export class DeclarativeDatabase {
 
     const stmt = this.adapter.prepare(sql);
     const result = await stmt.run(...params);
+    
+    // Mark dirty
+    for (const row of rowsToUpdate) {
+      await this.dirtyRowStore.markDirty({
+        tableName: table,
+        rowId: row.system_id,
+        hlc: hlcString,
+        isFullRow: row.system_is_local_origin === 1
+      });
+    }
     
     // Notify streaming queries
     this.streamManager.notifyTableChanged(table);
@@ -164,6 +236,26 @@ export class DeclarativeDatabase {
   async delete(table: string, options?: DeleteOptions): Promise<number> {
     this.ensureInitialized();
 
+    // 1. Find rows to delete to get their system_ids
+    let selectSql = `SELECT system_id, system_is_local_origin FROM "${table}"`;
+    const selectParams: any[] = [];
+    if (options?.where) {
+      selectSql += ` WHERE ${options.where}`;
+      if (options.whereArgs) {
+        selectParams.push(...options.whereArgs);
+      }
+    }
+    
+    const selectStmt = this.adapter.prepare(selectSql);
+    const rowsToDelete = await selectStmt.all<{system_id: string, system_is_local_origin: number}>(...selectParams);
+    
+    if (rowsToDelete.length === 0) {
+      return 0;
+    }
+
+    const now = this.hlc.now();
+    const hlcString = Hlc.toString(now);
+
     let sql = `DELETE FROM "${table}"`;
     const params: any[] = [];
 
@@ -176,6 +268,16 @@ export class DeclarativeDatabase {
 
     const stmt = this.adapter.prepare(sql);
     const result = await stmt.run(...params);
+    
+    // Mark dirty
+    for (const row of rowsToDelete) {
+      await this.dirtyRowStore.markDirty({
+        tableName: table,
+        rowId: row.system_id,
+        hlc: hlcString,
+        isFullRow: row.system_is_local_origin === 1
+      });
+    }
     
     // Notify streaming queries
     this.streamManager.notifyTableChanged(table);

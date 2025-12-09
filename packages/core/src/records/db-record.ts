@@ -113,7 +113,12 @@ export class DbRecord<T extends Record<string, any>> {
     if (this._isNew) {
       // INSERT: Create new record
       const allValues = { ...this._values };
-      await this._db.insert(this._tableName, allValues);
+      const systemId = await this._db.insert(this._tableName, allValues);
+      
+      // Update system_id if it wasn't present
+      if (!this._values['system_id']) {
+        this._values['system_id'] = systemId;
+      }
       
       // Re-fetch to get system columns using the primary key
       if (pkColumn && this._values[pkColumn]) {

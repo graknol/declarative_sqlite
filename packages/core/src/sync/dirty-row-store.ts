@@ -84,7 +84,7 @@ export class SqliteDirtyRowStore implements DirtyRowStore {
       VALUES (?, ?, ?, ?)
     `);
 
-    await stmt.run([row.tableName, row.rowId, row.hlc, row.isFullRow ? 1 : 0]);
+    await stmt.run(row.tableName, row.rowId, row.hlc, row.isFullRow ? 1 : 0);
   }
 
   async getAllDirty(): Promise<DirtyRow[]> {
@@ -134,12 +134,12 @@ export class SqliteDirtyRowStore implements DirtyRowStore {
         WHERE table_name = ? AND row_id = ? AND hlc = ? AND is_full_row = ?
       `);
 
-      await stmt.run([
+      await stmt.run(
         operation.tableName,
         operation.rowId,
         operation.hlc,
         operation.isFullRow ? 1 : 0,
-      ]);
+      );
     }
   }
 
@@ -149,7 +149,7 @@ export class SqliteDirtyRowStore implements DirtyRowStore {
       WHERE table_name = ? AND row_id = ?
     `);
 
-    await stmt.run([tableName, rowId]);
+    await stmt.run(tableName, rowId);
   }
 
   async clearDirtyForTable(tableName: string): Promise<void> {
@@ -158,11 +158,11 @@ export class SqliteDirtyRowStore implements DirtyRowStore {
       WHERE table_name = ?
     `);
 
-    await stmt.run([tableName]);
+    await stmt.run(tableName);
   }
 
   async clearAll(): Promise<void> {
     const stmt = this.adapter.prepare('DELETE FROM __dirty_rows');
-    await stmt.run([]);
+    await stmt.run();
   }
 }
