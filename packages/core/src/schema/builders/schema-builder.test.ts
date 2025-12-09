@@ -32,7 +32,7 @@ describe('SchemaBuilder', () => {
     expect(usersTable?.isSystem).toBe(false);
     
     // Check columns (including system columns)
-    expect(usersTable?.columns).toHaveLength(5); // name, age + 3 system columns
+    expect(usersTable?.columns).toHaveLength(6); // name, age + 4 system columns
     
     const nameColumn = usersTable?.columns.find(c => c.name === 'name');
     expect(nameColumn?.type).toBe('TEXT');
@@ -202,5 +202,6 @@ describe('SchemaBuilder', () => {
     expect(columnNames).toContain('system_id');
     expect(columnNames).toContain('system_created_at');
     expect(columnNames).toContain('system_version');
+    expect(columnNames).toContain('system_is_local_origin');
   });
 });

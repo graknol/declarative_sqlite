@@ -1,4 +1,4 @@
-import type { DbTable } from '../types';
+import type { DbTable, DbColumn } from '../types';
 import {
   TextColumnBuilder,
   IntegerColumnBuilder,
@@ -24,10 +24,7 @@ export class TableBuilder {
   private columnBuilders: AnyColumnBuilder[] = [];
   private keyBuilders: KeyBuilder[] = [];
   
-  constructor(public readonly name: string) {
-    // Add system columns automatically
-    this.addSystemColumns();
-  }
+  constructor(public readonly name: string) {}
   
   /**
    * Add a text column
@@ -96,34 +93,59 @@ export class TableBuilder {
    * Build the final table definition
    */
   build(): DbTable {
+    const columns = this.columnBuilders.map(b => b.build());
+    
+    // Add HLC columns for LWW fields
+    const hlcColumns: DbColumn[] = [];
+    for (const col of columns) {
+      if (col.lww) {
+        hlcColumns.push({
+          name: `${col.name}__hlc`,
+          type: 'TEXT',
+          notNull: false,
+        });
+      }
+    }
+
+    // Add system columns
+    const systemColumns: DbColumn[] = [];
+    if (!this.name.startsWith('__')) {
+      systemColumns.push({
+        name: 'system_id',
+        type: 'GUID',
+        notNull: true,
+        defaultValue: '00000000-0000-0000-0000-000000000000',
+      });
+      
+      const zeroHlc = '000000000000000:000000000:000000000000000000000000000000000000';
+      
+      systemColumns.push({
+        name: 'system_created_at',
+        type: 'TEXT',
+        notNull: true,
+        defaultValue: zeroHlc,
+      });
+      
+      systemColumns.push({
+        name: 'system_version',
+        type: 'TEXT',
+        notNull: true,
+        defaultValue: zeroHlc,
+      });
+      
+      systemColumns.push({
+        name: 'system_is_local_origin',
+        type: 'INTEGER',
+        notNull: true,
+        defaultValue: 1,
+      });
+    }
+
     return {
       name: this.name,
-      columns: this.columnBuilders.map(b => b.build()),
+      columns: [...systemColumns, ...columns, ...hlcColumns],
       keys: this.keyBuilders.map(b => b.build()),
       isSystem: this.name.startsWith('__'),
     };
-  }
-  
-  /**
-   * Add system columns that are automatically included in every table
-   */
-  private addSystemColumns(): void {
-    // system_id: Auto-generated UUID primary key
-    this.columnBuilders.push(
-      new GuidColumnBuilder('system_id')
-        .notNull('00000000-0000-0000-0000-000000000000')
-    );
-    
-    // system_created_at: HLC timestamp of creation
-    this.columnBuilders.push(
-      new TextColumnBuilder('system_created_at')
-        .notNull('')
-    );
-    
-    // system_version: HLC timestamp of last modification
-    this.columnBuilders.push(
-      new TextColumnBuilder('system_version')
-        .notNull('')
-    );
   }
 }
