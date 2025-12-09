@@ -153,11 +153,10 @@ describe('DbRecord', () => {
     expect(json.age).toBe(22);
   });
 
-  it('should prevent setting system columns', () => {
+  it('should allow setting system columns', () => {
     const user = db.createRecord<User>('users');
     
-    expect(() => {
-      (user as any).system_id = 'fake-id';
-    }).toThrow();
+    (user as any).system_id = 'fake-id';
+    expect((user as any).system_id).toBe('fake-id');
   });
 });

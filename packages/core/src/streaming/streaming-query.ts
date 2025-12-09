@@ -85,7 +85,7 @@ export class StreamingQuery<T extends Record<string, any> = any> extends Observa
     const stmt = this.db.getAdapter().prepare(sql);
     const rows = await stmt.all(...args) as T[];
     
-    return rows.map(row => new DbRecord<T>(this.db, this.tableName, row) as unknown as T & DbRecord<T>);
+    return rows.map(row => DbRecord.create<T>(this.db, this.tableName, row));
   }
   
   /**

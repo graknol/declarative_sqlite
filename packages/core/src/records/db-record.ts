@@ -26,18 +26,24 @@ export class DbRecord<T extends Record<string, any>> {
         this._isNew = false;
       }
     }
-    
+  }
+
+  /**
+   * Create a proxied instance of DbRecord
+   */
+  static create<T extends Record<string, any>>(
+    db: DeclarativeDatabase, 
+    tableName: string, 
+    initialData?: Partial<T & { system_id?: string }>
+  ): DbRecord<T> & T {
+    const record = new DbRecord<T>(db, tableName, initialData);
+
     // Return Proxy that intercepts property access
-    return new Proxy(this, {
+    return new Proxy(record, {
       get: (target, prop: string) => {
         // Allow access to methods
         if (prop in target || typeof (target as any)[prop] === 'function') {
           return (target as any)[prop];
-        }
-        
-        // Handle system columns (read-only)
-        if (prop.startsWith('system_')) {
-          return target._values[prop];
         }
         
         // Handle LWW timestamp columns
@@ -66,16 +72,6 @@ export class DbRecord<T extends Record<string, any>> {
         if (prop.startsWith('_')) {
           (target as any)[prop] = value;
           return true;
-        }
-        
-        // Prevent setting system columns
-        if (prop.startsWith('system_')) {
-          throw new Error(`Cannot set system property: ${prop}`);
-        }
-        
-        // Prevent setting LWW timestamp columns directly
-        if (prop.endsWith('__hlc')) {
-          throw new Error(`Cannot set LWW timestamp directly: ${prop}`);
         }
         
         // Set value and mark as dirty

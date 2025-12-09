@@ -206,7 +206,7 @@ export class DeclarativeDatabase {
 
     const stmt = this.adapter.prepare(sql);
     const results = await stmt.all(...params);
-    return results.map(row => new DbRecord<T>(this, table, row) as unknown as T & DbRecord<T>);
+    return results.map(row => DbRecord.create<T>(this, table, row));
   }
 
   /**
@@ -273,7 +273,7 @@ export class DeclarativeDatabase {
    */
   createRecord<T extends Record<string, any>>(tableName: string, initialData?: Partial<T>): DbRecord<T> & T {
     this.ensureInitialized();
-    return new DbRecord<T>(this, tableName, initialData) as DbRecord<T> & T;
+    return DbRecord.create<T>(this, tableName, initialData);
   }
 
   /**
