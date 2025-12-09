@@ -22,7 +22,8 @@ export type {
   DbTable,
   DbView,
   Schema,
-  SchemaProvider
+  SchemaProvider,
+  ValidValue
 } from './schema/types';
 
 // Schema builders

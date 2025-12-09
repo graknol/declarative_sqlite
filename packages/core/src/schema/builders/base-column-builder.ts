@@ -9,6 +9,7 @@ export abstract class BaseColumnBuilder<TValue = any> {
   protected _defaultFn?: () => TValue;
   protected _lww: boolean = false;
   protected _maxLength?: number;
+  protected _validValues?: { value: TValue; label: string }[];
   
   constructor(
     protected name: string,
@@ -38,6 +39,14 @@ export abstract class BaseColumnBuilder<TValue = any> {
     this._lww = true;
     return this;
   }
+
+  /**
+   * Define valid values for this column (for UI generation)
+   */
+  validValues(values: { value: TValue; label: string }[]): this {
+    this._validValues = values;
+    return this;
+  }
   
   /**
    * Build the column definition
@@ -51,6 +60,7 @@ export abstract class BaseColumnBuilder<TValue = any> {
       defaultFn: this._defaultFn,
       lww: this._lww,
       maxLength: this._maxLength,
+      validValues: this._validValues,
     };
   }
 }

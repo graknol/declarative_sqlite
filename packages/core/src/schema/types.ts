@@ -9,6 +9,14 @@ export type ColumnType = 'TEXT' | 'INTEGER' | 'REAL' | 'BLOB' | 'GUID' | 'DATE' 
 export type KeyType = 'PRIMARY' | 'UNIQUE' | 'INDEX';
 
 /**
+ * Valid value definition for a column
+ */
+export interface ValidValue {
+  value: any;
+  label: string;
+}
+
+/**
  * Database column definition
  */
 export interface DbColumn {
@@ -21,6 +29,7 @@ export interface DbColumn {
   maxLength?: number;
   maxFileCount?: number;
   maxFileSize?: number;
+  validValues?: ValidValue[];
 }
 
 /**

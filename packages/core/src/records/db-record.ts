@@ -81,6 +81,25 @@ export class DbRecord<T extends Record<string, any>> {
         // Set value and mark as dirty
         target._values[prop] = value;
         target._dirtyFields.add(prop);
+
+        // Handle LWW columns - automatically update HLC timestamp
+        const table = target._db.schema.tables.find(t => t.name === target._tableName);
+        const column = table?.columns.find(c => c.name === prop);
+        
+        if (column?.lww) {
+          const hlcColumnName = `${prop}__hlc`;
+          // Check if the HLC column exists in the table
+          const hlcColumn = table?.columns.find(c => c.name === hlcColumnName);
+          
+          if (hlcColumn) {
+            const newHlc = target._db.hlc.now();
+            const hlcString = Hlc.toString(newHlc);
+            
+            target._values[hlcColumnName] = hlcString;
+            target._dirtyFields.add(hlcColumnName);
+          }
+        }
+
         return true;
       }
     }) as unknown as DbRecord<T> & T;

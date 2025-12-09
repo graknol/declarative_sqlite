@@ -5,11 +5,14 @@ import { StreamingQuery, QueryOptions as StreamQueryOptions } from '../streaming
 import { QueryStreamManager } from '../streaming/query-stream-manager';
 import { DbRecord } from '../records/db-record';
 import { FileSet } from '../files/fileset';
+import { Hlc } from '../sync/hlc';
 
 export interface DatabaseConfig {
   adapter: SQLiteAdapter;
   schema: Schema;
   autoMigrate?: boolean;
+  nodeId?: string;
+  hlc?: Hlc;
 }
 
 export interface InsertOptions {
@@ -43,12 +46,20 @@ export class DeclarativeDatabase {
   private autoMigrate: boolean;
   private isInitialized = false;
   private streamManager: QueryStreamManager;
+  public hlc: Hlc;
 
   constructor(config: DatabaseConfig) {
     this.adapter = config.adapter;
     this.schema = config.schema;
     this.autoMigrate = config.autoMigrate ?? true;
     this.streamManager = new QueryStreamManager();
+    
+    if (config.hlc) {
+      this.hlc = config.hlc;
+    } else {
+      const nodeId = config.nodeId || `node-${Math.random().toString(36).substring(2, 9)}`;
+      this.hlc = new Hlc(nodeId);
+    }
   }
 
   /**
