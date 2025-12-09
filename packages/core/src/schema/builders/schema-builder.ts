@@ -54,14 +54,17 @@ export class SchemaBuilder {
     
     // __files table
     const filesBuilder = new TableBuilder('__files');
-    filesBuilder.guid('id').notNull('00000000-0000-0000-0000-000000000000');
-    filesBuilder.guid('owner_id').notNull('00000000-0000-0000-0000-000000000000');
+    filesBuilder.text('id').notNull('');
+    filesBuilder.text('fileset').notNull('');
     filesBuilder.text('filename').notNull('default');
-    filesBuilder.integer('remote_version').notNull(0);
-    filesBuilder.text('mimetype').notNull('application/octet-stream');
+    filesBuilder.text('mime_type').notNull('application/octet-stream');
     filesBuilder.integer('size').notNull(0);
+    filesBuilder.text('created_at').notNull('');
+    filesBuilder.text('modified_at').notNull('');
+    filesBuilder.integer('version').notNull(1);
+    filesBuilder.text('storage_path').notNull('');
     filesBuilder.key('id').primary();
-    filesBuilder.key('owner_id', 'filename').index();
+    filesBuilder.key('fileset', 'filename').index();
     tables.push(filesBuilder.build());
     
     // __dirty_rows table

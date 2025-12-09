@@ -88,7 +88,6 @@ export type {
   FileMetadata,
   IFileRepository 
 } from './files/file-repository.interface';
-export { FilesystemFileRepository } from './files/filesystem-file-repository';
 export { IndexedDBFileRepository } from './files/indexeddb-file-repository';
 export { FileSet } from './files/fileset';
 
