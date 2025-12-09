@@ -30,6 +30,15 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Update npm to latest version
+        run: npm install -g npm@latest
+
+      - name: Authenticate with npm
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Update version with build number
         run: |
           # Get current version from package.json
@@ -47,11 +56,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build (if build script exists)
-        run: npm run build --if-present
-
       - name: Publish to npm
-        run: npm publish --access=public --provenance
+        run: npm publish --access=public
 
       - name: Get published version
         id: version
