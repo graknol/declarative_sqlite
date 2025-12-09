@@ -442,6 +442,7 @@ export class DeclarativeDatabase {
         // UPDATE logic
         const valuesToUpdate: Record<string, any> = {};
         const now = this.hlc.now();
+        let allColumnsServerNewer = true; // Track if ALL LWW columns have server newer
 
         for (const [colName, value] of Object.entries(row)) {
           // Skip PKs, HLC columns, and system_is_local_origin
@@ -467,9 +468,14 @@ export class DeclarativeDatabase {
               
               const remoteHlc = Hlc.parse(remoteHlcString);
 
+              // Per-column LWW comparison
               if (!localHlc || Hlc.compare(remoteHlc, localHlc) > 0) {
+                // Server is newer for this column
                 valuesToUpdate[colName] = value;
                 valuesToUpdate[hlcColName] = remoteHlcString;
+              } else {
+                // Local is newer or equal for this column
+                allColumnsServerNewer = false;
               }
             } else {
               // Server wins if no HLC provided (non-LWW update from server)
@@ -486,10 +492,8 @@ export class DeclarativeDatabase {
             // We need to update system_version as well
             valuesToUpdate['system_version'] = Hlc.toString(now);
             
-            await this.update(tableName, valuesToUpdate, {
-              where: 'system_id = ?',
-              whereArgs: [systemId]
-            });
+            // Use internal update to avoid marking as dirty
+            await this._updateFromServer(tableName, valuesToUpdate, systemId);
           } catch (e) {
             if (this._isConstraintViolation(e)) {
               if (onConstraintViolation === ConstraintViolationStrategy.ThrowException) {
@@ -500,6 +504,12 @@ export class DeclarativeDatabase {
               throw e;
             }
           }
+        }
+        
+        // Clear dirty mark only if ALL LWW columns had server data newer or equal
+        // This means the server is fully up-to-date with this row
+        if (allColumnsServerNewer) {
+          await this.dirtyRowStore.clearDirty(tableName, systemId);
         }
       } else {
         // INSERT logic
@@ -529,6 +539,7 @@ export class DeclarativeDatabase {
     // Add system columns if missing
     if (!valuesToInsert['system_version']) valuesToInsert['system_version'] = nowString;
     if (!valuesToInsert['system_created_at']) valuesToInsert['system_created_at'] = nowString;
+    if (!valuesToInsert['system_id']) valuesToInsert['system_id'] = crypto.randomUUID();
     
     // Mark as server origin
     valuesToInsert['system_is_local_origin'] = 0;
@@ -543,7 +554,32 @@ export class DeclarativeDatabase {
       }
     }
 
-    await this.insert(tableName, valuesToInsert);
+    const columns = Object.keys(valuesToInsert);
+    const placeholders = columns.map(() => '?').join(', ');
+    const columnList = columns.map(c => `"${c}"`).join(', ');
+
+    const sql = `INSERT INTO "${tableName}" (${columnList}) VALUES (${placeholders})`;
+    const stmt = this.adapter.prepare(sql);
+    await stmt.run(...Object.values(valuesToInsert));
+    
+    // Don't mark as dirty - this came from the server
+  }
+
+  private async _updateFromServer(
+    tableName: string,
+    values: Record<string, any>,
+    systemId: string
+  ): Promise<void> {
+    const columns = Object.keys(values);
+    const setClause = columns.map(c => `"${c}" = ?`).join(', ');
+
+    const sql = `UPDATE "${tableName}" SET ${setClause} WHERE system_id = ?`;
+    const params = [...Object.values(values), systemId];
+
+    const stmt = this.adapter.prepare(sql);
+    await stmt.run(...params);
+    
+    // Don't mark as dirty - this came from the server
   }
 
   private _isConstraintViolation(e: any): boolean {
