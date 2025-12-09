@@ -5,7 +5,7 @@ import { StreamingQuery, QueryOptions as StreamQueryOptions } from '../streaming
 import { QueryStreamManager } from '../streaming/query-stream-manager';
 import { DbRecord } from '../records/db-record';
 import { FileSet } from '../files/fileset';
-import { Hlc } from '../sync/hlc';
+import { Hlc, HlcTimestamp } from '../sync/hlc';
 
 export interface DatabaseConfig {
   adapter: SQLiteAdapter;
@@ -35,6 +35,11 @@ export interface QueryOptions {
   orderBy?: string;
   limit?: number;
   offset?: number;
+}
+
+export enum ConstraintViolationStrategy {
+  ThrowException = 'throwException',
+  Skip = 'skip',
 }
 
 /**
@@ -290,6 +295,151 @@ export class DeclarativeDatabase {
   getFileset(_tableName: string, _columnName: string, _recordId?: string): FileSet {
     // Placeholder - would integrate with FilesystemFileRepository
     throw new Error('FileSet integration not yet implemented');
+  }
+
+  /**
+   * Bulk loads data into a table, performing an "upsert" operation.
+   */
+  async bulkLoad(
+    tableName: string,
+    rows: Record<string, any>[],
+    onConstraintViolation: ConstraintViolationStrategy = ConstraintViolationStrategy.ThrowException
+  ): Promise<void> {
+    this.ensureInitialized();
+    
+    const tableDef = this.schema.tables.find(t => t.name === tableName);
+    if (!tableDef) {
+      throw new Error(`Table not found: ${tableName}`);
+    }
+
+    const pkColumns = tableDef.keys
+      .filter(k => k.type === 'PRIMARY')
+      .flatMap(k => k.columns);
+      
+    const lwwColumns = tableDef.columns
+      .filter(c => c.lww)
+      .map(c => c.name);
+
+    for (const row of rows) {
+      const systemId = row['system_id'];
+      if (!systemId) continue;
+
+      const existing = await this.queryOne(tableName, {
+        where: 'system_id = ?',
+        whereArgs: [systemId]
+      });
+
+      if (existing) {
+        // UPDATE logic
+        const valuesToUpdate: Record<string, any> = {};
+        const now = this.hlc.now();
+
+        for (const [colName, value] of Object.entries(row)) {
+          // Skip PKs, HLC columns, and system_is_local_origin
+          if (pkColumns.includes(colName) || colName.endsWith('__hlc') || colName === 'system_is_local_origin') {
+            continue;
+          }
+
+          if (lwwColumns.includes(colName)) {
+            const hlcColName = `${colName}__hlc`;
+            const remoteHlcString = row[hlcColName];
+
+            if (remoteHlcString) {
+              const localHlcValue = (existing as any)[hlcColName];
+              let localHlc: HlcTimestamp | null = null;
+              
+              if (localHlcValue) {
+                if (typeof localHlcValue === 'string') {
+                  localHlc = Hlc.parse(localHlcValue);
+                } else {
+                  localHlc = localHlcValue as HlcTimestamp;
+                }
+              }
+              
+              const remoteHlc = Hlc.parse(remoteHlcString);
+
+              if (!localHlc || Hlc.compare(remoteHlc, localHlc) > 0) {
+                valuesToUpdate[colName] = value;
+                valuesToUpdate[hlcColName] = remoteHlcString;
+              }
+            } else {
+              // Server wins if no HLC provided (non-LWW update from server)
+              valuesToUpdate[colName] = value;
+            }
+          } else {
+            // Regular column, always update
+            valuesToUpdate[colName] = value;
+          }
+        }
+
+        if (Object.keys(valuesToUpdate).length > 0) {
+          try {
+            // We need to update system_version as well
+            valuesToUpdate['system_version'] = Hlc.toString(now);
+            
+            await this.update(tableName, valuesToUpdate, {
+              where: 'system_id = ?',
+              whereArgs: [systemId]
+            });
+          } catch (e) {
+            if (this._isConstraintViolation(e)) {
+              if (onConstraintViolation === ConstraintViolationStrategy.ThrowException) {
+                throw e;
+              }
+              // Skip
+            } else {
+              throw e;
+            }
+          }
+        }
+      } else {
+        // INSERT logic
+        try {
+          await this._insertFromServer(tableName, row);
+        } catch (e) {
+          if (this._isConstraintViolation(e)) {
+            if (onConstraintViolation === ConstraintViolationStrategy.ThrowException) {
+              throw e;
+            }
+            // Skip
+          } else {
+            throw e;
+          }
+        }
+      }
+    }
+    
+    this.streamManager.notifyTableChanged(tableName);
+  }
+
+  private async _insertFromServer(tableName: string, values: Record<string, any>): Promise<void> {
+    const valuesToInsert = { ...values };
+    const now = this.hlc.now();
+    const nowString = Hlc.toString(now);
+
+    // Add system columns if missing
+    if (!valuesToInsert['system_version']) valuesToInsert['system_version'] = nowString;
+    if (!valuesToInsert['system_created_at']) valuesToInsert['system_created_at'] = nowString;
+    
+    // Mark as server origin
+    valuesToInsert['system_is_local_origin'] = 0;
+
+    // Ensure LWW columns have HLCs if not provided
+    const tableDef = this.schema.tables.find(t => t.name === tableName);
+    if (tableDef) {
+      for (const col of tableDef.columns) {
+        if (col.lww && !valuesToInsert[`${col.name}__hlc`]) {
+          valuesToInsert[`${col.name}__hlc`] = nowString;
+        }
+      }
+    }
+
+    await this.insert(tableName, valuesToInsert);
+  }
+
+  private _isConstraintViolation(e: any): boolean {
+    const msg = String(e).toLowerCase();
+    return msg.includes('constraint') || msg.includes('unique');
   }
 
   private ensureInitialized(): void {

@@ -57,7 +57,7 @@ export type {
 } from './migration/migration-generator';
 
 // Database operations
-export { DeclarativeDatabase } from './database/declarative-database';
+export { DeclarativeDatabase, ConstraintViolationStrategy } from './database/declarative-database';
 export { QueryBuilder } from './database/query-builder';
 export { SqliteWasmAdapter } from './database/sqlite-wasm-adapter';
 export type {
