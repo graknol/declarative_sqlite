@@ -174,7 +174,7 @@ export class DeclarativeDatabase {
   /**
    * Query records from a table
    */
-  async query<T = any>(table: string, options?: QueryOptions): Promise<T[]> {
+  async query<T extends Record<string, any> = any>(table: string, options?: QueryOptions): Promise<(T & DbRecord<T>)[]> {
     this.ensureInitialized();
 
     let sql = `SELECT * FROM "${table}"`;
@@ -201,13 +201,13 @@ export class DeclarativeDatabase {
 
     const stmt = this.adapter.prepare(sql);
     const results = await stmt.all(...params);
-    return results as T[];
+    return results.map(row => new DbRecord<T>(this, table, row) as unknown as T & DbRecord<T>);
   }
 
   /**
    * Query a single record from a table
    */
-  async queryOne<T = any>(table: string, options?: QueryOptions): Promise<T | null> {
+  async queryOne<T extends Record<string, any> = any>(table: string, options?: QueryOptions): Promise<(T & DbRecord<T>) | null> {
     const results = await this.query<T>(table, { ...options, limit: 1 });
     return results.length > 0 ? results[0]! : null;
   }
@@ -231,10 +231,10 @@ export class DeclarativeDatabase {
   /**
    * Create a streaming query that automatically refreshes on data changes
    */
-  stream<T = any>(table: string, options?: StreamQueryOptions): StreamingQuery<T> {
+  stream<T extends Record<string, any> = any>(table: string, options?: StreamQueryOptions): StreamingQuery<T> {
     this.ensureInitialized();
     
-    const stream = new StreamingQuery<T>(this.adapter, table, options);
+    const stream = new StreamingQuery<T>(this, table, options);
     this.streamManager.registerStream(stream);
     
     return stream;
@@ -276,11 +276,11 @@ export class DeclarativeDatabase {
    */
   async loadRecord<T extends Record<string, any>>(tableName: string, id: string): Promise<DbRecord<T> & T> {
     this.ensureInitialized();
-    const row = await this.queryOne(tableName, { where: 'id = ?', whereArgs: [id] });
+    const row = await this.queryOne<T>(tableName, { where: 'id = ?', whereArgs: [id] });
     if (!row) {
       throw new Error(`Record not found: ${tableName} with id=${id}`);
     }
-    return new DbRecord<T>(this, tableName, row) as DbRecord<T> & T;
+    return row;
   }
 
   /**
