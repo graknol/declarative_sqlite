@@ -17,21 +17,61 @@ export interface HlcTimestamp {
   nodeId: string;
 }
 
+/**
+ * Time provider for HLC - can be overridden for testing
+ */
+export interface TimeProvider {
+  now(): number;
+}
+
+/**
+ * Default time provider using Date.now()
+ */
+export class SystemTimeProvider implements TimeProvider {
+  now(): number {
+    return Date.now();
+  }
+}
+
+/**
+ * Mock time provider for testing with fixed or controlled time
+ */
+export class MockTimeProvider implements TimeProvider {
+  constructor(private currentTime: number = Date.now()) {}
+  
+  now(): number {
+    return this.currentTime;
+  }
+  
+  setTime(time: number): void {
+    this.currentTime = time;
+  }
+  
+  advance(milliseconds: number): void {
+    this.currentTime += milliseconds;
+  }
+}
+
 export class Hlc {
   private lastMilliseconds: number = 0;
   private counter: number = 0;
+  private timeProvider: TimeProvider;
 
-  constructor(private nodeId: string) {
+  constructor(
+    private nodeId: string,
+    timeProvider?: TimeProvider
+  ) {
     if (!nodeId || nodeId.length === 0) {
       throw new Error('HLC requires a non-empty nodeId');
     }
+    this.timeProvider = timeProvider || new SystemTimeProvider();
   }
 
   /**
    * Generate a new HLC timestamp
    */
   now(): HlcTimestamp {
-    const physicalTime = Date.now();
+    const physicalTime = this.timeProvider.now();
 
     if (physicalTime > this.lastMilliseconds) {
       // Physical time advanced, reset counter
@@ -53,7 +93,7 @@ export class Hlc {
    * Update HLC based on received timestamp (for clock synchronization)
    */
   update(received: HlcTimestamp): HlcTimestamp {
-    const physicalTime = Date.now();
+    const physicalTime = this.timeProvider.now();
     const maxMilliseconds = Math.max(physicalTime, this.lastMilliseconds, received.milliseconds);
 
     if (maxMilliseconds === this.lastMilliseconds && maxMilliseconds === received.milliseconds) {

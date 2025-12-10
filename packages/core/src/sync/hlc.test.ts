@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Hlc } from './hlc.js';
+import { Hlc, MockTimeProvider } from './hlc.js';
 
 describe('Hlc', () => {
   let hlc: Hlc;
@@ -22,12 +22,22 @@ describe('Hlc', () => {
     });
 
     it('should increment counter when physical time does not advance', () => {
+      const mockTime = new MockTimeProvider(1000);
+      const hlc = new Hlc('test-node', mockTime);
+      
+      // Generate timestamps at the same physical time
       const ts1 = hlc.now();
-      const _ts2 = hlc.now();
+      const ts2 = hlc.now();
       const ts3 = hlc.now();
 
-      // At least one should have an incremented counter
-      expect(ts3.counter).toBeGreaterThan(ts1.counter);
+      // All should have same milliseconds but incrementing counters
+      expect(ts1.milliseconds).toBe(1000);
+      expect(ts2.milliseconds).toBe(1000);
+      expect(ts3.milliseconds).toBe(1000);
+      
+      expect(ts1.counter).toBe(0);
+      expect(ts2.counter).toBe(1);
+      expect(ts3.counter).toBe(2);
     });
   });
 

@@ -94,8 +94,8 @@ export {
 } from './database/adapter-factory';
 
 // Synchronization
-export { Hlc } from './sync/hlc';
-export type { HlcTimestamp } from './sync/hlc';
+export { Hlc, MockTimeProvider, SystemTimeProvider } from './sync/hlc';
+export type { HlcTimestamp, TimeProvider } from './sync/hlc';
 export { LwwOperations } from './sync/lww-operations';
 export type { LwwUpdateOptions } from './sync/lww-operations';
 export { SqliteDirtyRowStore } from './sync/dirty-row-store';
