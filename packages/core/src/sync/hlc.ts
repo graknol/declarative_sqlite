@@ -39,11 +39,11 @@ export class Hlc {
       this.counter++;
     }
 
-    return {
-      milliseconds: this.lastMilliseconds,
-      counter: this.counter,
-      nodeId: this.nodeId,
-    };
+    return this.createTimestamp(
+      this.lastMilliseconds,
+      this.counter,
+      this.nodeId
+    );
   }
 
   /**
@@ -69,11 +69,34 @@ export class Hlc {
 
     this.lastMilliseconds = maxMilliseconds;
 
-    return {
-      milliseconds: this.lastMilliseconds,
-      counter: this.counter,
-      nodeId: this.nodeId,
+    return this.createTimestamp(
+      this.lastMilliseconds,
+      this.counter,
+      this.nodeId
+    );
+  }
+
+  /**
+   * Create an HLC timestamp with automatic serialization support
+   */
+  private createTimestamp(
+    milliseconds: number,
+    counter: number,
+    nodeId: string
+  ): HlcTimestamp {
+    const timestamp: HlcTimestamp = {
+      milliseconds,
+      counter,
+      nodeId,
     };
+
+    // Add toString() method for automatic serialization
+    Object.defineProperty(timestamp, 'toString', {
+      value: () => Hlc.toString(timestamp),
+      enumerable: false,
+    });
+
+    return timestamp;
   }
 
   /**
@@ -100,7 +123,15 @@ export class Hlc {
       throw new Error(`Invalid HLC format: ${hlcString}. milliseconds and counter must be numbers`);
     }
 
-    return { milliseconds, counter, nodeId };
+    const timestamp: HlcTimestamp = { milliseconds, counter, nodeId };
+
+    // Add toString() method for automatic serialization
+    Object.defineProperty(timestamp, 'toString', {
+      value: () => Hlc.toString(timestamp),
+      enumerable: false,
+    });
+
+    return timestamp;
   }
 
   /**

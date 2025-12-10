@@ -54,6 +54,31 @@ describe('Hlc', () => {
       expect(() => Hlc.parse('invalid')).toThrow();
       expect(() => Hlc.parse('1234:abc:node')).toThrow();
     });
+
+    it('should automatically serialize when toString() is called', () => {
+      const timestamp = hlc.now();
+      const str = timestamp.toString();
+      
+      expect(str).toBe(Hlc.toString(timestamp));
+      expect(str).toMatch(/^\d+:\d+:test-node$/);
+    });
+
+    it('should automatically serialize when String() is called', () => {
+      const timestamp = hlc.now();
+      const str = String(timestamp);
+      
+      expect(str).toBe(Hlc.toString(timestamp));
+      expect(str).not.toBe('[object Object]');
+      expect(str).toMatch(/^\d+:\d+:test-node$/);
+    });
+
+    it('should automatically serialize parsed timestamps', () => {
+      const parsed = Hlc.parse('1701878400000:5:node-abc');
+      const str = String(parsed);
+      
+      expect(str).toBe('1701878400000:5:node-abc');
+      expect(str).not.toBe('[object Object]');
+    });
   });
 
   describe('compare', () => {

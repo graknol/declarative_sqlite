@@ -87,8 +87,10 @@ export class SqliteDirtyRowStore implements DirtyRowStore {
   }
 
   async markDirty(row: DirtyRow): Promise<void> {
-    // Ensure HLC is always a string
-    const hlcString = typeof row.hlc === 'string' ? row.hlc : String(row.hlc);
+    // HLC timestamps automatically serialize to strings via toString()
+    const hlcString = typeof row.hlc === 'string' 
+      ? row.hlc 
+      : String(row.hlc); // This now works correctly thanks to the toString() method
     
     const stmt = this.adapter.prepare(`
       INSERT OR REPLACE INTO __dirty_rows (table_name, row_id, hlc, is_full_row)
