@@ -45,6 +45,11 @@ export interface DirtyRowStore {
   remove(operations: DirtyRow[]): Promise<void>;
 
   /**
+   * Get a specific dirty row entry
+   */
+  getDirtyRow(tableName: string, rowId: string): Promise<DirtyRow | null>;
+
+  /**
    * Clear a dirty row (after successful sync)
    */
   clearDirty(tableName: string, rowId: string): Promise<void>;
@@ -67,8 +72,11 @@ export class SqliteDirtyRowStore implements DirtyRowStore {
   constructor(private adapter: SQLiteAdapter) {}
 
   async init(): Promise<void> {
+    // Drop the old table if it exists with the wrong schema
+    await this.adapter.exec(`DROP TABLE IF EXISTS __dirty_rows`);
+    
     await this.adapter.exec(`
-      CREATE TABLE IF NOT EXISTS __dirty_rows (
+      CREATE TABLE __dirty_rows (
         table_name TEXT NOT NULL,
         row_id TEXT NOT NULL,
         hlc TEXT NOT NULL,
@@ -79,12 +87,15 @@ export class SqliteDirtyRowStore implements DirtyRowStore {
   }
 
   async markDirty(row: DirtyRow): Promise<void> {
+    // Ensure HLC is always a string
+    const hlcString = typeof row.hlc === 'string' ? row.hlc : String(row.hlc);
+    
     const stmt = this.adapter.prepare(`
       INSERT OR REPLACE INTO __dirty_rows (table_name, row_id, hlc, is_full_row)
       VALUES (?, ?, ?, ?)
     `);
 
-    await stmt.run(row.tableName, row.rowId, row.hlc, row.isFullRow ? 1 : 0);
+    await stmt.run(row.tableName, row.rowId, hlcString, row.isFullRow ? 1 : 0);
   }
 
   async getAllDirty(): Promise<DirtyRow[]> {
@@ -141,6 +152,24 @@ export class SqliteDirtyRowStore implements DirtyRowStore {
         operation.isFullRow ? 1 : 0,
       );
     }
+  }
+
+  async getDirtyRow(tableName: string, rowId: string): Promise<DirtyRow | null> {
+    const stmt = this.adapter.prepare(`
+      SELECT table_name, row_id, hlc, is_full_row
+      FROM __dirty_rows
+      WHERE table_name = ? AND row_id = ?
+    `);
+
+    const row = await stmt.get<any>(tableName, rowId);
+    if (!row) return null;
+
+    return {
+      tableName: row.table_name,
+      rowId: row.row_id,
+      hlc: row.hlc,
+      isFullRow: row.is_full_row === 1,
+    };
   }
 
   async clearDirty(tableName: string, rowId: string): Promise<void> {

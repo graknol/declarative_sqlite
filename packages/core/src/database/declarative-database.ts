@@ -442,7 +442,6 @@ export class DeclarativeDatabase {
         // UPDATE logic
         const valuesToUpdate: Record<string, any> = {};
         const now = this.hlc.now();
-        let allColumnsServerNewer = true; // Track if ALL LWW columns have server newer
 
         for (const [colName, value] of Object.entries(row)) {
           // Skip PKs, HLC columns, and system_is_local_origin
@@ -473,9 +472,6 @@ export class DeclarativeDatabase {
                 // Server is newer for this column
                 valuesToUpdate[colName] = value;
                 valuesToUpdate[hlcColName] = remoteHlcString;
-              } else {
-                // Local is newer or equal for this column
-                allColumnsServerNewer = false;
               }
             } else {
               // Server wins if no HLC provided (non-LWW update from server)
@@ -506,10 +502,21 @@ export class DeclarativeDatabase {
           }
         }
         
-        // Clear dirty mark only if ALL LWW columns had server data newer or equal
-        // This means the server is fully up-to-date with this row
-        if (allColumnsServerNewer) {
-          await this.dirtyRowStore.clearDirty(tableName, systemId);
+        // Check if we should clear the dirty mark by comparing system_version
+        // against the dirty row's HLC timestamp
+        const dirtyRow = await this.dirtyRowStore.getDirtyRow(tableName, systemId);
+        if (dirtyRow) {
+          // Get the server's system_version HLC
+          const serverVersionString = row['system_version'];
+          if (serverVersionString) {
+            const serverVersion = Hlc.parse(serverVersionString);
+            const dirtyRowHlc = Hlc.parse(dirtyRow.hlc);
+            
+            // If server's version is >= dirty row's timestamp, server is up-to-date
+            if (Hlc.compare(serverVersion, dirtyRowHlc) >= 0) {
+              await this.dirtyRowStore.clearDirty(tableName, systemId);
+            }
+          }
         }
       } else {
         // INSERT logic
