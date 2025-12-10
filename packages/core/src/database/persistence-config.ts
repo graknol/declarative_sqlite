@@ -309,15 +309,8 @@ export async function resolveStorageBackend(
   if (config.backend === StorageBackend.Auto) {
     return await StorageCapabilities.detectBestBackend();
   }
-  
-  const isAvailable = await StorageCapabilities.isBackendAvailable(config.backend);
-  if (!isAvailable) {
-    throw new Error(
-      `Storage backend '${config.backend}' is not available in this environment. ` +
-      `Consider using StorageBackend.Auto for automatic detection.`
-    );
-  }
-  
+
+  // Honor explicit backend choice; sqlite-wasm will fall back internally if needed
   return config.backend;
 }
 
