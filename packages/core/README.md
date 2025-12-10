@@ -25,8 +25,7 @@ npm install declarative-sqlite rxjs
 ## 🚀 Quick Start
 
 ```typescript
-import { SchemaBuilder, DeclarativeDatabase, BetterSqlite3Adapter } from 'declarative-sqlite';
-import Database from 'better-sqlite3';
+import { SchemaBuilder, DeclarativeDatabase, AdapterFactory } from 'declarative-sqlite';
 
 // 1. Define your schema (declarative)
 const schema = new SchemaBuilder()
@@ -39,9 +38,11 @@ const schema = new SchemaBuilder()
   })
   .build();
 
-// 2. Create database (auto-migrates!)
-const adapter = new BetterSqlite3Adapter(Database);
-await adapter.open('myapp.db');
+// 2. Create database with automatic persistence configuration
+const adapter = await AdapterFactory.create({
+  name: 'myapp.db', // Auto-detects best storage backend
+  enableWAL: true,
+});
 
 const db = new DeclarativeDatabase({
   adapter,
@@ -55,6 +56,40 @@ await db.initialize();
 await db.insert('users', { id: 'u1', name: 'Alice', email: 'alice@example.com', age: 30 });
 const users = await db.query('users', { where: 'age >= ?', whereArgs: [21] });
 ```
+
+## 💾 Persistence Configuration
+
+Supports multiple storage backends for different environments:
+
+```typescript
+import { AdapterFactory, StorageBackend } from 'declarative-sqlite';
+
+// Browser with auto-detection (OPFS → IndexedDB → Memory)
+const adapter = await AdapterFactory.create({
+  name: 'myapp.db',
+  backend: StorageBackend.Auto,
+});
+
+// Node.js with file system
+const adapter = await AdapterFactory.create({
+  name: './data/myapp.db',
+  backend: StorageBackend.FileSystem,
+});
+
+// PWA with OPFS (Origin Private File System)
+const adapter = await AdapterFactory.create({
+  name: 'myapp.db',
+  backend: StorageBackend.OPFS,
+});
+
+// In-memory for testing
+const adapter = await AdapterFactory.create({
+  backend: StorageBackend.Memory,
+});
+```
+
+See [PERSISTENCE.md](./PERSISTENCE.md) for detailed configuration options.
+
 
 ## 💡 Zero Code Generation (Key Innovation!)
 

@@ -73,6 +73,26 @@ export type {
   JoinClause,
 } from './database/query-builder';
 
+// Persistence configuration
+export { 
+  StorageBackend,
+  StorageCapabilities,
+  mergePersistenceConfig,
+  resolveStorageBackend,
+  configToDatabasePath,
+  DEFAULT_PERSISTENCE_CONFIG,
+} from './database/persistence-config';
+export type { PersistenceConfig } from './database/persistence-config';
+export { PersistenceManager } from './database/persistence-manager';
+export { 
+  AdapterFactory,
+  createMemoryAdapter,
+  createFileAdapter,
+  createBrowserAdapter,
+  createOPFSAdapter,
+  createIndexedDBAdapter,
+} from './database/adapter-factory';
+
 // Synchronization
 export { Hlc } from './sync/hlc';
 export type { HlcTimestamp } from './sync/hlc';

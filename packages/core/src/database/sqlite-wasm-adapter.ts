@@ -44,17 +44,68 @@ export class SqliteWasmAdapter implements SQLiteAdapter {
   async open(path: string): Promise<void> {
     await this.initialize();
     
-    // For in-memory databases or OPFS (Origin Private File System)
+    // Handle different storage backends
     if (path === ':memory:') {
+      // In-memory database
       this.db = new this.sqlite3.oo1.DB();
+    } else if (path.startsWith('indexeddb://')) {
+      // IndexedDB-backed storage using IDBBatchAtomicVFS
+      const dbName = path.replace('indexeddb://', '');
+      await this.openWithIndexedDB(dbName);
+    } else if (path.startsWith('/opfs/')) {
+      // OPFS (Origin Private File System) storage
+      const dbName = path.replace('/opfs/', '');
+      await this.openWithOPFS(dbName);
     } else {
-      // Use OPFS for persistent storage in browser
-      // Note: OPFS requires origin-private-file-system support
-      this.db = new this.sqlite3.oo1.DB(path, 'c');
+      // Default: file system or OPFS based on environment
+      try {
+        this.db = new this.sqlite3.oo1.DB(path, 'c');
+      } catch (error) {
+        console.warn('Failed to open database with path, falling back to in-memory:', error);
+        this.db = new this.sqlite3.oo1.DB();
+      }
+    }
+  }
+
+  /**
+   * Open database with IndexedDB VFS backend
+   */
+  private async openWithIndexedDB(dbName: string): Promise<void> {
+    // Check if IDBBatchAtomicVFS is available
+    if (!this.sqlite3.capi.sqlite3_vfs_find('idb-batch-atomic')) {
+      console.warn('IDBBatchAtomicVFS not available, falling back to in-memory');
+      this.db = new this.sqlite3.oo1.DB();
+      return;
     }
     
-    // Enable WAL mode for better concurrency
-    this.db.exec('PRAGMA journal_mode = WAL');
+    try {
+      // Use IndexedDB VFS
+      this.db = new this.sqlite3.oo1.DB(dbName, 'c', 'idb-batch-atomic');
+    } catch (error) {
+      console.warn('Failed to open IndexedDB database, falling back to in-memory:', error);
+      this.db = new this.sqlite3.oo1.DB();
+    }
+  }
+
+  /**
+   * Open database with OPFS VFS backend
+   */
+  private async openWithOPFS(dbName: string): Promise<void> {
+    // Check if OPFS VFS is available
+    const opfsVfs = this.sqlite3.capi.sqlite3_vfs_find('opfs');
+    if (!opfsVfs) {
+      console.warn('OPFS VFS not available, falling back to in-memory');
+      this.db = new this.sqlite3.oo1.DB();
+      return;
+    }
+    
+    try {
+      // Use OPFS VFS
+      this.db = new this.sqlite3.oo1.DB(dbName, 'c', 'opfs');
+    } catch (error) {
+      console.warn('Failed to open OPFS database, falling back to in-memory:', error);
+      this.db = new this.sqlite3.oo1.DB();
+    }
   }
 
   async close(): Promise<void> {
