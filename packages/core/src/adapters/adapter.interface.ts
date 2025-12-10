@@ -75,4 +75,10 @@ export interface SQLiteAdapter {
    * Check if database is currently open
    */
   isOpen(): boolean;
+  
+  /**
+   * Export the database as a Uint8Array
+   * Useful for downloading/saving the database file
+   */
+  exportDatabase(): Promise<Uint8Array>;
 }

@@ -213,6 +213,29 @@ export class SqliteWasmAdapter implements SQLiteAdapter {
   }
 
   /**
+   * Export the database as a Uint8Array
+   */
+  async exportDatabase(): Promise<Uint8Array> {
+    this.ensureOpen();
+    
+    // Use sqlite3's export functionality
+    // The method varies based on the VFS backend
+    try {
+      // Try the standard export method
+      if (typeof this.db.exportDatabase === 'function') {
+        return this.db.exportDatabase();
+      }
+      
+      // For sqlite-wasm, use the C API
+      const exported = this.sqlite3.capi.sqlite3_js_db_export(this.db.pointer);
+      return new Uint8Array(exported);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to export database: ${message}`);
+    }
+  }
+
+  /**
    * Get the underlying sqlite-wasm database instance
    */
   getDatabase(): any {

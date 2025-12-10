@@ -81,6 +81,42 @@ const db = new DeclarativeDatabase({ adapter, schema });
 
 ## Quick Start
 
+### Recommended: Initialize Storage First
+
+For browser environments, it's recommended to initialize storage and request permissions before creating the adapter:
+
+```typescript
+import { 
+  initializeStorage,
+  AdapterFactory,
+  DeclarativeDatabase 
+} from 'declarative-sqlite';
+
+// Initialize storage and request permissions
+const storageResult = await initializeStorage({
+  requestPersistence: true,
+  preferredBackend: StorageBackend.OPFS,
+  verbose: true,
+});
+
+console.log('Using backend:', storageResult.backend);
+console.log('Persistent storage:', storageResult.isPersistent);
+
+if (storageResult.warnings.length > 0) {
+  console.warn('Storage warnings:', storageResult.warnings);
+}
+
+// Create adapter with the detected backend
+const adapter = await AdapterFactory.create({
+  backend: storageResult.backend,
+  name: 'myapp.db',
+  enableWAL: true,
+});
+
+const db = new DeclarativeDatabase({ adapter, schema, autoMigrate: true });
+await db.initialize();
+```
+
 ### Using AdapterFactory
 
 The simplest way to create a configured adapter:

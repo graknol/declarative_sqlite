@@ -153,8 +153,29 @@ export class StorageCapabilities {
     
     try {
       // Check for OPFS API
-      return 'getDirectory' in navigator.storage;
-    } catch {
+      if (!('getDirectory' in navigator.storage)) {
+        return false;
+      }
+      
+      // Try to actually access OPFS to ensure it works
+      // Some browsers report the API but it fails in certain contexts (e.g., cross-origin iframes)
+      const root = await navigator.storage.getDirectory();
+      if (!root) {
+        return false;
+      }
+      
+      // Try to create a test file to verify write access
+      try {
+        await root.getFileHandle('.opfs-test', { create: true });
+        await root.removeEntry('.opfs-test');
+      } catch {
+        // If we can't write, OPFS isn't really usable
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      // OPFS not available or access denied
       return false;
     }
   }
@@ -163,7 +184,27 @@ export class StorageCapabilities {
    * Check if IndexedDB is available
    */
   static hasIndexedDB(): boolean {
-    return typeof indexedDB !== 'undefined';
+    if (typeof indexedDB === 'undefined') {
+      return false;
+    }
+    
+    try {
+      // Try to open a test database to ensure IndexedDB is actually usable
+      // Some browsers/contexts report IndexedDB but it's disabled
+      const testRequest = indexedDB.open('__test__', 1);
+      testRequest.onerror = () => {};
+      testRequest.onsuccess = () => {
+        try {
+          testRequest.result?.close();
+          indexedDB.deleteDatabase('__test__');
+        } catch {
+          // Ignore cleanup errors
+        }
+      };
+      return true;
+    } catch {
+      return false;
+    }
   }
   
   /**
@@ -171,6 +212,48 @@ export class StorageCapabilities {
    */
   static hasFileSystem(): boolean {
     return typeof process !== 'undefined' && process.versions?.node !== undefined;
+  }
+  
+  /**
+   * Request persistent storage permission (browsers only)
+   * This can increase storage quota and prevent eviction
+   */
+  static async requestPersistentStorage(): Promise<boolean> {
+    if (typeof navigator === 'undefined' || !navigator.storage?.persist) {
+      return false;
+    }
+    
+    try {
+      // Check if already persisted
+      const isPersisted = await navigator.storage.persisted();
+      if (isPersisted) {
+        return true;
+      }
+      
+      // Request persistence
+      return await navigator.storage.persist();
+    } catch {
+      return false;
+    }
+  }
+  
+  /**
+   * Get storage quota information (browsers only)
+   */
+  static async getStorageQuota(): Promise<{ usage: number; quota: number } | null> {
+    if (typeof navigator === 'undefined' || !navigator.storage?.estimate) {
+      return null;
+    }
+    
+    try {
+      const estimate = await navigator.storage.estimate();
+      return {
+        usage: estimate.usage || 0,
+        quota: estimate.quota || 0,
+      };
+    } catch {
+      return null;
+    }
   }
   
   /**

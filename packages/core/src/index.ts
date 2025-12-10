@@ -92,6 +92,14 @@ export {
   createOPFSAdapter,
   createIndexedDBAdapter,
 } from './database/adapter-factory';
+export {
+  initializeStorage,
+  checkStorageAvailability,
+} from './database/storage-init';
+export type {
+  StorageInitOptions,
+  StorageInitResult,
+} from './database/storage-init';
 
 // Synchronization
 export { Hlc, MockTimeProvider, SystemTimeProvider } from './sync/hlc';

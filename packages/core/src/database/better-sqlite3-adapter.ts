@@ -78,6 +78,17 @@ export class BetterSqlite3Adapter implements SQLiteAdapter {
   }
 
   /**
+   * Export the database as a Uint8Array
+   */
+  async exportDatabase(): Promise<Uint8Array> {
+    this.ensureOpen();
+    
+    // better-sqlite3 provides a serialize method
+    const buffer = this.db.serialize();
+    return new Uint8Array(buffer);
+  }
+
+  /**
    * Get the underlying better-sqlite3 database instance
    */
   getDatabase(): any {

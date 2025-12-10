@@ -364,6 +364,14 @@ export class DeclarativeDatabase {
   }
 
   /**
+   * Export the database as a Uint8Array
+   * Useful for downloading or backing up the database
+   */
+  async exportDatabase(): Promise<Uint8Array> {
+    return await this.adapter.exportDatabase();
+  }
+
+  /**
    * Get the underlying adapter
    */
   getAdapter(): SQLiteAdapter {
