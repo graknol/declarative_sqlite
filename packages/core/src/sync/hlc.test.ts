@@ -43,7 +43,7 @@ describe('Hlc', () => {
     });
 
     it('should parse valid HLC string', () => {
-      const parsed = Hlc.parse('1701878400000:5:node-abc');
+      const parsed = Hlc.parse('0000001701878400000:000000005:node-abc');
 
       expect(parsed.milliseconds).toBe(1701878400000);
       expect(parsed.counter).toBe(5);
@@ -60,7 +60,7 @@ describe('Hlc', () => {
       const str = timestamp.toString();
       
       expect(str).toBe(Hlc.toString(timestamp));
-      expect(str).toMatch(/^\d+:\d+:test-node$/);
+      expect(str).toMatch(/^\d{19}:\d{9}:test-node$/);
     });
 
     it('should automatically serialize when String() is called', () => {
@@ -69,15 +69,42 @@ describe('Hlc', () => {
       
       expect(str).toBe(Hlc.toString(timestamp));
       expect(str).not.toBe('[object Object]');
-      expect(str).toMatch(/^\d+:\d+:test-node$/);
+      expect(str).toMatch(/^\d{19}:\d{9}:test-node$/);
     });
 
     it('should automatically serialize parsed timestamps', () => {
-      const parsed = Hlc.parse('1701878400000:5:node-abc');
+      const parsed = Hlc.parse('0000001701878400000:000000005:node-abc');
       const str = String(parsed);
       
-      expect(str).toBe('1701878400000:5:node-abc');
+      expect(str).toBe('0000001701878400000:000000005:node-abc');
       expect(str).not.toBe('[object Object]');
+    });
+
+    it('should use zero-padded format for proper string sorting', () => {
+      const ts1 = hlc.now();
+      const str1 = Hlc.toString(ts1);
+      
+      // Verify format has 19 digits for milliseconds and 9 digits for counter
+      const parts = str1.split(':');
+      expect(parts[0]!.length).toBe(19);
+      expect(parts[1]!.length).toBe(9);
+      expect(parts[0]).toMatch(/^\d{19}$/);
+      expect(parts[1]).toMatch(/^\d{9}$/);
+    });
+
+    it('should maintain sort order with string comparison', () => {
+      const ts1 = { milliseconds: 1000, counter: 0, nodeId: 'node1' };
+      const ts2 = { milliseconds: 2000, counter: 0, nodeId: 'node2' };
+      const ts3 = { milliseconds: 2000, counter: 5, nodeId: 'node3' };
+      
+      const str1 = Hlc.toString(ts1);
+      const str2 = Hlc.toString(ts2);
+      const str3 = Hlc.toString(ts3);
+      
+      // String comparison should match semantic comparison
+      expect(str1 < str2).toBe(true);
+      expect(str2 < str3).toBe(true);
+      expect(str1 < str3).toBe(true);
     });
   });
 

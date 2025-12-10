@@ -4,8 +4,11 @@
  * HLC provides distributed timestamps that combine physical time with logical counters
  * for conflict-free ordering of events in distributed systems.
  * 
- * Format: <milliseconds>:<counter>:<nodeId>
- * Example: "1701878400000:0:node-abc123"
+ * Format: `<19-digit-zero-padded-milliseconds>:<9-digit-zero-padded-counter>:<nodeId>`  
+ * Example: `0000001701878400000:000000000:D5FC9B48AEB945869FD95A205CF5FBA2`
+ * 
+ * The zero-padding ensures that timestamps can be compared using simple string comparison,
+ * which is critical for distributed systems and database indexing.
  */
 
 export interface HlcTimestamp {
@@ -101,9 +104,12 @@ export class Hlc {
 
   /**
    * Serialize HLC timestamp to string
+   * Format: 19-digit milliseconds : 9-digit counter : nodeId
    */
   static toString(timestamp: HlcTimestamp): string {
-    return `${timestamp.milliseconds}:${timestamp.counter}:${timestamp.nodeId}`;
+    const milliseconds = timestamp.milliseconds.toString().padStart(19, '0');
+    const counter = timestamp.counter.toString().padStart(9, '0');
+    return `${milliseconds}:${counter}:${timestamp.nodeId}`;
   }
 
   /**
@@ -112,7 +118,7 @@ export class Hlc {
   static parse(hlcString: string): HlcTimestamp {
     const parts = hlcString.split(':');
     if (parts.length !== 3) {
-      throw new Error(`Invalid HLC format: ${hlcString}. Expected format: milliseconds:counter:nodeId`);
+      throw new Error(`Invalid HLC format: ${hlcString}. Expected format: 0000000000000000000:000000000:NODEID`);
     }
 
     const milliseconds = parseInt(parts[0]!, 10);
