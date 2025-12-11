@@ -23,8 +23,7 @@ export class SqliteWasmAdapter implements SQLiteAdapter {
         const nodeModule = await import(modulePath);
         sqlite3InitModule = nodeModule.default;
       } catch (error) {
-        // Fallback: Use standard module with createRequire workaround
-        console.warn('Using fallback SQLite initialization for Node.js environment');
+        // Fallback: Node-specific module not found, using standard browser build
         const standardModule = await import('@sqlite.org/sqlite-wasm');
         sqlite3InitModule = standardModule.default;
       }
