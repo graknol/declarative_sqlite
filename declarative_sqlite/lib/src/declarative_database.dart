@@ -767,7 +767,8 @@ class DeclarativeDatabase {
       final serializedValues = _serializeValuesForTable(tableName, values);
       
       final systemId = await _insert(tableName, serializedValues, now);
-      await dirtyRowStore?.add(tableName, systemId, now, true, serializedValues); // Full row for new inserts with data
+      // Pass only the user-provided values, not system-generated columns
+      await dirtyRowStore?.add(tableName, systemId, now, true, values); // Full row for new inserts with user data
 
       // Notify streaming queries of the change
       await _streamManager.notifyTableChanged(tableName);
@@ -881,8 +882,9 @@ class DeclarativeDatabase {
       if (result > 0) {
         for (final row in rowsToUpdate) {
           final isLocalOrigin = row.getValue<int>('system_is_local_origin') == 1;
+          // Pass only the user-provided values, not system-generated columns
           await dirtyRowStore?.add(
-              tableName, row.getValue<String>('system_id')!, now, isLocalOrigin, serializedValues);
+              tableName, row.getValue<String>('system_id')!, now, isLocalOrigin, values);
         }
         // Notify streaming queries of the change
         await _streamManager.notifyTableChanged(tableName);

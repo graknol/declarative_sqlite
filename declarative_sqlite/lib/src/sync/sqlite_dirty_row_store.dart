@@ -57,7 +57,7 @@ class SqliteDirtyRowStore implements DirtyRowStore {
     return results.map((row) {
       final dataJson = row['data'] as String?;
       Map<String, Object?>? data;
-      if (dataJson != null && dataJson.isNotEmpty) {
+      if (dataJson != null) {
         try {
           final decoded = jsonDecode(dataJson);
           if (decoded is Map) {
