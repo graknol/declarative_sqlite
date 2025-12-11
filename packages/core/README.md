@@ -15,6 +15,7 @@ TypeScript port of `declarative_sqlite` for PWA and Capacitor applications with 
 - **📱 Offline-First** - HLC timestamps + LWW conflict resolution
 - **📎 File Management** - Built-in file storage with versioning
 - **🔌 Pluggable** - Support for multiple SQLite backends (wa-sqlite, Capacitor, better-sqlite3)
+- **👷 Web Worker Support** - Built-in Comlink integration for thread-safe database operations
 
 ## 📥 Installation
 
@@ -339,6 +340,8 @@ MIT © graknol
 ## 🔗 Links
 
 - [Repository](https://github.com/graknol/declarative_sqlite)
+- [Comlink Integration Guide](./COMLINK_INTEGRATION.md) - Use with web workers
+- [Persistence Configuration](./PERSISTENCE.md) - Storage backend options
 - [Migration Plan](../../TYPESCRIPT_MIGRATION_PLAN.md)
 - [Architecture](../../TYPESCRIPT_ARCHITECTURE.md)
 - [Comparison](../../TYPESCRIPT_COMPARISON.md)
