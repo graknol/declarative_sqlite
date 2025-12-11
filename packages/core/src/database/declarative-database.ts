@@ -3,7 +3,6 @@ import { Schema } from '../schema/types';
 import { SchemaMigrator } from '../migration/schema-migrator';
 import { StreamingQuery, QueryOptions as StreamQueryOptions } from '../streaming/streaming-query';
 import { QueryStreamManager } from '../streaming/query-stream-manager';
-import { DbRecord } from '../records/db-record';
 import { FileSet } from '../files/fileset';
 import { Hlc, HlcTimestamp } from '../sync/hlc';
 import { DirtyRowStore, SqliteDirtyRowStore } from '../sync/dirty-row-store';
@@ -443,7 +442,7 @@ export class DeclarativeDatabase {
     }
     
     const xRec = (record as any).xRec || {};
-    const isNew = !xRec.system_id && !record.system_id;
+    const isNew = !xRec['system_id'] && !record['system_id'];
     
     if (isNew) {
       // INSERT: Create new record
@@ -508,7 +507,7 @@ export class DeclarativeDatabase {
         }
       }
       
-      return xRec.system_id || record.system_id;
+      return xRec['system_id'] || record['system_id'];
     }
   }
 
