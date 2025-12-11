@@ -3,7 +3,6 @@ import { Schema } from '../schema/types';
 import { SchemaMigrator } from '../migration/schema-migrator';
 import { StreamingQuery, QueryOptions as StreamQueryOptions } from '../streaming/streaming-query';
 import { QueryStreamManager } from '../streaming/query-stream-manager';
-import { DbRecord } from '../records/db-record';
 import { FileSet } from '../files/fileset';
 import { Hlc, HlcTimestamp } from '../sync/hlc';
 import { DirtyRowStore, SqliteDirtyRowStore } from '../sync/dirty-row-store';
@@ -286,9 +285,9 @@ export class DeclarativeDatabase {
   }
 
   /**
-   * Query records from a table
+   * Query records from a table (returns plain objects)
    */
-  async query<T extends Record<string, any> = any>(table: string, options?: QueryOptions): Promise<(T & DbRecord<T>)[]> {
+  async query<T extends Record<string, any> = any>(table: string, options?: QueryOptions): Promise<T[]> {
     this.ensureInitialized();
 
     let sql = `SELECT * FROM "${table}"`;
@@ -315,15 +314,39 @@ export class DeclarativeDatabase {
 
     const stmt = this.adapter.prepare(sql);
     const results = await stmt.all(...params);
-    return results.map(row => DbRecord.create<T>(this, table, row));
+    
+    // Return plain objects with xRec property for change tracking
+    return results.map(row => this._createRecordWithTracking<T>(table, row));
   }
 
   /**
-   * Query a single record from a table
+   * Query a single record from a table (returns plain object)
    */
-  async queryOne<T extends Record<string, any> = any>(table: string, options?: QueryOptions): Promise<(T & DbRecord<T>) | null> {
+  async queryOne<T extends Record<string, any> = any>(table: string, options?: QueryOptions): Promise<T | null> {
     const results = await this.query<T>(table, { ...options, limit: 1 });
     return results.length > 0 ? results[0]! : null;
+  }
+
+  /**
+   * Create a plain object with xRec property for change tracking
+   * @internal
+   */
+  private _createRecordWithTracking<T extends Record<string, any>>(tableName: string, data: Record<string, any>): T {
+    const record = { ...data } as any;
+    // Store original values in xRec for change tracking
+    Object.defineProperty(record, 'xRec', {
+      value: { ...data },
+      writable: false,
+      enumerable: false,
+      configurable: true  // Allow reconfiguring after save
+    });
+    Object.defineProperty(record, '__tableName', {
+      value: tableName,
+      writable: false,
+      enumerable: false,
+      configurable: false
+    });
+    return record;
   }
 
   /**
@@ -386,23 +409,181 @@ export class DeclarativeDatabase {
   }
 
   /**
-   * Create a new DbRecord instance
+   * Create a new record (returns plain object with xRec tracking)
    */
-  createRecord<T extends Record<string, any>>(tableName: string, initialData?: Partial<T>): DbRecord<T> & T {
+  createRecord<T extends Record<string, any>>(tableName: string, initialData?: Partial<T>): T {
     this.ensureInitialized();
-    return DbRecord.create<T>(this, tableName, initialData);
+    const data = initialData || {};
+    return this._createRecordWithTracking<T>(tableName, data as Record<string, any>);
   }
 
   /**
-   * Load an existing record by ID
+   * Load an existing record by ID (returns plain object with xRec tracking)
    */
-  async loadRecord<T extends Record<string, any>>(tableName: string, id: string): Promise<DbRecord<T> & T> {
+  async loadRecord<T extends Record<string, any>>(tableName: string, id: string): Promise<T> {
     this.ensureInitialized();
     const row = await this.queryOne<T>(tableName, { where: 'id = ?', whereArgs: [id] });
     if (!row) {
       throw new Error(`Record not found: ${tableName} with id=${id}`);
     }
     return row;
+  }
+
+  /**
+   * Save a record (INSERT or UPDATE based on whether it's new)
+   * Compares against xRec to determine changed fields for UPDATE
+   */
+  async save<T extends Record<string, any>>(record: T): Promise<string> {
+    this.ensureInitialized();
+    
+    const tableName = (record as any).__tableName;
+    if (!tableName) {
+      throw new Error('Cannot save record without __tableName property. Use createRecord() or query() to get trackable records.');
+    }
+    
+    const xRec = (record as any).xRec || {};
+    const isNew = !xRec['system_id'] && !record['system_id'];
+    
+    if (isNew) {
+      // INSERT: Create new record
+      const values = this._extractRecordData(record);
+      const systemId = await this.insert(tableName, values);
+      
+      // Re-fetch to get all system columns and update record
+      const table = this.schema.tables.find(t => t.name === tableName);
+      const primaryKey = table?.keys.find(k => k.type.toLowerCase() === 'primary');
+      const pkColumn = primaryKey?.columns[0];
+      
+      if (pkColumn && values[pkColumn]) {
+        const fresh = await this.queryOne(tableName, {
+          where: `"${pkColumn}" = ?`,
+          whereArgs: [values[pkColumn]]
+        });
+        if (fresh) {
+          // Update record with fresh data
+          Object.assign(record, fresh);
+          // Update xRec to reflect saved state
+          Object.defineProperty(record, 'xRec', {
+            value: this._extractRecordData(fresh),
+            writable: false,
+            enumerable: false,
+            configurable: true
+          });
+        }
+      }
+      
+      return systemId;
+    } else {
+      // UPDATE: Only update changed fields
+      const changes = this._getChangedFields(record, xRec);
+      
+      if (Object.keys(changes).length > 0) {
+        const table = this.schema.tables.find(t => t.name === tableName);
+        const primaryKey = table?.keys.find(k => k.type.toLowerCase() === 'primary');
+        const pkColumn = primaryKey?.columns[0];
+        
+        if (pkColumn && record[pkColumn]) {
+          await this.update(tableName, changes, {
+            where: `"${pkColumn}" = ?`,
+            whereArgs: [record[pkColumn]]
+          });
+          
+          // Re-fetch to get updated system columns
+          const fresh = await this.queryOne(tableName, {
+            where: `"${pkColumn}" = ?`,
+            whereArgs: [record[pkColumn]]
+          });
+          if (fresh) {
+            // Update record with fresh data
+            Object.assign(record, fresh);
+            // Update xRec to reflect saved state
+            Object.defineProperty(record, 'xRec', {
+              value: this._extractRecordData(fresh),
+              writable: false,
+              enumerable: false,
+              configurable: true
+            });
+          }
+        }
+      }
+      
+      return xRec['system_id'] || record['system_id'];
+    }
+  }
+
+  /**
+   * Delete a record from the database
+   */
+  async deleteRecord<T extends Record<string, any>>(record: T): Promise<void> {
+    this.ensureInitialized();
+    
+    const tableName = (record as any).__tableName;
+    if (!tableName) {
+      throw new Error('Cannot delete record without __tableName property.');
+    }
+    
+    const table = this.schema.tables.find(t => t.name === tableName);
+    const primaryKey = table?.keys.find(k => k.type.toLowerCase() === 'primary');
+    const pkColumn = primaryKey?.columns[0];
+    
+    if (pkColumn && record[pkColumn]) {
+      await this.delete(tableName, {
+        where: `"${pkColumn}" = ?`,
+        whereArgs: [record[pkColumn]]
+      });
+    }
+  }
+
+  /**
+   * Extract data fields from a record (excluding internal properties)
+   * @internal
+   */
+  private _extractRecordData(record: Record<string, any>): Record<string, any> {
+    const data: Record<string, any> = {};
+    for (const key in record) {
+      if (key !== 'xRec' && key !== '__tableName') {
+        data[key] = record[key];
+      }
+    }
+    return data;
+  }
+
+  /**
+   * Get changed fields by comparing current record with xRec
+   * @internal
+   */
+  private _getChangedFields(record: Record<string, any>, xRec: Record<string, any>): Record<string, any> {
+    const changes: Record<string, any> = {};
+    
+    for (const key in record) {
+      if (key === 'xRec' || key === '__tableName') continue;
+      
+      // Skip system columns that shouldn't be manually updated
+      if (key === 'system_id' || key === 'system_created_at') continue;
+      
+      if (record[key] !== xRec[key]) {
+        changes[key] = record[key];
+        
+        // Handle LWW columns - update HLC timestamp when value changes
+        const tableName = (record as any).__tableName;
+        const table = this.schema.tables.find(t => t.name === tableName);
+        const column = table?.columns.find(c => c.name === key);
+        
+        if (column?.lww) {
+          const hlcColumnName = `${key}__hlc`;
+          const hlcColumn = table?.columns.find(c => c.name === hlcColumnName);
+          
+          if (hlcColumn) {
+            const newHlc = this.hlc.now();
+            const hlcString = Hlc.toString(newHlc);
+            changes[hlcColumnName] = hlcString;
+            record[hlcColumnName] = hlcString; // Update in record too
+          }
+        }
+      }
+    }
+    
+    return changes;
   }
 
   /**
