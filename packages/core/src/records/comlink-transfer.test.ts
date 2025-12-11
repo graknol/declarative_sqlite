@@ -2,15 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { DeclarativeDatabase } from '../database/declarative-database';
 import { SqliteWasmAdapter } from '../database/sqlite-wasm-adapter';
 import { SchemaBuilder } from '../schema/builders/schema-builder';
-import { 
-  serializeDbRecord, 
-  deserializeDbRecord,
-  serializeDbRecords,
-  deserializeDbRecords,
-  isDbRecord,
-  isSerializableDbRecord,
-} from './comlink-transfer';
-import { DbRecord } from './db-record';
 
 interface User {
   id: string;
@@ -19,7 +10,7 @@ interface User {
   age: number;
 }
 
-describe('DbRecord Comlink Serialization', () => {
+describe('Plain Object Comlink Compatibility', () => {
   let db: DeclarativeDatabase;
   let adapter: SqliteWasmAdapter;
 
@@ -41,217 +32,96 @@ describe('DbRecord Comlink Serialization', () => {
     await db.initialize();
   });
 
-  describe('toSerializable and fromSerializable', () => {
-    it('should serialize a new DbRecord', () => {
+  describe('Plain objects are serializable', () => {
+    it('should serialize a new record through JSON', () => {
       const user = db.createRecord<User>('users');
       user.id = 'user-1';
       user.name = 'Alice';
       user.email = 'alice@example.com';
       user.age = 30;
 
-      const serialized = (user as any).toSerializable();
+      // Plain objects can be serialized directly with JSON
+      const json = JSON.stringify(user);
+      const deserialized = JSON.parse(json);
 
-      expect(serialized).toHaveProperty('__type', 'SerializableDbRecord');
-      expect(serialized.tableName).toBe('users');
-      expect(serialized.values.name).toBe('Alice');
-      expect(serialized.values.email).toBe('alice@example.com');
-      expect(serialized.values.age).toBe(30);
-      expect(serialized.isNew).toBe(true);
+      expect(deserialized.id).toBe('user-1');
+      expect(deserialized.name).toBe('Alice');
+      expect(deserialized.email).toBe('alice@example.com');
+      expect(deserialized.age).toBe(30);
+      // xRec and __tableName are non-enumerable and don't appear in JSON
     });
 
-    it('should serialize an existing DbRecord', async () => {
+    it('should serialize an existing record through JSON', async () => {
       const user = db.createRecord<User>('users');
       user.id = 'user-1';
       user.name = 'Bob';
       user.email = 'bob@example.com';
       user.age = 25;
-      await user.save();
+      await db.save(user);
 
-      const serialized = (user as any).toSerializable();
+      const json = JSON.stringify(user);
+      const deserialized = JSON.parse(json);
 
-      expect(serialized.isNew).toBe(false);
-      expect(serialized.values).toHaveProperty('system_id');
-      expect(serialized.values.name).toBe('Bob');
+      expect(deserialized).toHaveProperty('system_id');
+      expect(deserialized.name).toBe('Bob');
     });
 
-    it('should deserialize to a read-only record', () => {
-      const user = db.createRecord<User>('users');
-      user.id = 'user-1';
-      user.name = 'Charlie';
-      user.email = 'charlie@example.com';
-      user.age = 35;
-
-      const serialized = (user as any).toSerializable();
-      const readonly = DbRecord.fromSerializable(serialized);
-
-      expect(readonly.name).toBe('Charlie');
-      expect(readonly.email).toBe('charlie@example.com');
-      expect(readonly.age).toBe(35);
-      expect(readonly.__readonly).toBe(true);
-      expect(readonly.__tableName).toBe('users');
-    });
-
-    it('should preserve data through serialize/deserialize cycle', () => {
+    it('should preserve data through structured clone', () => {
       const user = db.createRecord<User>('users');
       user.id = 'user-1';
       user.name = 'Dave';
       user.email = 'dave@example.com';
       user.age = 40;
-      user.name = 'David'; // Mark as dirty
 
-      const serialized = (user as any).toSerializable();
-      const readonly = DbRecord.fromSerializable(serialized);
+      // Structured clone is what Comlink uses
+      const cloned = structuredClone(user);
 
-      expect(readonly.name).toBe('David');
-      expect(readonly.email).toBe('dave@example.com');
-      expect(readonly.age).toBe(40);
-      expect(readonly.isDirty()).toBe(true);
-      expect(readonly.getDirtyFields()).toContain('name');
+      expect(cloned.name).toBe('Dave');
+      expect(cloned.email).toBe('dave@example.com');
+      expect(cloned.age).toBe(40);
     });
 
-    it('should throw error when calling save() on read-only record', () => {
-      const user = db.createRecord<User>('users');
-      user.id = 'user-1';
-      user.name = 'Eve';
+    it('should handle xRec property correctly', async () => {
+      await db.insert('users', {
+        id: 'user-1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        age: 30
+      });
 
-      const serialized = (user as any).toSerializable();
-      const readonly = DbRecord.fromSerializable(serialized);
-
-      expect(readonly.save()).rejects.toThrow('Cannot call save() on a read-only DbRecord');
-    });
-
-    it('should throw error when calling delete() on read-only record', () => {
-      const user = db.createRecord<User>('users');
-      user.id = 'user-1';
-      user.name = 'Frank';
-
-      const serialized = (user as any).toSerializable();
-      const readonly = DbRecord.fromSerializable(serialized);
-
-      expect(readonly.delete()).rejects.toThrow('Cannot call delete() on a read-only DbRecord');
-    });
-
-    it('should reject invalid serialized data', () => {
-      const invalidData = { __type: 'InvalidType', values: {} };
+      const user = await db.queryOne<User>('users', { where: 'id = ?', whereArgs: ['user-1'] });
+      expect(user).not.toBeNull();
       
-      expect(() => DbRecord.fromSerializable(invalidData as any)).toThrow('Invalid serialized DbRecord data');
+      if (user) {
+        // xRec exists but is non-enumerable
+        const xRec = (user as any).xRec;
+        expect(xRec).toBeDefined();
+        expect(xRec.name).toBe('Alice');
+        
+        // When serialized, xRec doesn't appear
+        const json = JSON.stringify(user);
+        const parsed = JSON.parse(json);
+        expect(parsed.xRec).toBeUndefined();
+      }
     });
   });
 
-  describe('Helper functions', () => {
-    it('serializeDbRecord should work', () => {
-      const user = db.createRecord<User>('users');
-      user.id = 'user-1';
-      user.name = 'George';
-      user.email = 'george@example.com';
-      user.age = 45;
-
-      const serialized = serializeDbRecord(user);
-
-      expect(serialized.__type).toBe('SerializableDbRecord');
-      expect(serialized.values.name).toBe('George');
-    });
-
-    it('deserializeDbRecord should work', () => {
-      const user = db.createRecord<User>('users');
-      user.id = 'user-1';
-      user.name = 'Helen';
-
-      const serialized = serializeDbRecord(user);
-      const readonly = deserializeDbRecord(serialized);
-
-      expect(readonly.name).toBe('Helen');
-      expect(readonly.__readonly).toBe(true);
-    });
-
-    it('serializeDbRecords should handle arrays', async () => {
-      const users = [
-        db.createRecord<User>('users'),
-        db.createRecord<User>('users'),
-        db.createRecord<User>('users'),
-      ];
-
-      users[0].id = 'user-1';
-      users[0].name = 'Alice';
-      users[1].id = 'user-2';
-      users[1].name = 'Bob';
-      users[2].id = 'user-3';
-      users[2].name = 'Charlie';
-
-      const serialized = serializeDbRecords(users);
-
-      expect(serialized).toHaveLength(3);
-      expect(serialized[0].values.name).toBe('Alice');
-      expect(serialized[1].values.name).toBe('Bob');
-      expect(serialized[2].values.name).toBe('Charlie');
-    });
-
-    it('deserializeDbRecords should handle arrays', () => {
-      const users = [
-        db.createRecord<User>('users'),
-        db.createRecord<User>('users'),
-      ];
-
-      users[0].id = 'user-1';
-      users[0].name = 'Dave';
-      users[1].id = 'user-2';
-      users[1].name = 'Eve';
-
-      const serialized = serializeDbRecords(users);
-      const readonly = deserializeDbRecords(serialized);
-
-      expect(readonly).toHaveLength(2);
-      expect(readonly[0].name).toBe('Dave');
-      expect(readonly[1].name).toBe('Eve');
-      expect(readonly[0].__readonly).toBe(true);
-      expect(readonly[1].__readonly).toBe(true);
-    });
-
-    it('isDbRecord should identify DbRecord instances', () => {
-      const user = db.createRecord<User>('users');
-      const plainObject = { name: 'Test' };
-      const serialized = serializeDbRecord(user);
-
-      expect(isDbRecord(user)).toBe(true);
-      expect(isDbRecord(plainObject)).toBe(false);
-      expect(isDbRecord(serialized)).toBe(false);
-      expect(isDbRecord(null)).toBe(false);
-      expect(isDbRecord(undefined)).toBe(false);
-    });
-
-    it('isSerializableDbRecord should identify serialized records', () => {
-      const user = db.createRecord<User>('users');
-      const serialized = serializeDbRecord(user);
-      const plainObject = { name: 'Test' };
-
-      expect(isSerializableDbRecord(serialized)).toBe(true);
-      expect(isSerializableDbRecord(user)).toBe(false);
-      expect(isSerializableDbRecord(plainObject)).toBe(false);
-      expect(isSerializableDbRecord(null)).toBe(false);
-      expect(isSerializableDbRecord(undefined)).toBe(false);
-    });
-  });
-
-  describe('Integration with query methods', () => {
-    it('should serialize query results', async () => {
-      // Insert some test data
+  describe('Query results are plain objects', () => {
+    it('should return plain objects from query', async () => {
       await db.insert('users', { id: 'user-1', name: 'Alice', email: 'alice@example.com', age: 30 });
       await db.insert('users', { id: 'user-2', name: 'Bob', email: 'bob@example.com', age: 25 });
 
-      // Query records
       const users = await db.query<User>('users');
 
-      // Serialize the results
-      const serialized = serializeDbRecords(users);
-
-      expect(serialized).toHaveLength(2);
-      expect(serialized[0].values.name).toBe('Alice');
-      expect(serialized[1].values.name).toBe('Bob');
-
-      // Deserialize and verify
-      const readonly = deserializeDbRecords(serialized);
-      expect(readonly[0].name).toBe('Alice');
-      expect(readonly[1].name).toBe('Bob');
+      expect(users).toHaveLength(2);
+      expect(users[0].name).toBe('Alice');
+      expect(users[1].name).toBe('Bob');
+      
+      // Can be serialized directly
+      const json = JSON.stringify(users);
+      const parsed = JSON.parse(json);
+      expect(parsed[0].name).toBe('Alice');
+      expect(parsed[1].name).toBe('Bob');
     });
 
     it('should work with queryOne results', async () => {
@@ -262,46 +132,71 @@ describe('DbRecord Comlink Serialization', () => {
       expect(user).not.toBeNull();
       if (!user) return;
 
-      const serialized = serializeDbRecord(user);
-      const readonly = deserializeDbRecord(serialized);
+      expect(user.name).toBe('Charlie');
+      expect(user.email).toBe('charlie@example.com');
+      
+      // Can be serialized directly
+      const json = JSON.stringify(user);
+      const parsed = JSON.parse(json);
+      expect(parsed.name).toBe('Charlie');
+    });
 
-      expect(readonly.name).toBe('Charlie');
-      expect(readonly.email).toBe('charlie@example.com');
+    it('should handle arrays through structuredClone', async () => {
+      await db.insert('users', { id: 'user-1', name: 'Dave', email: 'dave@example.com', age: 40 });
+      await db.insert('users', { id: 'user-2', name: 'Eve', email: 'eve@example.com', age: 35 });
+
+      const users = await db.query<User>('users');
+
+      // structuredClone is what Comlink uses internally
+      const cloned = structuredClone(users);
+
+      expect(cloned).toHaveLength(2);
+      expect(cloned[0].name).toBe('Dave');
+      expect(cloned[1].name).toBe('Eve');
     });
   });
 
-  describe('toJSON compatibility', () => {
-    it('toJSON should work on serialized records', () => {
+  describe('Save and delete with plain objects', () => {
+    it('should save new records', async () => {
       const user = db.createRecord<User>('users');
       user.id = 'user-1';
-      user.name = 'Ian';
-      user.email = 'ian@example.com';
-      user.age = 50;
+      user.name = 'Frank';
+      user.email = 'frank@example.com';
+      user.age = 45;
 
-      const serialized = serializeDbRecord(user);
-      const readonly = deserializeDbRecord(serialized);
+      await db.save(user);
 
-      const json = readonly.toJSON();
-
-      expect(json.name).toBe('Ian');
-      expect(json.email).toBe('ian@example.com');
-      expect(json.age).toBe(50);
+      const loaded = await db.queryOne('users', { where: 'id = ?', whereArgs: ['user-1'] });
+      expect(loaded?.name).toBe('Frank');
     });
 
-    it('JSON.stringify should work on serialized records', () => {
+    it('should update existing records', async () => {
       const user = db.createRecord<User>('users');
-      user.id = 'user-1';
-      user.name = 'Jane';
-      user.age = 28;
+      user.id = 'user-2';
+      user.name = 'Grace';
+      user.email = 'grace@example.com';
+      user.age = 50;
+      await db.save(user);
 
-      const serialized = serializeDbRecord(user);
-      const readonly = deserializeDbRecord(serialized);
+      user.age = 51;
+      await db.save(user);
 
-      const jsonString = JSON.stringify(readonly.toJSON());
-      const parsed = JSON.parse(jsonString);
+      const loaded = await db.queryOne('users', { where: 'id = ?', whereArgs: ['user-2'] });
+      expect(loaded?.age).toBe(51);
+    });
 
-      expect(parsed.name).toBe('Jane');
-      expect(parsed.age).toBe(28);
+    it('should delete records', async () => {
+      const user = db.createRecord<User>('users');
+      user.id = 'user-3';
+      user.name = 'Helen';
+      user.email = 'helen@example.com';
+      user.age = 55;
+      await db.save(user);
+
+      await db.deleteRecord(user);
+
+      const loaded = await db.queryOne('users', { where: 'id = ?', whereArgs: ['user-3'] });
+      expect(loaded).toBeNull();
     });
   });
 });

@@ -1,10 +1,27 @@
 /**
  * Comlink transfer handlers for DbRecord serialization.
  * 
- * This module provides utilities to enable DbRecord instances to be passed
- * through Comlink when using a web worker-based database setup.
+ * NOTE: This module is DEPRECATED for the new plain object API.
  * 
- * Usage:
+ * With the new plain object approach (using db.save() and db.deleteRecord()),
+ * records are plain JavaScript objects that serialize automatically through
+ * Comlink without any special transfer handlers.
+ * 
+ * This module is kept for backwards compatibility with the legacy DbRecord
+ * Proxy-based API. For new code, simply use plain objects:
+ * 
+ * ```typescript
+ * // New approach (works with Comlink automatically):
+ * const users = await db.query('users');
+ * // users can be passed through Comlink as plain objects
+ * return users; // Just works!
+ * 
+ * // Old approach (requires transfer handlers):
+ * const user = DbRecord.create(db, 'users', data);
+ * // Needs special serialization
+ * ```
+ * 
+ * Legacy usage:
  * ```typescript
  * import { transferHandlers } from 'comlink';
  * import { registerDbRecordTransferHandler } from 'declarative-sqlite';

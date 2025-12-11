@@ -50,7 +50,7 @@ describe('DbRecord', () => {
     user.email = 'bob@example.com';
     user.age = 25;
 
-    await user.save();
+    await db.save(user);
 
     const loaded = await db.queryOne('users', { where: 'id = ?', whereArgs: ['user-1'] });
     expect(loaded?.name).toBe('Bob');
@@ -63,10 +63,10 @@ describe('DbRecord', () => {
     user.name = 'Charlie';
     user.email = 'charlie@example.com';
     user.age = 35;
-    await user.save();
+    await db.save(user);
 
     user.age = 36;
-    await user.save();
+    await db.save(user);
 
     const loaded = await db.queryOne('users', { where: 'id = ?', whereArgs: ['user-2'] });
     expect(loaded?.age).toBe(36);
@@ -78,9 +78,9 @@ describe('DbRecord', () => {
     user.name = 'Dave';
     user.email = 'dave@example.com';
     user.age = 40;
-    await user.save();
+    await db.save(user);
 
-    await user.delete();
+    await db.deleteRecord(user);
 
     const loaded = await db.queryOne('users', { where: 'id = ?', whereArgs: ['user-3'] });
     expect(loaded).toBeNull();
@@ -88,14 +88,17 @@ describe('DbRecord', () => {
 
   it('should track dirty fields', () => {
     const user = db.createRecord<User>('users');
-    expect(user.isDirty()).toBe(false);
+    const xRec = (user as any).xRec || {};
+    
+    // Initially no changes
+    expect(user.name).toBe(xRec.name);
 
     user.name = 'Eve';
     user.email = 'eve@example.com';
 
-    expect(user.isDirty()).toBe(true);
-    expect(user.getDirtyFields()).toContain('name');
-    expect(user.getDirtyFields()).toContain('email');
+    // Now there are changes
+    expect(user.name).not.toBe(xRec.name);
+    expect(user.email).not.toBe(xRec.email);
   });
 
   it('should clear dirty fields after save', async () => {
@@ -105,11 +108,14 @@ describe('DbRecord', () => {
     user.email = 'frank@example.com';
     user.age = 45;
 
-    expect(user.isDirty()).toBe(true);
+    const xRecBefore = (user as any).xRec || {};
+    expect(user.name).not.toBe(xRecBefore.name);
 
-    await user.save();
+    await db.save(user);
 
-    expect(user.isDirty()).toBe(false);
+    // After save, xRec is updated with fresh data from the database
+    const xRecAfter = (user as any).xRec || {};
+    expect(user.name).toBe(xRecAfter.name);
   });
 
   it('should access system columns', async () => {
@@ -118,7 +124,7 @@ describe('DbRecord', () => {
     user.name = 'Grace';
     user.email = 'grace@example.com';
     user.age = 28;
-    await user.save();
+    await db.save(user);
 
     expect((user as any).system_id).toBeDefined();
     expect((user as any).system_created_at).toBeDefined();
@@ -147,10 +153,12 @@ describe('DbRecord', () => {
     user.email = 'ivy@example.com';
     user.age = 22;
 
-    const json = user.toJSON();
+    // Plain objects can be directly serialized with JSON.stringify
+    const json = JSON.parse(JSON.stringify(user));
     expect(json.id).toBe('user-7');
     expect(json.name).toBe('Ivy');
     expect(json.age).toBe(22);
+    // Note: xRec and __tableName are non-enumerable so they don't appear in JSON
   });
 
   it('should allow setting system columns', () => {

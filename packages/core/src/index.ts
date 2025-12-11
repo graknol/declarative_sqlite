@@ -125,7 +125,8 @@ export { StreamingQuery } from './streaming/streaming-query';
 export { QueryStreamManager } from './streaming/query-stream-manager';
 export type { QueryOptions as StreamQueryOptions } from './streaming/streaming-query';
 
-// Records
+// Records (deprecated - kept for backwards compatibility)
+// NOTE: DbRecord is deprecated. Use plain objects with db.save() and db.deleteRecord() instead.
 export { DbRecord } from './records/db-record';
 export type { SerializableDbRecord, ReadonlyDbRecord } from './records/db-record';
 
