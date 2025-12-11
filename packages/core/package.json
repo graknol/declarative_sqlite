@@ -1,6 +1,6 @@
 {
   "name": "declarative-sqlite",
-  "version": "1.16.0",
+  "version": "2.0.0",
   "description": "TypeScript port of declarative_sqlite for PWA and Capacitor applications - Zero code generation, type-safe SQLite with automatic migration",
   "type": "module",
   "main": "./dist/index.cjs",

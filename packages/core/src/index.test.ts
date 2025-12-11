@@ -4,7 +4,7 @@ import type { SQLiteAdapter, Schema } from './index';
 
 describe('@declarative-sqlite/core', () => {
   it('exports VERSION constant', () => {
-    expect(VERSION).toBe('0.1.0');
+    expect(VERSION).toBe('2.0.0');
   });
 
   it('exports SQLiteAdapter type', () => {

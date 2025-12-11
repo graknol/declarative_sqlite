@@ -125,21 +125,5 @@ export { StreamingQuery } from './streaming/streaming-query';
 export { QueryStreamManager } from './streaming/query-stream-manager';
 export type { QueryOptions as StreamQueryOptions } from './streaming/streaming-query';
 
-// Records (deprecated - kept for backwards compatibility)
-// NOTE: DbRecord is deprecated. Use plain objects with db.save() and db.deleteRecord() instead.
-export { DbRecord } from './records/db-record';
-export type { SerializableDbRecord, ReadonlyDbRecord } from './records/db-record';
-
-// Comlink integration (optional)
-export {
-  registerDbRecordTransferHandler,
-  serializeDbRecord,
-  deserializeDbRecord,
-  serializeDbRecords,
-  deserializeDbRecords,
-  isDbRecord,
-  isSerializableDbRecord,
-} from './records/comlink-transfer';
-
 // Version
-export const VERSION = '0.1.0';
+export const VERSION = '2.0.0';
