@@ -201,4 +201,75 @@ export class DbRecord<T extends Record<string, any>> {
   toJSON(): Record<string, any> {
     return { ...this._values };
   }
+
+  /**
+   * Serialize DbRecord to a plain object for transmission across boundaries (e.g., Comlink).
+   * This returns all data and metadata needed to reconstruct a read-only version.
+   */
+  toSerializable(): SerializableDbRecord {
+    return {
+      __type: 'SerializableDbRecord',
+      tableName: this._tableName,
+      values: { ...this._values },
+      isNew: this._isNew,
+      dirtyFields: Array.from(this._dirtyFields)
+    };
+  }
+
+  /**
+   * Create a read-only DbRecord-like object from serialized data.
+   * This is useful when receiving DbRecord data from another context (e.g., web worker).
+   * The returned object contains all data but methods that require database access will throw.
+   */
+  static fromSerializable(data: SerializableDbRecord): ReadonlyDbRecord {
+    if (data.__type !== 'SerializableDbRecord') {
+      throw new Error('Invalid serialized DbRecord data');
+    }
+
+    const readonlyRecord: ReadonlyDbRecord = {
+      ...data.values,
+      toJSON: () => ({ ...data.values }),
+      isDirty: () => data.dirtyFields.length > 0,
+      getDirtyFields: () => [...data.dirtyFields],
+      // Methods that require database access throw helpful errors
+      save: async () => {
+        throw new Error('Cannot call save() on a read-only DbRecord from serialized data. Use database.insert() or database.update() instead.');
+      },
+      delete: async () => {
+        throw new Error('Cannot call delete() on a read-only DbRecord from serialized data. Use database.delete() instead.');
+      },
+      __readonly: true,
+      __tableName: data.tableName,
+      __isNew: data.isNew
+    };
+
+    return readonlyRecord;
+  }
+}
+
+/**
+ * Serializable representation of a DbRecord for transmission across boundaries.
+ */
+export interface SerializableDbRecord {
+  __type: 'SerializableDbRecord';
+  tableName: string;
+  values: Record<string, any>;
+  isNew: boolean;
+  dirtyFields: string[];
+}
+
+/**
+ * Read-only representation of a DbRecord from serialized data.
+ * Contains all data but methods requiring database access will throw.
+ */
+export interface ReadonlyDbRecord {
+  [key: string]: any;
+  toJSON: () => Record<string, any>;
+  isDirty: () => boolean;
+  getDirtyFields: () => string[];
+  save: () => Promise<void>;
+  delete: () => Promise<void>;
+  __readonly: true;
+  __tableName: string;
+  __isNew: boolean;
 }

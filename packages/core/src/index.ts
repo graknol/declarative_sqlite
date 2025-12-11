@@ -127,6 +127,18 @@ export type { QueryOptions as StreamQueryOptions } from './streaming/streaming-q
 
 // Records
 export { DbRecord } from './records/db-record';
+export type { SerializableDbRecord, ReadonlyDbRecord } from './records/db-record';
+
+// Comlink integration (optional)
+export {
+  registerDbRecordTransferHandler,
+  serializeDbRecord,
+  deserializeDbRecord,
+  serializeDbRecords,
+  deserializeDbRecords,
+  isDbRecord,
+  isSerializableDbRecord,
+} from './records/comlink-transfer';
 
 // Version
 export const VERSION = '0.1.0';
