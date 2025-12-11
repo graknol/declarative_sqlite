@@ -30,7 +30,7 @@ class NullStreamDirtyRowStore implements DirtyRowStore {
   Future<void> init(sqflite.DatabaseExecutor db) async {}
 
   @override
-  Future<void> add(String tableName, String rowId, Hlc hlc, bool isFullRow) async {}
+  Future<void> add(String tableName, String rowId, Hlc hlc, bool isFullRow, [Map<String, Object?>? data]) async {}
 
   @override
   Future<List<DirtyRow>> getAll() async => [];

@@ -104,6 +104,7 @@ class SchemaBuilder {
     builder.guid('row_id').notNull('00000000-0000-0000-0000-000000000000');
     builder.text('hlc').notNull(Hlc.min.toString());
     builder.integer('is_full_row').notNull(1); // 1 = full row, 0 = LWW columns only
+    builder.text('data'); // JSON-encoded changed values (nullable)
     builder.key(['table_name', 'row_id']).primary();
     return builder.build();
   }

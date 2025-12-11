@@ -767,7 +767,7 @@ class DeclarativeDatabase {
       final serializedValues = _serializeValuesForTable(tableName, values);
       
       final systemId = await _insert(tableName, serializedValues, now);
-      await dirtyRowStore?.add(tableName, systemId, now, true); // Full row for new inserts
+      await dirtyRowStore?.add(tableName, systemId, now, true, serializedValues); // Full row for new inserts with data
 
       // Notify streaming queries of the change
       await _streamManager.notifyTableChanged(tableName);
@@ -882,7 +882,7 @@ class DeclarativeDatabase {
         for (final row in rowsToUpdate) {
           final isLocalOrigin = row.getValue<int>('system_is_local_origin') == 1;
           await dirtyRowStore?.add(
-              tableName, row.getValue<String>('system_id')!, now, isLocalOrigin);
+              tableName, row.getValue<String>('system_id')!, now, isLocalOrigin, serializedValues);
         }
         // Notify streaming queries of the change
         await _streamManager.notifyTableChanged(tableName);
@@ -990,8 +990,9 @@ class DeclarativeDatabase {
         final now = hlcClock.now();
         for (final row in rowsToDelete) {
           final isLocalOrigin = row.getValue<int>('system_is_local_origin') == 1;
+          // For deletes, we pass null data since the row is being removed
           await dirtyRowStore?.add(
-              tableName, row.getValue<String>('system_id')!, now, isLocalOrigin);
+              tableName, row.getValue<String>('system_id')!, now, isLocalOrigin, null);
         }
         // Notify streaming queries of the change
         await _streamManager.notifyTableChanged(tableName);
