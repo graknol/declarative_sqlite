@@ -197,6 +197,16 @@ export class DeclarativeDatabase {
     const valuesToUpdate = { ...values };
     valuesToUpdate['system_version'] = hlcString;
 
+    // Handle LWW columns - update their __hlc timestamps
+    const tableDef = this.schema.tables.find(t => t.name === table);
+    if (tableDef) {
+      for (const col of tableDef.columns) {
+        if (col.lww && valuesToUpdate[col.name] !== undefined) {
+          valuesToUpdate[`${col.name}__hlc`] = hlcString;
+        }
+      }
+    }
+
     const columns = Object.keys(valuesToUpdate);
     const setClause = columns.map(c => `"${c}" = ?`).join(', ');
 
