@@ -88,8 +88,6 @@ export class DeclarativeDatabase {
       await migrator.migrate(this.schema);
     }
 
-    await this.dirtyRowStore.init();
-
     this.isInitialized = true;
   }
 

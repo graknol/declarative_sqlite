@@ -16,11 +16,6 @@ export interface DirtyRow {
 
 export interface DirtyRowStore {
   /**
-   * Initialize the store (e.g. create tables)
-   */
-  init(): Promise<void>;
-
-  /**
    * Mark a row as dirty (needs sync)
    */
   markDirty(row: DirtyRow): Promise<void>;
@@ -67,24 +62,10 @@ export interface DirtyRowStore {
 
 /**
  * SQLite-backed implementation of DirtyRowStore
+ * Note: Table creation is handled by schema migration
  */
 export class SqliteDirtyRowStore implements DirtyRowStore {
   constructor(private adapter: SQLiteAdapter) {}
-
-  async init(): Promise<void> {
-    // Drop the old table if it exists with the wrong schema
-    await this.adapter.exec(`DROP TABLE IF EXISTS __dirty_rows`);
-    
-    await this.adapter.exec(`
-      CREATE TABLE __dirty_rows (
-        table_name TEXT NOT NULL,
-        row_id TEXT NOT NULL,
-        hlc TEXT NOT NULL,
-        is_full_row INTEGER NOT NULL,
-        PRIMARY KEY (table_name, row_id)
-      )
-    `);
-  }
 
   async markDirty(row: DirtyRow): Promise<void> {
     // HLC timestamps automatically serialize to strings via toString()

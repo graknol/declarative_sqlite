@@ -73,7 +73,7 @@ export class SchemaBuilder {
     dirtyRowsBuilder.guid('row_id').notNull('00000000-0000-0000-0000-000000000000');
     dirtyRowsBuilder.text('hlc').notNull('');
     dirtyRowsBuilder.integer('is_full_row').notNull(1);
-    dirtyRowsBuilder.key('table_name', 'row_id', 'hlc').primary();
+    dirtyRowsBuilder.key('table_name', 'row_id').primary();
     tables.push(dirtyRowsBuilder.build());
     
     return tables;
