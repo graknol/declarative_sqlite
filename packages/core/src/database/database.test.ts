@@ -125,4 +125,69 @@ describe('DeclarativeDatabase', () => {
 
     await expect(uninitDb.insert('users', { name: 'Alice' })).rejects.toThrow();
   });
+
+  it('should update LWW column HLC timestamps on update', async () => {
+    // Create a new database with LWW columns
+    const schemaWithLww = new SchemaBuilder()
+      .table('items', t => {
+        t.guid('id').notNull('');
+        t.text('name').notNull('');
+        t.text('rowstate').notNull('').lww();
+        t.key('id').primary();
+      })
+      .build();
+
+    const dbWithLww = new DeclarativeDatabase({
+      adapter,
+      schema: schemaWithLww,
+      autoMigrate: true,
+    });
+
+    await dbWithLww.initialize();
+
+    // Insert a record
+    const systemId = await dbWithLww.insert('items', {
+      id: '123',
+      name: 'Test Item',
+      rowstate: 'active',
+    });
+
+    // Get the initial HLC timestamp for rowstate
+    const initialRecord = await dbWithLww.queryOne('items', {
+      where: 'system_id = ?',
+      whereArgs: [systemId],
+    });
+    
+    const initialHlc = initialRecord?.rowstate__hlc;
+    expect(initialHlc).toBeDefined();
+
+    // Wait a moment to ensure time advances
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    // Update the rowstate
+    await dbWithLww.update(
+      'items',
+      { rowstate: 'inactive' },
+      { where: 'system_id = ?', whereArgs: [systemId] }
+    );
+
+    // Get the updated record
+    const updatedRecord = await dbWithLww.queryOne('items', {
+      where: 'system_id = ?',
+      whereArgs: [systemId],
+    });
+
+    // Verify the rowstate was updated
+    expect(updatedRecord?.rowstate).toBe('inactive');
+
+    // Verify the HLC timestamp was updated (should be different/newer)
+    const updatedHlc = updatedRecord?.rowstate__hlc;
+    expect(updatedHlc).toBeDefined();
+    expect(updatedHlc).not.toBe(initialHlc);
+    
+    // The updated HLC should be lexicographically greater (newer)
+    expect(updatedHlc! > initialHlc!).toBe(true);
+
+    await dbWithLww.close();
+  });
 });
