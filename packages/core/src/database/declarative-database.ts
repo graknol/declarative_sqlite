@@ -192,7 +192,7 @@ export class DeclarativeDatabase {
     const now = this.hlc.now();
     const hlcString = Hlc.toString(now);
 
-    const valuesToUpdate = { ...values };
+    const valuesToUpdate = this._extractRecordData(values);
     valuesToUpdate['system_version'] = hlcString;
 
     // Handle LWW columns - update their __hlc timestamps
