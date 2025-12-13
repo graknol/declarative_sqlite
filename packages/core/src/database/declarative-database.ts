@@ -613,9 +613,13 @@ export class DeclarativeDatabase {
   ): Promise<void> {
     this.ensureInitialized();
     
+    console.log(`[bulkLoad] Starting bulk load for table: ${tableName}, rows: ${rows.length}`);
+    
     const tableDef = this.schema.tables.find(t => t.name === tableName);
     if (!tableDef) {
-      throw new Error(`Table not found: ${tableName}`);
+      const error = `Table not found: ${tableName}`;
+      console.error(`[bulkLoad] ${error}`);
+      throw new Error(error);
     }
 
     const pkColumns = tableDef.keys
@@ -626,9 +630,23 @@ export class DeclarativeDatabase {
       .filter(c => c.lww)
       .map(c => c.name);
 
+    console.log(`[bulkLoad] Table: ${tableName}, PK columns: [${pkColumns.join(', ')}], LWW columns: [${lwwColumns.join(', ')}]`);
+
+    let processedCount = 0;
+    let insertedCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+
     for (const row of rows) {
       const systemId = row['system_id'];
-      if (!systemId) continue;
+      if (!systemId) {
+        console.warn(`[bulkLoad] Row ${processedCount} has no system_id, skipping`);
+        skippedCount++;
+        processedCount++;
+        continue;
+      }
+
+      console.log(`[bulkLoad] Processing row ${processedCount}: system_id=${systemId}`);
 
       const existing = await this.queryOne(tableName, {
         where: 'system_id = ?',
@@ -636,6 +654,7 @@ export class DeclarativeDatabase {
       });
 
       if (existing) {
+        console.log(`[bulkLoad] Row ${processedCount}: Found existing record, performing UPDATE`);
         // UPDATE logic
         const valuesToUpdate: Record<string, any> = {};
         const now = this.hlc.now();
@@ -681,22 +700,30 @@ export class DeclarativeDatabase {
         }
 
         if (Object.keys(valuesToUpdate).length > 0) {
+          console.log(`[bulkLoad] Row ${processedCount}: ${Object.keys(valuesToUpdate).length} fields to update:`, Object.keys(valuesToUpdate));
           try {
             // We need to update system_version as well
             valuesToUpdate['system_version'] = Hlc.toString(now);
             
             // Use internal update to avoid marking as dirty
             await this._updateFromServer(tableName, valuesToUpdate, systemId);
+            console.log(`[bulkLoad] Row ${processedCount}: UPDATE successful`);
+            updatedCount++;
           } catch (e) {
+            console.error(`[bulkLoad] Row ${processedCount}: UPDATE failed:`, e);
             if (this._isConstraintViolation(e)) {
+              console.warn(`[bulkLoad] Row ${processedCount}: Constraint violation detected, strategy: ${onConstraintViolation}`);
               if (onConstraintViolation === ConstraintViolationStrategy.ThrowException) {
                 throw e;
               }
+              skippedCount++;
               // Skip
             } else {
               throw e;
             }
           }
+        } else {
+          console.log(`[bulkLoad] Row ${processedCount}: No fields to update (all values match existing or controlled by LWW)`);
         }
         
         // Check if we should clear the dirty mark by comparing system_version
@@ -716,26 +743,37 @@ export class DeclarativeDatabase {
           }
         }
       } else {
+        console.log(`[bulkLoad] Row ${processedCount}: No existing record found, performing INSERT`);
         // INSERT logic
         try {
           await this._insertFromServer(tableName, row);
+          console.log(`[bulkLoad] Row ${processedCount}: INSERT successful`);
+          insertedCount++;
         } catch (e) {
+          console.error(`[bulkLoad] Row ${processedCount}: INSERT failed:`, e);
           if (this._isConstraintViolation(e)) {
+            console.warn(`[bulkLoad] Row ${processedCount}: Constraint violation detected, strategy: ${onConstraintViolation}`);
             if (onConstraintViolation === ConstraintViolationStrategy.ThrowException) {
               throw e;
             }
+            skippedCount++;
             // Skip
           } else {
             throw e;
           }
         }
       }
+      
+      processedCount++;
     }
     
+    console.log(`[bulkLoad] Completed: processed=${processedCount}, inserted=${insertedCount}, updated=${updatedCount}, skipped=${skippedCount}`);
+    console.log(`[bulkLoad] Notifying stream manager for table: ${tableName}`);
     this.streamManager.notifyTableChanged(tableName);
   }
 
   private async _insertFromServer(tableName: string, values: Record<string, any>): Promise<void> {
+    console.log(`[_insertFromServer] Table: ${tableName}, system_id: ${values['system_id']}`);
     const valuesToInsert = { ...values };
     const now = this.hlc.now();
     const nowString = Hlc.toString(now);
@@ -747,6 +785,7 @@ export class DeclarativeDatabase {
     
     // Mark as server origin
     valuesToInsert['system_is_local_origin'] = 0;
+    console.log(`[_insertFromServer] Columns to insert: ${Object.keys(valuesToInsert).length}`);
 
     // Ensure LWW columns have HLCs if not provided
     const tableDef = this.schema.tables.find(t => t.name === tableName);
@@ -763,8 +802,10 @@ export class DeclarativeDatabase {
     const columnList = columns.map(c => `"${c}"`).join(', ');
 
     const sql = `INSERT INTO "${tableName}" (${columnList}) VALUES (${placeholders})`;
+    console.log(`[_insertFromServer] Executing INSERT with ${columns.length} columns`);
     const stmt = this.adapter.prepare(sql);
-    await stmt.run(...Object.values(valuesToInsert));
+    const result = await stmt.run(...Object.values(valuesToInsert));
+    console.log(`[_insertFromServer] INSERT completed, changes: ${result.changes}`);
     
     // Don't mark as dirty - this came from the server
   }
@@ -774,14 +815,17 @@ export class DeclarativeDatabase {
     values: Record<string, any>,
     systemId: string
   ): Promise<void> {
+    console.log(`[_updateFromServer] Table: ${tableName}, system_id: ${systemId}`);
     const columns = Object.keys(values);
     const setClause = columns.map(c => `"${c}" = ?`).join(', ');
 
     const sql = `UPDATE "${tableName}" SET ${setClause} WHERE system_id = ?`;
     const params = [...Object.values(values), systemId];
 
+    console.log(`[_updateFromServer] Executing UPDATE with ${columns.length} columns`);
     const stmt = this.adapter.prepare(sql);
-    await stmt.run(...params);
+    const result = await stmt.run(...params);
+    console.log(`[_updateFromServer] UPDATE completed, changes: ${result.changes}`);
     
     // Don't mark as dirty - this came from the server
   }

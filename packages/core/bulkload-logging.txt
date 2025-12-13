@@ -1,0 +1,22 @@
+This file contains the logging changes to apply to bulkLoad method.
+
+Add at start of bulkLoad:
+- console.log with table name and row count
+- console.log with PK columns and LWW columns
+- Initialize counters: processedCount, insertedCount, updatedCount, skippedCount
+
+Inside loop:
+- Log if row has no system_id
+- Log processing each row with system_id
+- Log if existing record found
+- Log number of fields to update
+- Log UPDATE success/failure with details
+- Log INSERT success/failure with details
+- Log constraint violations with strategy
+- Log dirty mark checks
+
+At end:
+- Log summary with all counters
+- Log stream notification
+
+Also add logging to _insertFromServer and _updateFromServer methods.
