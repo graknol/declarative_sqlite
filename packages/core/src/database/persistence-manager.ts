@@ -11,7 +11,7 @@ import {
  * Manages persistence configuration and initialization for SQLite adapters
  */
 export class PersistenceManager {
-  private config: Required<PersistenceConfig>;
+  private config: Omit<Required<PersistenceConfig>, 'wasmDir'> & { wasmDir?: string };
   private adapter: SQLiteAdapter;
   
   constructor(adapter: SQLiteAdapter, config?: Partial<PersistenceConfig>) {
@@ -97,7 +97,7 @@ export class PersistenceManager {
   /**
    * Get current persistence configuration
    */
-  getConfig(): Required<PersistenceConfig> {
+  getConfig(): Omit<Required<PersistenceConfig>, 'wasmDir'> & { wasmDir?: string } {
     return { ...this.config };
   }
   

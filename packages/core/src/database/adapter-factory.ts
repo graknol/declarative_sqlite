@@ -40,7 +40,7 @@ export class AdapterFactory {
     const mergedConfig = mergePersistenceConfig(config);
     
     // Create SqliteWasmAdapter - it handles all backends via VFS
-    const adapter = new SqliteWasmAdapter();
+    const adapter = new SqliteWasmAdapter(mergedConfig.wasmDir);
 
     // Use PersistenceManager to open with configuration
     const manager = new PersistenceManager(adapter, mergedConfig);

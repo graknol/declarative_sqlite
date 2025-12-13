@@ -89,6 +89,14 @@ export interface PersistenceConfig {
   foreignKeys?: boolean;
   
   /**
+   * Directory path for WASM and worker files in browser environments.
+   * All required files (sqlite3.wasm, sqlite3-opfs-async-proxy.js, sqlite3-worker1.js) will be loaded from this directory.
+   * @example '/assets'
+   * @default undefined (uses default module location)
+   */
+  wasmDir?: string;
+  
+  /**
    * Additional PRAGMA statements to execute on open
    */
   pragmas?: Record<string, string | number>;
@@ -97,16 +105,17 @@ export interface PersistenceConfig {
 /**
  * Default persistence configuration
  */
-export const DEFAULT_PERSISTENCE_CONFIG: Required<PersistenceConfig> = {
+export const DEFAULT_PERSISTENCE_CONFIG = {
   backend: StorageBackend.Auto,
   name: ':memory:',
   enableWAL: true,
   autoVacuum: false,
-  journalMode: 'WAL',
+  journalMode: 'WAL' as const,
   pageSize: 4096,
   cacheSize: -2000,
-  synchronous: 'NORMAL',
+  synchronous: 'NORMAL' as const,
   foreignKeys: true,
+  wasmDir: undefined,
   pragmas: {},
 };
 
@@ -115,7 +124,7 @@ export const DEFAULT_PERSISTENCE_CONFIG: Required<PersistenceConfig> = {
  */
 export function mergePersistenceConfig(
   config?: Partial<PersistenceConfig>
-): Required<PersistenceConfig> {
+): Omit<Required<PersistenceConfig>, 'wasmDir'> & { wasmDir?: string } {
   if (!config) {
     return DEFAULT_PERSISTENCE_CONFIG;
   }
@@ -304,7 +313,7 @@ export class StorageCapabilities {
  * Helper to resolve the actual backend from config
  */
 export async function resolveStorageBackend(
-  config: Required<PersistenceConfig>
+  config: Omit<Required<PersistenceConfig>, 'wasmDir'> & { wasmDir?: string }
 ): Promise<StorageBackend> {
   if (config.backend === StorageBackend.Auto) {
     return await StorageCapabilities.detectBestBackend();
@@ -318,7 +327,7 @@ export async function resolveStorageBackend(
  * Convert persistence config to database path for adapter
  */
 export async function configToDatabasePath(
-  config: Required<PersistenceConfig>
+  config: Omit<Required<PersistenceConfig>, 'wasmDir'> & { wasmDir?: string }
 ): Promise<string> {
   const backend = await resolveStorageBackend(config);
   

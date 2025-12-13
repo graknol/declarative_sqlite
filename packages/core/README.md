@@ -87,6 +87,13 @@ const adapter = await AdapterFactory.create({
 const adapter = await AdapterFactory.create({
   backend: StorageBackend.Memory,
 });
+
+// Custom WASM directory (if serving from /assets/)
+// Place sqlite3.wasm, sqlite3-opfs-async-proxy.js, and sqlite3-worker1.js in /assets/
+const adapter = await AdapterFactory.create({
+  name: 'myapp.db',
+  wasmDir: '/assets',
+});
 ```
 
 See [PERSISTENCE.md](./PERSISTENCE.md) for detailed configuration options.

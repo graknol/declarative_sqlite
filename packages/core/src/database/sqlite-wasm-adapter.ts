@@ -8,6 +8,14 @@ export class SqliteWasmAdapter implements SQLiteAdapter {
   private sqlite3: any = null;
   private db: any = null;
   private initialized = false;
+  private wasmDir?: string;
+
+  /**
+   * @param wasmDir - Optional directory path for WASM and worker files (e.g., '/assets')
+   */
+  constructor(wasmDir?: string) {
+    this.wasmDir = wasmDir;
+  }
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
@@ -33,10 +41,23 @@ export class SqliteWasmAdapter implements SQLiteAdapter {
       sqlite3InitModule = browserModule.default;
     }
     
-    this.sqlite3 = await sqlite3InitModule({
+    const initConfig: any = {
       print: console.log,
       printErr: console.error,
-    });
+    };
+
+    // Configure WASM and worker file locations if specified
+    if (this.wasmDir) {
+      initConfig.locateFile = (file: string) => {
+        // Serve all WASM and worker files from the specified directory
+        if (file.endsWith('.wasm') || file.endsWith('.js')) {
+          return `${this.wasmDir}/${file}`;
+        }
+        return file;
+      };
+    }
+
+    this.sqlite3 = await sqlite3InitModule(initConfig);
     this.initialized = true;
   }
 
