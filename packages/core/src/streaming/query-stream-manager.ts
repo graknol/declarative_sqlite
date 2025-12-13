@@ -32,9 +32,10 @@ export class QueryStreamManager {
    * Notify all streams that depend on a table that data has changed
    */
   notifyTableChanged(tableName: string): void {
+    const tableNameLower = tableName.toLowerCase();
     for (const stream of this.streams.values()) {
       const dependencies = stream.getDependencies();
-      if (dependencies.includes(tableName)) {
+      if (dependencies.some(dep => dep.toLowerCase() === tableNameLower)) {
         stream.refresh();
       }
     }

@@ -413,4 +413,131 @@ describe('Streaming Queries', () => {
     expect(emissions[1]).toHaveLength(1);
     expect(emissions[1][0].name).toBe('Bob');
   });
+
+  it('automatically pushes updates on bulkLoad operations', async () => {
+    // Create stream first
+    const stream = db.stream('users');
+    
+    const emissions: any[][] = [];
+    stream.subscribe(data => {
+      emissions.push(data);
+    });
+    
+    // Wait for initial empty emission
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(emissions).toHaveLength(1);
+    expect(emissions[0]).toEqual([]);
+    
+    // Bulk load data - should auto-notify stream
+    await db.bulkLoad('users', [
+      { system_id: 'u1', id: 'u1', name: 'Alice', age: 30, system_version: '1-0', system_created_at: '1-0', system_is_local_origin: 0 },
+      { system_id: 'u2', id: 'u2', name: 'Bob', age: 25, system_version: '2-0', system_created_at: '2-0', system_is_local_origin: 0 },
+      { system_id: 'u3', id: 'u3', name: 'Charlie', age: 35, system_version: '3-0', system_created_at: '3-0', system_is_local_origin: 0 }
+    ]);
+    
+    // Wait for automatic refresh
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Should have automatically received update with bulk loaded data
+    expect(emissions).toHaveLength(2);
+    expect(emissions[1]).toHaveLength(3);
+    expect(emissions[1][0].name).toBe('Alice');
+    expect(emissions[1][1].name).toBe('Bob');
+    expect(emissions[1][2].name).toBe('Charlie');
+  });
+
+  it('automatically pushes updates on bulkLoad updates', async () => {
+    // Insert initial data
+    await db.insert('users', { id: 'u1', name: 'Alice', age: 30 });
+    
+    // Create stream
+    const stream = db.stream('users');
+    
+    const emissions: any[][] = [];
+    stream.subscribe(data => {
+      emissions.push(data);
+    });
+    
+    // Wait for initial emission
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(emissions).toHaveLength(1);
+    expect(emissions[0]).toHaveLength(1);
+    expect(emissions[0][0].name).toBe('Alice');
+    
+    // Get the system_id and version from the inserted record
+    const existing = await db.queryOne('users', { where: 'id = ?', whereArgs: ['u1'] });
+    const systemId = existing!.system_id;
+    const existingVersion = existing!.system_version;
+    
+    // Create a newer HLC by using db.hlc
+    const hlc = db.hlc.now();
+    const newerVersion = db.hlc.constructor.toString(hlc);
+    
+    // Bulk load with updated data - should auto-notify stream
+    await db.bulkLoad('users', [
+      { system_id: systemId, id: 'u1', name: 'Alice Updated', age: 31, system_version: newerVersion, system_created_at: existingVersion, system_is_local_origin: 0 }
+    ]);
+    
+    // Wait for automatic refresh
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Should have automatically received update
+    expect(emissions).toHaveLength(2);
+    expect(emissions[1]).toHaveLength(1);
+    expect(emissions[1][0].name).toBe('Alice Updated');
+    expect(emissions[1][0].age).toBe(31);
+  });
+
+  it('handles case-insensitive table names for stream notifications', async () => {
+    // Create stream with lowercase table name
+    const stream = db.stream('users');
+    
+    const emissions: any[][] = [];
+    stream.subscribe(data => {
+      emissions.push(data);
+    });
+    
+    // Wait for initial empty emission
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(emissions).toHaveLength(1);
+    expect(emissions[0]).toEqual([]);
+    
+    // Insert with UPPERCASE table name - should still notify lowercase stream
+    await db.insert('USERS', { id: 'u1', name: 'Alice', age: 30 });
+    
+    // Wait for automatic refresh
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Should have automatically received update despite case mismatch
+    expect(emissions).toHaveLength(2);
+    expect(emissions[1]).toHaveLength(1);
+    expect(emissions[1][0].name).toBe('Alice');
+  });
+
+  it('handles mixed case in bulkLoad notifications', async () => {
+    // Create stream with UPPERCASE
+    const stream = db.stream('USERS');
+    
+    const emissions: any[][] = [];
+    stream.subscribe(data => {
+      emissions.push(data);
+    });
+    
+    // Wait for initial empty emission
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(emissions).toHaveLength(1);
+    
+    // BulkLoad with lowercase - should notify UPPERCASE stream
+    await db.bulkLoad('users', [
+      { system_id: 'u1', id: 'u1', name: 'Bob', age: 25, system_version: '1-0', system_created_at: '1-0', system_is_local_origin: 0 }
+    ]);
+    
+    // Wait for automatic refresh
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Should have received update
+    expect(emissions).toHaveLength(2);
+    expect(emissions[1]).toHaveLength(1);
+    expect(emissions[1][0].name).toBe('Bob');
+  });
 });
