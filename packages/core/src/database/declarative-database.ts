@@ -345,13 +345,13 @@ export class DeclarativeDatabase {
     Object.defineProperty(record, 'xRec', {
       value: { ...data },
       writable: false,
-      enumerable: false,
+      enumerable: true,
       configurable: true  // Allow reconfiguring after save
     });
     Object.defineProperty(record, '__tableName', {
       value: tableName,
       writable: false,
-      enumerable: false,
+      enumerable: true,
       configurable: false
     });
     return record;
@@ -474,7 +474,7 @@ export class DeclarativeDatabase {
           Object.defineProperty(record, 'xRec', {
             value: this._extractRecordData(fresh),
             writable: false,
-            enumerable: false,
+            enumerable: true,
             configurable: true
           });
         }
@@ -508,7 +508,7 @@ export class DeclarativeDatabase {
             Object.defineProperty(record, 'xRec', {
               value: this._extractRecordData(fresh),
               writable: false,
-              enumerable: false,
+              enumerable: true,
               configurable: true
             });
           }
