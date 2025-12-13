@@ -213,4 +213,114 @@ describe('Streaming Queries', () => {
     
     expect(streamManager.getStreamCount()).toBe(0);
   });
+
+  it('emits initial data immediately on subscription', async () => {
+    // Insert test data first
+    await db.insert('users', { id: 'u1', name: 'Alice', age: 30 });
+    await db.insert('users', { id: 'u2', name: 'Bob', age: 25 });
+    
+    const stream = new StreamingQuery(db, 'users');
+    
+    // Use a promise to track emissions
+    const firstEmission = new Promise<any[]>((resolve) => {
+      stream.subscribe(data => {
+        resolve(data);
+      });
+    });
+    
+    const result = await firstEmission;
+    
+    expect(result).toHaveLength(2);
+    expect(result[0].name).toBe('Alice');
+    expect(result[1].name).toBe('Bob');
+  });
+
+  it('emits initial data synchronously if possible', async () => {
+    // Insert test data
+    await db.insert('users', { id: 'u1', name: 'Test User', age: 25 });
+    
+    const stream = new StreamingQuery(db, 'users');
+    
+    const emissions: any[][] = [];
+    
+    // Subscribe and track all emissions
+    const subscription = stream.subscribe({
+      next: (data) => {
+        emissions.push(data);
+      }
+    });
+    
+    // Wait a bit for async query to complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Should have received at least one emission with the initial data
+    expect(emissions.length).toBeGreaterThanOrEqual(1);
+    expect(emissions[0]).toHaveLength(1);
+    expect(emissions[0][0].name).toBe('Test User');
+    
+    subscription.unsubscribe();
+  });
+
+  it('handles empty table on initial emission', async () => {
+    const stream = new StreamingQuery(db, 'users');
+    
+    const firstEmission = new Promise<any[]>((resolve) => {
+      stream.subscribe(data => {
+        resolve(data);
+      });
+    });
+    
+    const result = await firstEmission;
+    
+    expect(result).toEqual([]);
+  });
+
+  it('updates stream when data changes', async () => {
+    const stream = new StreamingQuery(db, 'users');
+    
+    const emissions: any[][] = [];
+    stream.subscribe(data => {
+      emissions.push(data);
+    });
+    
+    // Wait for initial empty emission
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(emissions).toHaveLength(1);
+    expect(emissions[0]).toEqual([]);
+    
+    // Add data and refresh
+    await db.insert('users', { id: 'u1', name: 'New User', age: 28 });
+    stream.refresh();
+    
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    expect(emissions).toHaveLength(2);
+    expect(emissions[1]).toHaveLength(1);
+    expect(emissions[1][0].name).toBe('New User');
+  });
+
+  it('preserves xRec and __tableName in streamed results', async () => {
+    await db.insert('users', { id: 'u1', name: 'Alice', age: 30 });
+    
+    const stream = new StreamingQuery(db, 'users');
+    
+    const firstEmission = new Promise<any[]>((resolve) => {
+      stream.subscribe(data => {
+        resolve(data);
+      });
+    });
+    
+    const result = await firstEmission;
+    
+    expect(result).toHaveLength(1);
+    const user = result[0];
+    
+    // Check that tracking properties exist
+    expect(user.xRec).toBeDefined();
+    expect(user.__tableName).toBe('users');
+    
+    // Check that xRec has the original data
+    expect(user.xRec.name).toBe('Alice');
+    expect(user.xRec.age).toBe(30);
+  });
 });
