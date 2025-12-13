@@ -323,4 +323,94 @@ describe('Streaming Queries', () => {
     expect(user.xRec.name).toBe('Alice');
     expect(user.xRec.age).toBe(30);
   });
+
+  it('automatically pushes updates when data changes via db.stream()', async () => {
+    // Use db.stream() which auto-registers with stream manager
+    const stream = db.stream('users');
+    
+    const emissions: any[][] = [];
+    stream.subscribe(data => {
+      emissions.push(data);
+    });
+    
+    // Wait for initial empty emission
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(emissions).toHaveLength(1);
+    expect(emissions[0]).toEqual([]);
+    
+    // Insert data through db - should auto-notify stream
+    await db.insert('users', { id: 'u1', name: 'Alice', age: 30 });
+    
+    // Wait for automatic refresh
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Should have automatically received update
+    expect(emissions).toHaveLength(2);
+    expect(emissions[1]).toHaveLength(1);
+    expect(emissions[1][0].name).toBe('Alice');
+  });
+
+  it('automatically pushes updates on update operations', async () => {
+    // Insert initial data
+    await db.insert('users', { id: 'u1', name: 'Alice', age: 30 });
+    
+    // Create stream
+    const stream = db.stream('users');
+    
+    const emissions: any[][] = [];
+    stream.subscribe(data => {
+      emissions.push(data);
+    });
+    
+    // Wait for initial emission
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(emissions).toHaveLength(1);
+    expect(emissions[0][0].name).toBe('Alice');
+    
+    // Update data - should auto-notify stream
+    await db.update('users', { age: 31 }, {
+      where: 'id = ?',
+      whereArgs: ['u1']
+    });
+    
+    // Wait for automatic refresh
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Should have automatically received update
+    expect(emissions).toHaveLength(2);
+    expect(emissions[1][0].age).toBe(31);
+  });
+
+  it('automatically pushes updates on delete operations', async () => {
+    // Insert initial data
+    await db.insert('users', { id: 'u1', name: 'Alice', age: 30 });
+    await db.insert('users', { id: 'u2', name: 'Bob', age: 25 });
+    
+    // Create stream
+    const stream = db.stream('users');
+    
+    const emissions: any[][] = [];
+    stream.subscribe(data => {
+      emissions.push(data);
+    });
+    
+    // Wait for initial emission
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(emissions).toHaveLength(1);
+    expect(emissions[0]).toHaveLength(2);
+    
+    // Delete data - should auto-notify stream
+    await db.delete('users', {
+      where: 'id = ?',
+      whereArgs: ['u1']
+    });
+    
+    // Wait for automatic refresh
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Should have automatically received update
+    expect(emissions).toHaveLength(2);
+    expect(emissions[1]).toHaveLength(1);
+    expect(emissions[1][0].name).toBe('Bob');
+  });
 });
