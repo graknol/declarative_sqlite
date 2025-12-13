@@ -100,8 +100,8 @@ export class DeclarativeDatabase {
     const now = this.hlc.now();
     const hlcString = Hlc.toString(now);
     
-    // Prepare values with system columns
-    const valuesToInsert = { ...values };
+    // Prepare values with system columns (filter out tracking properties)
+    const valuesToInsert = this._extractRecordData(values);
     
     if (!valuesToInsert['system_id']) {
       valuesToInsert['system_id'] = crypto.randomUUID();
