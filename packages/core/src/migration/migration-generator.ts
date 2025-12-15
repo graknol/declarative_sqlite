@@ -207,9 +207,6 @@ export class MigrationGenerator {
     // Only copy columns that exist in both old and new schemas
     const columnsToKeep: string[] = [];
     
-    // Get all columns from the new table definition
-    const newColumnNames = new Set(fullTableDef.columns.map(c => c.name));
-    
     // Find columns that exist in both old and new (not dropped, not modified in incompatible ways)
     for (const col of fullTableDef.columns) {
       // Skip if this is a newly added column
