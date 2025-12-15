@@ -44,8 +44,8 @@ export class SchemaMigrator {
     // Compute diff
     const diff = this.differ.diff(declarativeSchema, liveSchema);
 
-    // Generate operations
-    const operations = this.generator.generateMigration(diff);
+    // Generate operations (pass declarative schema for table recreation)
+    const operations = this.generator.generateMigration(diff, declarativeSchema);
 
     return {
       diff,

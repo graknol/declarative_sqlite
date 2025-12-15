@@ -148,24 +148,68 @@ export class SchemaDiffer {
 
   /**
    * Check if two columns are equal
+   * Only compares properties that affect the actual SQLite schema structure
    */
   private columnsEqual(col1: DbColumn, col2: DbColumn): boolean {
     return (
       col1.name === col2.name &&
-      col1.type === col2.type &&
+      this.typesEqual(col1.type, col2.type) &&
       col1.notNull === col2.notNull &&
       this.defaultValuesEqual(col1.defaultValue, col2.defaultValue) &&
-      col1.lww === col2.lww
+      this.lwwEqual(col1.lww, col2.lww)
     );
+    // Note: We intentionally ignore maxLength, maxFileCount, maxFileSize
+    // as these are application-level constraints, not SQLite schema
+  }
+
+  /**
+   * Check if two column types are equal
+   * SQLite has flexible typing, so we normalize type names
+   */
+  private typesEqual(type1: string, type2: string): boolean {
+    const normalized1 = this.normalizeType(type1);
+    const normalized2 = this.normalizeType(type2);
+    return normalized1 === normalized2;
+  }
+
+  /**
+   * Normalize SQLite type names
+   * SQLite has type affinity rules, so TEXT/GUID/DATE all map to TEXT
+   */
+  private normalizeType(type: string): string {
+    const upper = type.toUpperCase();
+    // GUID and DATE are stored as TEXT in SQLite
+    if (upper === 'GUID' || upper === 'DATE') return 'TEXT';
+    return upper;
+  }
+
+  /**
+   * Check if LWW status is equal
+   * Treats undefined and false as equivalent
+   */
+  private lwwEqual(lww1: boolean | undefined, lww2: boolean | undefined): boolean {
+    const val1 = lww1 ?? false;
+    const val2 = lww2 ?? false;
+    return val1 === val2;
   }
 
   /**
    * Check if two default values are equal
+   * We're lenient here because:
+   * 1. Schema introspection may not always return default values correctly
+   * 2. Adding a default to an existing NOT NULL column is safe (only affects new rows)
+   * 3. We want to avoid spurious table recreations
    */
   private defaultValuesEqual(val1: any, val2: any): boolean {
     if (val1 === val2) return true;
     if (val1 === undefined && val2 === undefined) return true;
     if (val1 === null && val2 === null) return true;
+    
+    // Treat undefined/null as equivalent when comparing defaults
+    // This handles cases where introspection doesn't return a default
+    if ((val1 === undefined || val1 === null) && (val2 === undefined || val2 === null)) {
+      return true;
+    }
     
     // Convert to strings for comparison
     return String(val1) === String(val2);
