@@ -105,7 +105,7 @@ export class SqliteDirtyRowStore implements DirtyRowStore {
       ORDER BY hlc ASC
     `);
 
-    const rows = await stmt.all<any>([tableName]);
+    const rows = await stmt.all<any>(tableName);
     return rows.map(row => ({
       tableName: row.table_name,
       rowId: row.row_id,
