@@ -4,7 +4,7 @@ import { SchemaMigrator } from '../migration/schema-migrator';
 import { StreamingQuery, QueryOptions as StreamQueryOptions } from '../streaming/streaming-query';
 import { QueryStreamManager } from '../streaming/query-stream-manager';
 import { FileSet } from '../files/fileset';
-import { Hlc, HlcTimestamp } from '../sync/hlc';
+import { Hlc } from '../sync/hlc';
 import { DirtyRowStore, SqliteDirtyRowStore } from '../sync/dirty-row-store';
 
 export interface DatabaseConfig {
@@ -54,6 +54,7 @@ export class DeclarativeDatabase {
   private streamManager: QueryStreamManager;
   public hlc: Hlc;
   public dirtyRowStore: DirtyRowStore;
+  private mutex: Promise<void> = Promise.resolve();
 
   constructor(config: DatabaseConfig) {
     this.adapter = config.adapter;
@@ -69,6 +70,15 @@ export class DeclarativeDatabase {
     }
 
     this.dirtyRowStore = config.dirtyRowStore || new SqliteDirtyRowStore(this.adapter);
+  }
+
+  /**
+   * Enqueue a task to run sequentially
+   */
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.mutex.then(() => task());
+    this.mutex = result.then(() => {}, () => {});
+    return result;
   }
 
   /**
@@ -95,6 +105,10 @@ export class DeclarativeDatabase {
    * Insert a record into a table
    */
   async insert(table: string, values: Record<string, any>, options?: InsertOptions): Promise<string> {
+    return this.enqueue(() => this._insert(table, values, options));
+  }
+
+  private async _insert(table: string, values: Record<string, any>, options?: InsertOptions): Promise<string> {
     this.ensureInitialized();
 
     const now = this.hlc.now();
@@ -157,11 +171,15 @@ export class DeclarativeDatabase {
    * Insert multiple records in a single transaction
    */
   async insertMany(table: string, records: Record<string, any>[], options?: InsertOptions): Promise<void> {
+    return this.enqueue(() => this._insertMany(table, records, options));
+  }
+
+  private async _insertMany(table: string, records: Record<string, any>[], options?: InsertOptions): Promise<void> {
     this.ensureInitialized();
 
     await this.transaction(async () => {
       for (const record of records) {
-        await this.insert(table, record, options);
+        await this._insert(table, record, options);
       }
     });
   }
@@ -170,6 +188,10 @@ export class DeclarativeDatabase {
    * Update records in a table
    */
   async update(table: string, values: Record<string, any>, options?: UpdateOptions): Promise<number> {
+    return this.enqueue(() => this._update(table, values, options));
+  }
+
+  private async _update(table: string, values: Record<string, any>, options?: UpdateOptions): Promise<number> {
     this.ensureInitialized();
 
     // 1. Find rows to update to get their system_ids
@@ -241,6 +263,10 @@ export class DeclarativeDatabase {
    * Delete records from a table
    */
   async delete(table: string, options?: DeleteOptions): Promise<number> {
+    return this.enqueue(() => this._delete(table, options));
+  }
+
+  private async _delete(table: string, options?: DeleteOptions): Promise<number> {
     this.ensureInitialized();
 
     // 1. Find rows to delete to get their system_ids
@@ -442,6 +468,10 @@ export class DeclarativeDatabase {
    * Compares against xRec to determine changed fields for UPDATE
    */
   async save<T extends Record<string, any>>(record: T): Promise<string> {
+    return this.enqueue(() => this._save(record));
+  }
+
+  private async _save<T extends Record<string, any>>(record: T): Promise<string> {
     this.ensureInitialized();
     
     const tableName = (record as any).__tableName;
@@ -455,7 +485,7 @@ export class DeclarativeDatabase {
     if (isNew) {
       // INSERT: Create new record
       const values = this._extractRecordData(record);
-      const systemId = await this.insert(tableName, values);
+      const systemId = await this._insert(tableName, values);
       
       // Re-fetch to get all system columns and update record
       const table = this.schema.tables.find(t => t.name === tableName);
@@ -491,7 +521,7 @@ export class DeclarativeDatabase {
         const pkColumn = primaryKey?.columns[0];
         
         if (pkColumn && record[pkColumn]) {
-          await this.update(tableName, changes, {
+          await this._update(tableName, changes, {
             where: `"${pkColumn}" = ?`,
             whereArgs: [record[pkColumn]]
           });
@@ -523,6 +553,10 @@ export class DeclarativeDatabase {
    * Delete a record from the database
    */
   async deleteRecord<T extends Record<string, any>>(record: T): Promise<void> {
+    return this.enqueue(() => this._deleteRecord(record));
+  }
+
+  private async _deleteRecord<T extends Record<string, any>>(record: T): Promise<void> {
     this.ensureInitialized();
     
     const tableName = (record as any).__tableName;
@@ -535,7 +569,7 @@ export class DeclarativeDatabase {
     const pkColumn = primaryKey?.columns[0];
     
     if (pkColumn && record[pkColumn]) {
-      await this.delete(tableName, {
+      await this._delete(tableName, {
         where: `"${pkColumn}" = ?`,
         whereArgs: [record[pkColumn]]
       });
@@ -611,6 +645,14 @@ export class DeclarativeDatabase {
     rows: Record<string, any>[],
     onConstraintViolation: ConstraintViolationStrategy = ConstraintViolationStrategy.ThrowException
   ): Promise<void> {
+    return this.enqueue(() => this._bulkLoad(tableName, rows, onConstraintViolation));
+  }
+
+  private async _bulkLoad(
+    tableName: string,
+    rows: Record<string, any>[],
+    onConstraintViolation: ConstraintViolationStrategy = ConstraintViolationStrategy.ThrowException
+  ): Promise<void> {
     this.ensureInitialized();
     
     const tableDef = this.schema.tables.find(t => t.name === tableName);
@@ -626,6 +668,31 @@ export class DeclarativeDatabase {
       .filter(c => c.lww)
       .map(c => c.name);
 
+    // Extract the greatest HLC timestamp found in the rows and observe it
+    // This ensures our local clock catches up to the latest data we're importing
+    let maxHlcString: string | null = null;
+    
+    for (const row of rows) {
+      if (row['system_version']) {
+        if (!maxHlcString || row['system_version'] > maxHlcString) {
+          maxHlcString = row['system_version'];
+        }
+      }
+      
+      for (const colName of lwwColumns) {
+        const hlcCol = `${colName}__hlc`;
+        if (row[hlcCol]) {
+           if (!maxHlcString || row[hlcCol] > maxHlcString) {
+             maxHlcString = row[hlcCol];
+           }
+        }
+      }
+    }
+
+    if (maxHlcString) {
+      this.hlc.update(Hlc.parse(maxHlcString));
+    }
+
     for (const row of rows) {
       const systemId = row['system_id'];
       if (!systemId) continue;
@@ -638,7 +705,6 @@ export class DeclarativeDatabase {
       if (existing) {
         // UPDATE logic
         const valuesToUpdate: Record<string, any> = {};
-        const now = this.hlc.now();
 
         for (const [colName, value] of Object.entries(row)) {
           // Skip PKs, HLC columns, and system_is_local_origin
@@ -652,20 +718,11 @@ export class DeclarativeDatabase {
 
             if (remoteHlcString) {
               const localHlcValue = (existing as any)[hlcColName];
-              let localHlc: HlcTimestamp | null = null;
               
-              if (localHlcValue) {
-                if (typeof localHlcValue === 'string') {
-                  localHlc = Hlc.parse(localHlcValue);
-                } else {
-                  localHlc = localHlcValue as HlcTimestamp;
-                }
-              }
-              
-              const remoteHlc = Hlc.parse(remoteHlcString);
-
-              // Per-column LWW comparison
-              if (!localHlc || Hlc.compare(remoteHlc, localHlc) > 0) {
+              // Per-column LWW comparison using string comparison
+              // HLC strings are designed to be lexicographically comparable
+              // We compare directly to avoid parsing overhead
+              if (!localHlcValue || remoteHlcString > localHlcValue) {
                 // Server is newer for this column
                 valuesToUpdate[colName] = value;
                 valuesToUpdate[hlcColName] = remoteHlcString;
@@ -683,7 +740,14 @@ export class DeclarativeDatabase {
         if (Object.keys(valuesToUpdate).length > 0) {
           try {
             // We need to update system_version as well
-            valuesToUpdate['system_version'] = Hlc.toString(now);
+            const serverVersion = row['system_version'];
+            const localVersion = (existing as any)['system_version'];
+            
+            if (serverVersion && localVersion) {
+              valuesToUpdate['system_version'] = serverVersion > localVersion ? serverVersion : localVersion;
+            } else {
+              valuesToUpdate['system_version'] = serverVersion || Hlc.toString(this.hlc.now());
+            }
             
             // Use internal update to avoid marking as dirty
             await this._updateFromServer(tableName, valuesToUpdate, systemId);

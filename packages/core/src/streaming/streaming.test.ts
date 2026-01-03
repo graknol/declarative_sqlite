@@ -430,9 +430,9 @@ describe('Streaming Queries', () => {
     
     // Bulk load data - should auto-notify stream
     await db.bulkLoad('users', [
-      { system_id: 'u1', id: 'u1', name: 'Alice', age: 30, system_version: '1-0', system_created_at: '1-0', system_is_local_origin: 0 },
-      { system_id: 'u2', id: 'u2', name: 'Bob', age: 25, system_version: '2-0', system_created_at: '2-0', system_is_local_origin: 0 },
-      { system_id: 'u3', id: 'u3', name: 'Charlie', age: 35, system_version: '3-0', system_created_at: '3-0', system_is_local_origin: 0 }
+      { system_id: 'u1', id: 'u1', name: 'Alice', age: 30, system_version: '0000000000000000001:000000000:node1', system_created_at: '0000000000000000001:000000000:node1', system_is_local_origin: 0 },
+      { system_id: 'u2', id: 'u2', name: 'Bob', age: 25, system_version: '0000000000000000002:000000000:node1', system_created_at: '0000000000000000002:000000000:node1', system_is_local_origin: 0 },
+      { system_id: 'u3', id: 'u3', name: 'Charlie', age: 35, system_version: '0000000000000000003:000000000:node1', system_created_at: '0000000000000000003:000000000:node1', system_is_local_origin: 0 }
     ]);
     
     // Wait for automatic refresh
@@ -529,7 +529,7 @@ describe('Streaming Queries', () => {
     
     // BulkLoad with lowercase - should notify UPPERCASE stream
     await db.bulkLoad('users', [
-      { system_id: 'u1', id: 'u1', name: 'Bob', age: 25, system_version: '1-0', system_created_at: '1-0', system_is_local_origin: 0 }
+      { system_id: 'u1', id: 'u1', name: 'Bob', age: 25, system_version: '0000000000000000001:000000000:node1', system_created_at: '0000000000000000001:000000000:node1', system_is_local_origin: 0 }
     ]);
     
     // Wait for automatic refresh
