@@ -643,15 +643,17 @@ export class DeclarativeDatabase {
   async bulkLoad(
     tableName: string,
     rows: Record<string, any>[],
-    onConstraintViolation: ConstraintViolationStrategy = ConstraintViolationStrategy.ThrowException
+    onConstraintViolation: ConstraintViolationStrategy = ConstraintViolationStrategy.ThrowException,
+    forceOverwrite: boolean = false
   ): Promise<void> {
-    return this.enqueue(() => this._bulkLoad(tableName, rows, onConstraintViolation));
+    return this.enqueue(() => this._bulkLoad(tableName, rows, onConstraintViolation, forceOverwrite));
   }
 
   private async _bulkLoad(
     tableName: string,
     rows: Record<string, any>[],
-    onConstraintViolation: ConstraintViolationStrategy = ConstraintViolationStrategy.ThrowException
+    onConstraintViolation: ConstraintViolationStrategy = ConstraintViolationStrategy.ThrowException,
+    forceOverwrite: boolean = false
   ): Promise<void> {
     this.ensureInitialized();
     
@@ -716,7 +718,13 @@ export class DeclarativeDatabase {
             const hlcColName = `${colName}__hlc`;
             const remoteHlcString = row[hlcColName];
 
-            if (remoteHlcString) {
+            if (forceOverwrite) {
+              // Force overwrite: always use server data regardless of timestamps
+              valuesToUpdate[colName] = value;
+              if (remoteHlcString) {
+                valuesToUpdate[hlcColName] = remoteHlcString;
+              }
+            } else if (remoteHlcString) {
               const localHlcValue = (existing as any)[hlcColName];
               
               // Per-column LWW comparison using string comparison
