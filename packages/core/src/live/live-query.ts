@@ -105,7 +105,8 @@ export class LiveQuery<T extends Record<string, unknown> = Row> {
     const transform = this.getTransform();
     const table = this.spec.overlayTable ?? this.spec.reads[0]?.table;
     const transformed = transform && table ? transform(table, raw) : raw;
-    const { rows } = diffRows(this.rows as unknown as Row[], transformed, this.spec.key);
+    const { rows, changed } = diffRows(this.rows as unknown as Row[], transformed, this.spec.key);
+    if (!changed) return;
     this.rows = rows as unknown as T[];
     this.emit();
   }

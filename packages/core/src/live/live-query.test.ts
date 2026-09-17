@@ -103,6 +103,8 @@ describe('LiveQuery', () => {
   it('re-runs when the writer could not name the rows', async () => {
     const opened = await openDb();
     db = opened.db;
+    await opened.put('A', 3188, 1);
+
     const query = db.live({
       sql: 'SELECT system_id FROM c_work_task WHERE wo_no = ?',
       params: [3188],
@@ -114,6 +116,9 @@ describe('LiveQuery', () => {
     await settle();
     listener.mockClear();
 
+    // Deleting the row the query returns is a real change to its result, so
+    // the unnamed-row invalidation should still make it through to the
+    // subscriber, not merely trigger a silent requery.
     await db.execute('DELETE FROM c_work_task', [], { invalidates: ['c_work_task'] });
     await settle();
 
@@ -124,6 +129,8 @@ describe('LiveQuery', () => {
   it('stops delivering after close and after unsubscribe', async () => {
     const opened = await openDb();
     db = opened.db;
+    await opened.put('A', 3188, 1);
+
     const query = db.live({
       sql: 'SELECT system_id FROM c_work_task',
       reads: [{ table: 'c_work_task' }],
@@ -132,16 +139,43 @@ describe('LiveQuery', () => {
     const listener = vi.fn();
     const stop = query.subscribe(listener);
     await settle();
+    expect(listener).toHaveBeenCalledTimes(1);
     stop();
 
-    await opened.put('A', 3188, 1);
+    await opened.put('B', 4000, 1);
     await settle();
     expect(listener).toHaveBeenCalledTimes(1);
 
     query.close();
-    await opened.put('B', 3188, 1);
+    await opened.put('C', 5000, 1);
     await settle();
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not emit again when a write in scope changes no selected column', async () => {
+    const opened = await openDb();
+    db = opened.db;
+    await opened.put('A', 3188, 1, 'first');
+
+    const query = db.live<{ system_id: string; c_qty_installed: number }>({
+      sql: 'SELECT system_id, c_qty_installed FROM c_work_task WHERE wo_no = ? ORDER BY system_id',
+      params: [3188],
+      reads: [{ table: 'c_work_task', scope: { wo_no: 3188 } }],
+      key: 'system_id',
+    });
+    const listener = vi.fn();
+    query.subscribe(listener);
+    await settle();
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    // Same wo_no (in scope) and same qty (the only other selected column), but a
+    // different description — an unselected column — so the query's result is
+    // byte-for-byte identical even though the write matched the query's scope.
+    await opened.put('A', 3188, 1, 'second');
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    query.close();
   });
 
   it('exposes the latest rows through snapshot()', async () => {
