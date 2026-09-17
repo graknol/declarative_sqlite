@@ -65,4 +65,20 @@ describe('CursorStore', () => {
     await cursors.reset('c_work_task', { wo_no: 3188 });
     expect(await cursors.get('c_work_task', { wo_no: 3188 })).toBe(0);
   });
+
+  it('uses the injected clock to timestamp synced_at', async () => {
+    db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
+    const fixedDate = new Date('1999-12-31T23:59:59Z');
+    const expectedSyncedAt = fixedDate.toISOString();
+    const cursors = new CursorStore(db, { clock: () => fixedDate });
+
+    await cursors.set('c_work_task', { wo_no: 3188 }, 100);
+
+    const rows = await cursors.all();
+    const row = rows.find(
+      (r) => r.table === 'c_work_task' && r.scope !== undefined && r.scope['wo_no'] === '3188',
+    );
+    expect(row).toBeDefined();
+    expect(row?.syncedAt).toBe(expectedSyncedAt);
+  });
 });

@@ -20,11 +20,21 @@ export interface CursorRow {
  * pull service's window rule, not a cursor edit.
  */
 export class CursorStore {
+  /**
+   * Initializes the cursor store with a database connection. Accepts an optional
+   * clock function for timestamping cursor updates; the clock is called by `set()` to
+   * populate `syncedAt` and defaults to the wall clock if not provided. Useful for
+   * testing to ensure deterministic sync timestamps.
+   */
   constructor(
     private readonly db: Database,
     private readonly options: { clock?: () => Date } = {},
   ) {}
 
+  /**
+   * Retrieves the last sync sequence number for a table and optional scope.
+   * Returns zero if no cursor has been recorded yet for this table and scope.
+   */
   async get(table: string, scope?: ScopeValues): Promise<number> {
     const row = await this.db.queryOne<{ last_sync_seq: number }>(
       `SELECT last_sync_seq FROM ${quoteIdentifier(SYNC_CURSOR_TABLE)} WHERE scope_key = ?`,
@@ -33,6 +43,13 @@ export class CursorStore {
     return row?.last_sync_seq ?? 0;
   }
 
+  /**
+   * Updates the cursor for a table and optional scope with the given sequence number.
+   * Timestamps the update with the provided clock (or wall clock if not provided).
+   * The cursor never moves backwards: if a lower sequence arrives, the higher one is kept.
+   * An unscoped cursor (scope undefined) is stored separately from scoped cursors,
+   * so they cannot overwrite each other even if they refer to the same table.
+   */
   async set(table: string, scope: ScopeValues | undefined, seq: number): Promise<void> {
     const key = scopeKey(table, scope);
     const syncedAt = (this.options.clock?.() ?? new Date()).toISOString();
@@ -49,6 +66,11 @@ export class CursorStore {
     });
   }
 
+  /**
+   * Returns all stored cursors, one row per `(table, scope)` pair that has been synced.
+   * Each row includes the table name, optional scope values, the last sequence number,
+   * and the ISO timestamp of the last sync.
+   */
   async all(): Promise<CursorRow[]> {
     const rows = await this.db.query<{ scope_key: string; table_name: string; scope: string | null; last_sync_seq: number; synced_at: string }>(
       `SELECT scope_key, table_name, scope, last_sync_seq, synced_at FROM ${quoteIdentifier(SYNC_CURSOR_TABLE)} ORDER BY scope_key`,
@@ -62,6 +84,10 @@ export class CursorStore {
     }));
   }
 
+  /**
+   * Returns all cursors for a specific table, including both unscoped and scoped cursors.
+   * This filters the result of `all()` to the rows matching the given table name.
+   */
   async forTable(table: string): Promise<CursorRow[]> {
     return (await this.all()).filter((row) => row.table === table);
   }
