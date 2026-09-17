@@ -20,3 +20,11 @@ export { formatScope, parseScope, scopeKey, scopeMatches, validateScopes, ScopeE
 export type { ScopeAllowList } from './schema/scopes';
 export { SchemaError } from './schema/types';
 export type { Schema, TableDef, ColumnDef, KeyDef, KeyType, SyncedDef, StorageType, LogicalType } from './schema/types';
+
+export { introspect } from './migration/introspect';
+export { diffSchema } from './migration/diff';
+export { generateMigration, createTableSql, MigrationBlockedError } from './migration/generate';
+export { planMigration, runMigration } from './migration/migrate';
+export type { MigrationDiff, TableAlteration, ColumnRetype } from './migration/diff';
+export type { MigrationOperation } from './migration/generate';
+export type { MigrationMode, MigrationPlan } from './migration/migrate';
