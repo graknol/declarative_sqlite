@@ -84,6 +84,17 @@ describe('Overlay', () => {
     expect(s.overlay.apply('c_work_task', [{ system_id: 'A', c_qty_installed: 1 }])[0]?.['c_qty_installed']).toBe(1);
   });
 
+  it('keeps identity when the only pending column is absent from the row', async () => {
+    const s = await setup();
+    db = s.db;
+    await s.outbox.record({ table: 'c_work_task', systemId: 'A', changes: { rowstate: 'DONE' } });
+    const row = { system_id: 'A', c_qty_installed: 1 };
+    const rows = [row];
+    const result = s.overlay.apply('c_work_task', rows);
+    expect(result).toBe(rows);
+    expect(result[0]).toBe(row);
+  });
+
   it('leaves a table with no synced declaration alone', async () => {
     const s = await setup();
     db = s.db;

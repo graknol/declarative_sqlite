@@ -35,12 +35,15 @@ export class Overlay {
       const columns = this.outbox.pendingColumns(table, systemId);
       if (columns.size === 0) return row;
       const overlaid: Row = { ...row };
+      let rowChanged = false;
       for (const column of columns) {
         if (!(column in row)) continue;
         const pending = this.outbox.pendingValue(table, systemId, column);
         if (!pending) continue;
         overlaid[column] = toSqlValue(pending.value);
+        rowChanged = true;
       }
+      if (!rowChanged) return row;
       changed = true;
       return overlaid;
     });
