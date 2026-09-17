@@ -1,4 +1,6 @@
 import type { RunResult, SQLiteAdapter } from '../adapters/adapter';
+import { LiveRegistry } from '../live/registry';
+import type { LiveQuery, LiveQuerySpec, RowTransform } from '../live/live-query';
 import { runMigration, type MigrationMode, type MigrationPlan } from '../migration/migrate';
 import { SYSTEM_ID_COLUMN } from '../schema/table-builder';
 import type { Schema, TableDef } from '../schema/types';
@@ -39,6 +41,10 @@ export class Database {
   private writeQueue: Promise<unknown> = Promise.resolve();
   /** The transaction currently open on this database, if any. Set after `BEGIN IMMEDIATE` succeeds and cleared before its commit/rollback outcome is reported, so that `transaction()` and `execute()` can detect and join it. */
   private activeTx: Transaction | undefined;
+  private readonly live_ = new LiveRegistry(
+    (sql, params) => this.query<Row>(sql, params),
+    (listener) => this.invalidations.subscribe(listener),
+  );
 
   /**
    * Typed CRUD per table, generated from the schema. A `.synced()` table appears
@@ -165,6 +171,21 @@ export class Database {
   }
 
   /**
+   * Creates a query that stays current. Declare the tables and scopes it reads
+   * so that it re-runs only for writes that can affect it, and the key column so
+   * unchanged rows keep their identity. Close it when the view unmounts.
+   */
+  live<T extends Record<string, unknown> = Row>(spec: LiveQuerySpec): LiveQuery<T> {
+    this.ensureOpen();
+    return this.live_.create<T>(spec);
+  }
+
+  /** Installs the transform every live query's rows pass through before emission. The sync runtime calls this with overlay + draft holds. */
+  setRowTransform(transform: RowTransform | undefined): void {
+    this.live_.setRowTransform(transform);
+  }
+
+  /**
    * Closes the underlying adapter. Every method on this instance throws
    * afterwards; safe to call more than once. Marks the database closed
    * immediately so nothing new joins the write queue, then waits for
@@ -176,6 +197,7 @@ export class Database {
     this.closed = true;
     const pending = this.writeQueue;
     await pending;
+    this.live_.closeAll();
     await this.adapter.close();
   }
 
