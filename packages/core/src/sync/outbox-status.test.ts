@@ -135,6 +135,26 @@ describe('Outbox statuses', () => {
     expect((await s.outbox.entries()).map((e) => e.id).sort()).toEqual(['open', 'recent']);
   });
 
+  it('ignores a stale applyResults for a superseded batch and keeps the index in sync with the table', async () => {
+    const s = await setup();
+    db = s.db;
+    await s.outbox.record({ table: 'c_work_task', systemId: 'A', changes: { c_qty_installed: 10 } });
+    const [entry] = await s.outbox.pending();
+    const id = entry!.id;
+
+    await s.outbox.markSending([id], 'batch-1');
+    await s.outbox.resetSending('batch-1');
+    await s.outbox.markSending([id], 'batch-2');
+
+    // A late answer for the superseded first batch arrives after the entry
+    // has already moved on to batch-2.
+    await s.outbox.applyResults('batch-1', [{ index: 0, result: 'applied', error: null }], [id]);
+
+    const all = await s.outbox.entries();
+    expect(all.find((e) => e.id === id)).toMatchObject({ status: 'sending', batchId: 'batch-2' });
+    expect(s.outbox.pendingColumns('c_work_task', 'A').has('c_qty_installed')).toBe(true);
+  });
+
   it('rebuilds the index from the table on load', async () => {
     const s = await setup();
     db = s.db;

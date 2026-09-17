@@ -291,8 +291,8 @@ export class Outbox {
 
     for (const id of answered) {
       const row = await this.db.queryOne<{ table_name: string; system_id: string; column_name: string }>(
-        `SELECT table_name, system_id, column_name FROM ${quoteIdentifier(OUTBOX_TABLE)} WHERE id = ?`,
-        [id],
+        `SELECT table_name, system_id, column_name FROM ${quoteIdentifier(OUTBOX_TABLE)} WHERE id = ? AND batch_id = ?`,
+        [id, batchId],
       );
       if (row) this.indexRemove(row.table_name, row.system_id, row.column_name, id);
     }
