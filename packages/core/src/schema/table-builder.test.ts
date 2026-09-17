@@ -56,4 +56,14 @@ describe('TableBuilder', () => {
     t.text('notes');
     expect(() => t.text('notes')).toThrow(/notes/);
   });
+  it('does not duplicate system_id or sync_seq when the app declares them', () => {
+    const t = new TableBuilder('c_work_task');
+    t.text('system_id');
+    t.integer('sync_seq');
+    t.integer('wo_no');
+    t.markSynced({ key: 'system_id', scope: ['wo_no'] });
+    const names = t.build().columns.map((c) => c.name);
+    expect(names.filter((n) => n === 'system_id')).toHaveLength(1);
+    expect(names.filter((n) => n === 'sync_seq')).toHaveLength(1);
+  });
 });

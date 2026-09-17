@@ -27,6 +27,8 @@ export class ColumnBuilder {
       }
     } else if (this.type === 'TEXT' && typeof defaultValue !== 'string') {
       throw new SchemaError(`Column ${this.name}: notNull() on a text column needs a string default, got ${typeof defaultValue}`);
+    } else if (this.type === 'BLOB' && !(defaultValue instanceof Uint8Array)) {
+      throw new SchemaError(`Column ${this.name}: notNull() on a blob column needs a Uint8Array default, got ${typeof defaultValue}`);
     }
     this._notNull = true;
     this._defaultValue = defaultValue;

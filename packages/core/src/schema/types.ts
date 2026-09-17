@@ -16,6 +16,11 @@ export interface ColumnDef {
   maxLength?: number;
 }
 
+/**
+ * Which SQL constraint a key builds: the table's primary key, a unique
+ * constraint, or a plain index. The migration layer emits a different
+ * statement for each, so the distinction survives into the generated SQL.
+ */
 export type KeyType = 'PRIMARY' | 'UNIQUE' | 'INDEX';
 
 /** A primary key, a unique constraint or a plain index. `name` is generated for indexes when it is not given. */

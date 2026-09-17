@@ -47,7 +47,11 @@ export class KeyBuilder {
 
   build(tableName: string): KeyDef {
     if (this._type === 'PRIMARY') return { columns: this.columns, type: 'PRIMARY' };
-    const name = this._name ?? `idx_${tableName}_${this.columns.join('_')}`;
+    // A unique constraint gets a `uq_` name, a plain index `idx_`. The migration
+    // layer decides what to emit from `type`, never from the name, but a name that
+    // says what it is keeps the generated SQL and any hand inspection honest.
+    const prefix = this._type === 'UNIQUE' ? 'uq' : 'idx';
+    const name = this._name ?? `${prefix}_${tableName}_${this.columns.join('_')}`;
     return { columns: this.columns, type: this._type, name };
   }
 }

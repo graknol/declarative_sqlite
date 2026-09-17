@@ -24,6 +24,18 @@ describe('scope helpers', () => {
     expect(() => formatScope({ a: 1, b: 2, c: 3, d: 4, e: 5 })).toThrow(/four/);
   });
 
+  it('round-trips a value that itself contains a colon', () => {
+    // Only the FIRST colon separates column from value, so an ISO timestamp
+    // survives. Nothing rejects a colon on the way in, so nothing may lose it
+    // on the way out.
+    const written = formatScope({ changed_at: '2026-09-18T01:23:45Z' });
+    expect(parseScope(written)).toEqual({ changed_at: '2026-09-18T01:23:45Z' });
+  });
+
+  it('accepts exactly four pairs', () => {
+    const four = formatScope({ a: 1, b: 2, c: 3, d: 4 });
+    expect(Object.keys(parseScope(four))).toHaveLength(4);
+  });
   it('parses a scope back to lowercase columns', () => {
     expect(parseScope('WO_NO:3188')).toEqual({ wo_no: '3188' });
   });
