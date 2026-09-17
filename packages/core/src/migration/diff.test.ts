@@ -3,7 +3,9 @@ import { diffSchema } from './diff';
 import type { Schema, TableDef } from '../schema/types';
 
 const table = (name: string, columns: TableDef['columns'], keys: TableDef['keys'] = []): TableDef => ({ name, columns, keys, library: false });
-const text = (name: string) => ({ name, type: 'TEXT' as const, logical: 'text' as const, notNull: false });
+const text = (name: string, notNull = false, defaultValue?: string) => ({
+  name, type: 'TEXT' as const, logical: 'text' as const, notNull, ...(defaultValue === undefined ? {} : { defaultValue }),
+});
 const real = (name: string) => ({ name, type: 'REAL' as const, logical: 'real' as const, notNull: false });
 const schema = (...tables: TableDef[]): Schema => ({ tables });
 
@@ -37,6 +39,54 @@ describe('diffSchema', () => {
     expect(diff.extraColumns).toEqual([{ table: 't', column: 'legacy' }]);
     expect(diff.tablesToAlter).toEqual([]);
     expect(diff.hasChanges).toBe(false);
+  });
+
+  it('reports a NOT NULL flip from nullable to NOT NULL as requiring a recreate', () => {
+    const declared = schema(table('t', [text('a', true, 'x')]));
+    const live = schema(table('t', [text('a')]));
+    const diff = diffSchema(declared, live);
+    const alteration = diff.tablesToAlter[0];
+    expect(alteration?.requiresRecreate).toBe(true);
+    expect(alteration?.columnsToRetype).toEqual([
+      {
+        from: { name: 'a', type: 'TEXT', logical: 'text', notNull: false },
+        to: { name: 'a', type: 'TEXT', logical: 'text', notNull: true, defaultValue: 'x' },
+      },
+    ]);
+  });
+
+  it('reports a NOT NULL flip from NOT NULL to nullable as requiring a recreate too', () => {
+    const declared = schema(table('t', [text('a')]));
+    const live = schema(table('t', [text('a', true, 'x')]));
+    expect(diffSchema(declared, live).tablesToAlter[0]?.requiresRecreate).toBe(true);
+  });
+
+  it('carries the live table\'s columns the schema no longer declares onto the alteration, not just the report', () => {
+    const declared = schema(table('t', [real('a')]));
+    const diff = diffSchema(declared, schema(table('t', [text('a'), text('legacy')])));
+    expect(diff.tablesToAlter[0]?.extraColumns).toEqual([{ name: 'legacy', type: 'TEXT', logical: 'text', notNull: false }]);
+  });
+
+  it('replaces a live key of the same name when its type differs from the declared one', () => {
+    const declared = schema(table('t', [text('a')], [{ columns: ['a'], type: 'UNIQUE', name: 'k_a' }]));
+    const live = schema(table('t', [text('a')], [{ columns: ['a'], type: 'INDEX', name: 'k_a' }]));
+    const alteration = diffSchema(declared, live).tablesToAlter[0];
+    expect(alteration?.keysToDrop).toEqual(['k_a']);
+    expect(alteration?.keysToAdd).toEqual([{ columns: ['a'], type: 'UNIQUE', name: 'k_a' }]);
+  });
+
+  it('replaces a live key of the same name when its columns differ from the declared one', () => {
+    const declared = schema(table('t', [text('a'), text('b')], [{ columns: ['a', 'b'], type: 'INDEX', name: 'k_ab' }]));
+    const live = schema(table('t', [text('a'), text('b')], [{ columns: ['a'], type: 'INDEX', name: 'k_ab' }]));
+    const alteration = diffSchema(declared, live).tablesToAlter[0];
+    expect(alteration?.keysToDrop).toEqual(['k_ab']);
+    expect(alteration?.keysToAdd).toEqual([{ columns: ['a', 'b'], type: 'INDEX', name: 'k_ab' }]);
+  });
+
+  it('leaves a live key alone when it already matches the declared shape', () => {
+    const declared = schema(table('t', [text('a')], [{ columns: ['a'], type: 'INDEX', name: 'k_a' }]));
+    const live = schema(table('t', [text('a')], [{ columns: ['a'], type: 'INDEX', name: 'k_a' }]));
+    expect(diffSchema(declared, live).hasChanges).toBe(false);
   });
 
   it('requires a recreate when a storage type changed', () => {

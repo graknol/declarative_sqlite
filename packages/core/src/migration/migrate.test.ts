@@ -123,7 +123,8 @@ describe('runMigration', () => {
     await runMigration(adapter, v1, { mode: 'auto' });
     // c_ncr exists with system_id as INTEGER, so the diff wants a recreate it is not allowed to do.
     await adapter.exec(`CREATE TABLE "c_ncr" ("system_id" INTEGER)`);
-    await expect(runMigration(adapter, v2, { mode: 'auto' })).rejects.toThrow();
+    await expect(runMigration(adapter, v2, { mode: 'auto' })).rejects.toThrow(MigrationBlockedError);
+    await expect(runMigration(adapter, v2, { mode: 'auto' })).rejects.toThrow(/c_ncr/);
     const task = (await introspect(adapter)).tables.find((t) => t.name === 'c_work_task');
     expect(task?.columns.map((c) => c.name)).not.toContain('c_qty_installed');
   });
