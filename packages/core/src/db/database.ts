@@ -1,8 +1,11 @@
 import type { RunResult, SQLiteAdapter } from '../adapters/adapter';
 import { runMigration, type MigrationMode, type MigrationPlan } from '../migration/migrate';
-import type { Schema } from '../schema/types';
-import type { SqlValue } from '../types';
+import { SYSTEM_ID_COLUMN } from '../schema/table-builder';
+import type { Schema, TableDef } from '../schema/types';
+import type { Row, SqlValue } from '../types';
 import { InvalidationBus, WriteLog } from './invalidation-bus';
+import { quoteIdentifier } from './sql';
+import { writeRow, type RowMap, type SyncedTableApi, type TableApi, type TableApis } from './tables';
 import { Transaction } from './transaction';
 
 /** Everything `Database.open` needs: the declared schema, an adapter to run it on, and how much freedom the migration has. */
@@ -27,18 +30,26 @@ export class Database {
   private closed = false;
   private writeQueue: Promise<unknown> = Promise.resolve();
 
+  /**
+   * Typed CRUD per table, generated from the schema. A `.synced()` table appears
+   * here with `get` only: its write methods do not exist, so the server-truth
+   * rule is enforced by the object, not by a runtime check a cast could dodge.
+   */
+  readonly tables: Record<string, TableApi<Row> | SyncedTableApi<Row>> = {};
+
   protected constructor(
     readonly schema: Schema,
     protected readonly adapter: SQLiteAdapter,
   ) {}
 
   /**
-   * Opens the adapter and migrates it towards `options.schema` according to
-   * `options.migrate` (default `auto`). This is the one entry point every
-   * consumer of the library calls; the returned `Database` is ready for reads
-   * once the promise resolves, and for writes once later tasks add them.
+   * Opens and migrates a database. Supply the application's row types and the
+   * names of its synced tables to get a typed `db.tables`:
+   * `Database.open<AppRows, 'c_work_task' | 'c_work_order'>({ ... })`.
    */
-  static async open(options: DatabaseOptions): Promise<Database> {
+  static async open<TRows extends RowMap = RowMap, TSynced extends keyof TRows = never>(
+    options: DatabaseOptions,
+  ): Promise<Database & { tables: TableApis<TRows, TSynced> }> {
     await options.adapter.open();
     const db = new Database(options.schema, options.adapter);
     await runMigration(options.adapter, options.schema, {
@@ -46,7 +57,8 @@ export class Database {
       allowRecreate: options.allowRecreate ?? false,
       ...(options.onMigrationPlan ? { onPlan: options.onMigrationPlan } : {}),
     });
-    return db;
+    db.buildTableApis();
+    return db as Database & { tables: TableApis<TRows, TSynced> };
   }
 
   /** Runs a read-only SQL query with positional parameters and returns every matching row, typed `T`. */
@@ -120,7 +132,53 @@ export class Database {
     await this.adapter.close();
   }
 
+  /** The declared definition of one table. Throws if the schema does not declare it. */
+  tableDef(name: string): TableDef {
+    const table = this.schema.tables.find((t) => t.name === name);
+    if (!table) throw new Error(`Table ${name} is not in the schema`);
+    return table;
+  }
+
+  /** The column holding a table's row key: the `.synced()` key, or `system_id`. */
+  keyColumn(name: string): string {
+    return this.tableDef(name).synced?.key ?? SYSTEM_ID_COLUMN;
+  }
+
   protected ensureOpen(): void {
     if (this.closed) throw new Error('Database is closed');
+  }
+
+  private buildTableApis(): void {
+    for (const table of this.schema.tables) {
+      const keyColumn = table.synced?.key ?? SYSTEM_ID_COLUMN;
+      const get = async (key: string): Promise<Row | undefined> =>
+        this.queryOne<Row>(`SELECT * FROM ${quoteIdentifier(table.name)} WHERE ${quoteIdentifier(keyColumn)} = ?`, [key]);
+
+      if (table.synced) {
+        this.tables[table.name] = { get };
+        continue;
+      }
+
+      this.tables[table.name] = {
+        get,
+        insert: async (row: Row) => {
+          await this.transaction(async (tx) => writeRow(tx, table, keyColumn, String(row[keyColumn] ?? ''), row, 'insert'));
+        },
+        update: async (key: string, patch: Partial<Row>) =>
+          this.transaction(async (tx) => writeRow(tx, table, keyColumn, key, patch as Row, 'update')),
+        upsert: async (row: Row) => {
+          await this.transaction(async (tx) => writeRow(tx, table, keyColumn, String(row[keyColumn] ?? ''), row, 'upsert'));
+        },
+        delete: async (key: string) =>
+          this.transaction(async (tx) => {
+            const result = await tx.execute(
+              `DELETE FROM ${quoteIdentifier(table.name)} WHERE ${quoteIdentifier(keyColumn)} = ?`,
+              [key],
+            );
+            tx.markWritten(table.name, key, null);
+            return result.changes;
+          }),
+      };
+    }
   }
 }

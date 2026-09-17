@@ -28,3 +28,13 @@ export { planMigration, runMigration } from './migration/migrate';
 export type { MigrationDiff, TableAlteration, ColumnRetype } from './migration/diff';
 export type { MigrationOperation } from './migration/generate';
 export type { MigrationMode, MigrationPlan } from './migration/migrate';
+
+export { Database } from './db/database';
+export { Transaction } from './db/transaction';
+export { InvalidationBus } from './db/invalidation-bus';
+export { quoteIdentifier } from './db/sql';
+export { toSqlValue } from './db/tables';
+export type { DatabaseOptions } from './db/database';
+export type { InvalidationEvent, TableInvalidation } from './db/invalidation-bus';
+export type { RowMap, TableApi, SyncedTableApi, TableApis } from './db/tables';
+export type { ServerWriter } from './db/server-truth';
