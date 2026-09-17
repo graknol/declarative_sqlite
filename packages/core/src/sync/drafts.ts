@@ -1,5 +1,6 @@
 import type { Database } from '../db/database';
 import { toSqlValue } from '../db/tables';
+import type { ServerWriter } from '../db/server-truth';
 import type { Row } from '../types';
 import type { Outbox } from './outbox';
 
@@ -23,10 +24,20 @@ export interface DraftState {
 export class Drafts {
   protected readonly drafts = new Map<string, Map<string, DraftState>>();
   private readonly listeners = new Set<() => void>();
+  /**
+   * Row keys with a tombstone held that has not yet applied. A column's own
+   * `heldTombstone` flag is lost the moment that column's draft ends, so a row
+   * with several open drafts needs this to remember the hold past the first
+   * column to end — otherwise a draft begun on the row after `holdTombstone`
+   * was called, then ended last, would find its own flag unset and skip the
+   * delete even though the row was tombstoned and every draft on it is now over.
+   */
+  private readonly tombstoned = new Set<string>();
 
   constructor(
     protected readonly db: Database,
     protected readonly outbox: Outbox,
+    private readonly writer: ServerWriter,
   ) {}
 
   protected static rowKey(table: string, systemId: string): string {
@@ -96,6 +107,88 @@ export class Drafts {
     });
 
     return changed ? result : rows;
+  }
+
+  /**
+   * Offers a server value for a column. If that column is being typed, the value
+   * is held until the draft ends and `true` is returned, so the pull applier
+   * knows not to write it; otherwise nothing happens and `false` is returned.
+   */
+  holdServerValue(table: string, systemId: string, column: string, value: unknown): boolean {
+    const state = this.drafts.get(Drafts.rowKey(table, systemId))?.get(column);
+    if (!state) return false;
+    state.heldServerValue = { value };
+    return true;
+  }
+
+  /** Offers a tombstone for a row. Held while any column of the row is being typed, so the row cannot vanish under the user's fingers. */
+  holdTombstone(table: string, systemId: string): boolean {
+    const key = Drafts.rowKey(table, systemId);
+    const columns = this.drafts.get(key);
+    if (!columns || columns.size === 0) return false;
+    for (const state of columns.values()) state.heldTombstone = true;
+    this.tombstoned.add(key);
+    return true;
+  }
+
+  /** Whether this row currently has any open draft — the guard that decides whether a held tombstone must keep waiting rather than apply. */
+  hasHolds(table: string, systemId: string): boolean {
+    const columns = this.drafts.get(Drafts.rowKey(table, systemId));
+    return columns !== undefined && columns.size > 0;
+  }
+
+  /**
+   * Ends one draft — blur, Enter, save, Sync, route change or `pagehide`. A
+   * changed value is committed to SQLite and the outbox in one transaction and
+   * the overlay takes the column over, which supersedes any server value held
+   * for it. An unchanged value releases the column and applies the held server
+   * value, if there is one. A held tombstone applies last, after the commit, so
+   * the change is in the queue when the push answers `CNOROW` for it.
+   */
+  async end(table: string, systemId: string, column: string): Promise<'committed' | 'released'> {
+    const key = Drafts.rowKey(table, systemId);
+    const columns = this.drafts.get(key);
+    const state = columns?.get(column);
+    if (!columns || !state) return 'released';
+
+    columns.delete(column);
+    if (columns.size === 0) this.drafts.delete(key);
+
+    const changed = !Object.is(state.value, state.seed);
+    if (changed) {
+      await this.outbox.record({ table, systemId, changes: { [column]: state.value } });
+    } else if (state.heldServerValue) {
+      await this.db.transaction(async (tx) => {
+        await this.writer.setColumns(tx, table, systemId, { [column]: toSqlValue(state.heldServerValue?.value) });
+      });
+    }
+
+    if (state.heldTombstone) this.tombstoned.add(key);
+    if (this.tombstoned.has(key) && !this.hasHolds(table, systemId)) {
+      this.tombstoned.delete(key);
+      await this.db.transaction(async (tx) => {
+        await this.writer.delete(tx, table, systemId);
+      });
+    }
+
+    this.notify();
+    return changed ? 'committed' : 'released';
+  }
+
+  /** Ends every draft on one row, in column order. */
+  async endRow(table: string, systemId: string): Promise<void> {
+    for (const column of [...this.activeColumns(table, systemId)]) {
+      await this.end(table, systemId, column);
+    }
+  }
+
+  /** Ends every open draft. The exit paths — Sync button, route change, `pagehide`, `visibilitychange` — call this. */
+  async endAll(): Promise<void> {
+    for (const key of [...this.drafts.keys()]) {
+      const [table, systemId] = key.split('|');
+      if (table === undefined || systemId === undefined) continue;
+      await this.endRow(table, systemId);
+    }
   }
 
   protected notify(): void {

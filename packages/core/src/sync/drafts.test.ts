@@ -24,7 +24,7 @@ async function setup() {
   await db.transaction(async (tx) => {
     await writer.upsert(tx, 'c_work_task', { system_id: 'A', wo_no: 3188, c_qty_installed: 1, rowstate: 'RELEASED', sync_seq: 5, system_removed: 0 });
   });
-  return { db, outbox, writer, drafts: new Drafts(db, outbox) };
+  return { db, outbox, writer, drafts: new Drafts(db, outbox, writer) };
 }
 
 describe('Drafts', () => {
