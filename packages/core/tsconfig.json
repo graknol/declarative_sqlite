@@ -16,6 +16,7 @@
     "outDir": "./dist",
     "removeComments": true,
     "importHelpers": true,
+    "jsx": "react-jsx",
     
     /* Interop Constraints */
     "esModuleInterop": true,

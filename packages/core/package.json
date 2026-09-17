@@ -1,7 +1,7 @@
 {
   "name": "declarative-sqlite",
-  "version": "2.2.0",
-  "description": "TypeScript port of declarative_sqlite for PWA and Capacitor applications - Zero code generation, type-safe SQLite with automatic migration",
+  "version": "3.0.0-alpha.1",
+  "description": "Offline-first sync data layer for SQLite in the browser: declarative schema, automatic migration, live queries, outbox, drafts and cursor-based sync",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -11,70 +11,42 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "require": "./dist/react/index.cjs"
     }
   },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
+  "files": ["dist", "README.md", "CHANGELOG.md", "MIGRATION-v2-to-v3.md", "LICENSE"],
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
-    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage",
-    "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
-  "keywords": [
-    "sqlite",
-    "database",
-    "declarative",
-    "schema",
-    "migration",
-    "pwa",
-    "capacitor",
-    "typescript",
-    "offline-first",
-    "sync",
-    "rxjs",
-    "reactive",
-    "hlc",
-    "lww",
-    "zero-codegen",
-    "type-safe"
-  ],
+  "keywords": ["sqlite", "offline-first", "sync", "outbox", "live-query", "pwa", "capacitor", "typescript"],
   "author": "graknol",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/graknol/declarative_sqlite.git",
-    "directory": "packages/core"
-  },
-  "bugs": {
-    "url": "https://github.com/graknol/declarative_sqlite/issues"
-  },
-  "homepage": "https://github.com/graknol/declarative_sqlite#readme",
-  "peerDependencies": {
-    "rxjs": "^7.8.0"
-  },
+  "repository": { "type": "git", "url": "https://github.com/graknol/declarative_sqlite.git", "directory": "packages/core" },
   "dependencies": {
-    "@sqlite.org/sqlite-wasm": "^3.47.2-build1",
-    "@zenfs/core": "^2.4.4",
-    "@zenfs/dom": "^1.2.5"
+    "@sqlite.org/sqlite-wasm": "^3.47.2-build1"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true }
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^6.13.0",
-    "@typescript-eslint/parser": "^6.13.0",
+    "@testing-library/react": "^16.0.1",
+    "@types/react": "^18.3.12",
     "@vitest/coverage-v8": "^1.0.0",
-    "@vitest/ui": "^1.0.0",
-    "eslint": "^8.55.0",
-    "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.0.0",
-    "rxjs": "^7.8.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsup": "^8.0.1",
     "typescript": "^5.3.0",
     "vitest": "^1.0.0"
