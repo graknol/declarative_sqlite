@@ -1,9 +1,30 @@
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { SqlValue } from '../types';
 import type { RunResult, SQLiteAdapter } from './adapter';
 
 /** The initialised sqlite3 WASM namespace. Typed as `any` because the official build ships no types for `oo1`/`capi`. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Sqlite3Module = any;
+
+/**
+ * Resolves and loads the Node entry point of `@sqlite.org/sqlite-wasm`
+ * (`sqlite-wasm/jswasm/sqlite3-node.mjs`). That file is not listed in the
+ * package's `exports` map, so importing it by specifier throws
+ * `ERR_PACKAGE_PATH_NOT_EXPORTED` under plain Node; only `.` and
+ * `./package.json` are exported. We resolve `./package.json` (which *is*
+ * exported) with `createRequire`, then join its directory to the real file
+ * and import that absolute `file://` URL instead, which bypasses the
+ * `exports` map entirely and works both under vitest and in a consuming
+ * Node process with no bundler-specific alias required.
+ */
+async function loadNodeSqlite3(): Promise<Sqlite3Module> {
+  const require = createRequire(import.meta.url);
+  const pkgJson = require.resolve('@sqlite.org/sqlite-wasm/package.json');
+  const entry = path.join(path.dirname(pkgJson), 'sqlite-wasm', 'jswasm', 'sqlite3-node.mjs');
+  return import(/* @vite-ignore */ pathToFileURL(entry).href);
+}
 
 /**
  * Loads the official SQLite WASM build for the current environment: the
@@ -17,9 +38,7 @@ export async function loadSqlite3(wasmDir?: string): Promise<Sqlite3Module> {
   if (!modulePromise) {
     modulePromise = (async () => {
       const isNode = typeof process !== 'undefined' && process.versions?.node !== undefined;
-      const mod = isNode
-        ? await import('@sqlite.org/sqlite-wasm/sqlite-wasm/jswasm/sqlite3-node.mjs')
-        : await import('@sqlite.org/sqlite-wasm');
+      const mod = isNode ? await loadNodeSqlite3() : await import('@sqlite.org/sqlite-wasm');
       const init = (mod as { default: (config: unknown) => Promise<Sqlite3Module> }).default;
       const config: Record<string, unknown> = { print: () => {}, printErr: console.error };
       if (wasmDir) {
@@ -90,7 +109,10 @@ export class MemoryAdapter implements SQLiteAdapter {
     } finally {
       stmt.finalize();
     }
-    return { changes: this.db.changes(), lastInsertRowid: Number(this.db.lastInsertRowid ?? 0) };
+    return {
+      changes: this.db.changes(),
+      lastInsertRowid: Number(this.sqlite3.capi.sqlite3_last_insert_rowid(this.db.pointer)),
+    };
   }
 
   async export(): Promise<Uint8Array> {

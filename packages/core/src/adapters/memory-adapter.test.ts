@@ -51,6 +51,18 @@ describe('MemoryAdapter', () => {
     await expect(closed.exec('SELECT 1')).rejects.toThrow(/not open/i);
   });
 
+  it('returns incrementing rowids and changes of 1 for successive inserts', async () => {
+    await adapter.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT)');
+
+    const first = await adapter.run('INSERT INTO t (a) VALUES (?)', ['x']);
+    expect(first.changes).toBe(1);
+    expect(first.lastInsertRowid).toBe(1);
+
+    const second = await adapter.run('INSERT INTO t (a) VALUES (?)', ['y']);
+    expect(second.changes).toBe(1);
+    expect(second.lastInsertRowid).toBe(2);
+  });
+
   it('exports the database image', async () => {
     await adapter.exec('CREATE TABLE t (a TEXT)');
     const bytes = await adapter.export();
