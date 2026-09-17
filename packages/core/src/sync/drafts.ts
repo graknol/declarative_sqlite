@@ -138,22 +138,17 @@ export class Drafts {
   }
 
   /**
-   * Ends one draft — blur, Enter, save, Sync, route change or `pagehide`. A
-   * changed value is committed to SQLite and the outbox in one transaction and
-   * the overlay takes the column over, which supersedes any server value held
-   * for it. An unchanged value releases the column and applies the held server
-   * value, if there is one. A held tombstone applies last, after the commit, so
-   * the change is in the queue when the push answers `CNOROW` for it.
+   * Writes what one column's exit implies — a changed value to the outbox, or a
+   * held server value once nothing else is pending for it — without touching
+   * `this.drafts` or `this.tombstoned`. Shared by `end()`, which wraps a single
+   * call in its own transaction, and `endRow()`, which wraps a whole row's
+   * calls in one shared transaction so they commit or roll back together.
+   * `outbox.record` and the nested `this.db.transaction` for a held server
+   * value each join whichever transaction is already open on this database, so
+   * calling this from inside an outer `this.db.transaction` body never opens a
+   * second, separately-committing transaction.
    */
-  async end(table: string, systemId: string, column: string): Promise<'committed' | 'released'> {
-    const key = Drafts.rowKey(table, systemId);
-    const columns = this.drafts.get(key);
-    const state = columns?.get(column);
-    if (!columns || !state) return 'released';
-
-    columns.delete(column);
-    if (columns.size === 0) this.drafts.delete(key);
-
+  private async writeColumnExit(table: string, systemId: string, column: string, state: DraftState): Promise<'committed' | 'released'> {
     const changed = !Object.is(state.value, state.seed);
     if (changed) {
       await this.outbox.record({ table, systemId, changes: { [column]: state.value } });
@@ -162,6 +157,30 @@ export class Drafts {
         await this.writer.setColumns(tx, table, systemId, { [column]: toSqlValue(state.heldServerValue?.value) });
       });
     }
+    return changed ? 'committed' : 'released';
+  }
+
+  /**
+   * Ends one draft — blur, Enter, save, Sync, route change or `pagehide`. A
+   * changed value is committed to SQLite and the outbox in one transaction and
+   * the overlay takes the column over, which supersedes any server value held
+   * for it. An unchanged value releases the column and applies the held server
+   * value, if there is one. A held tombstone applies last, after the commit, so
+   * the change is in the queue when the push answers `CNOROW` for it. The
+   * in-memory draft is only removed once its write has committed without
+   * throwing — a rejected write (an over-wide value, a batch cap) leaves the
+   * draft exactly as the user left it, ready to retry.
+   */
+  async end(table: string, systemId: string, column: string): Promise<'committed' | 'released'> {
+    const key = Drafts.rowKey(table, systemId);
+    const columns = this.drafts.get(key);
+    const state = columns?.get(column);
+    if (!columns || !state) return 'released';
+
+    const result = await this.db.transaction(() => this.writeColumnExit(table, systemId, column, state));
+
+    columns.delete(column);
+    if (columns.size === 0) this.drafts.delete(key);
 
     if (state.heldTombstone) this.tombstoned.add(key);
     if (this.tombstoned.has(key) && !this.hasHolds(table, systemId)) {
@@ -172,14 +191,40 @@ export class Drafts {
     }
 
     this.notify();
-    return changed ? 'committed' : 'released';
+    return result;
   }
 
-  /** Ends every draft on one row, in column order. */
+  /**
+   * Ends every draft on one row in one shared transaction, so the row's exit is
+   * all-or-nothing: if a later column's write throws, every earlier column's
+   * write in this call rolls back with it, and no draft is removed from memory
+   * for any column — the whole row is left exactly as it was, ready to retry.
+   * `this.drafts` and `this.tombstoned` are only touched after the transaction
+   * resolves; nothing about them is mutated while it can still fail.
+   */
   async endRow(table: string, systemId: string): Promise<void> {
-    for (const column of [...this.activeColumns(table, systemId)]) {
-      await this.end(table, systemId, column);
-    }
+    const key = Drafts.rowKey(table, systemId);
+    const columns = this.drafts.get(key);
+    if (!columns || columns.size === 0) return;
+
+    const active = [...columns.entries()];
+    await this.db.transaction(async () => {
+      for (const [column, state] of active) {
+        await this.writeColumnExit(table, systemId, column, state);
+      }
+      if (this.tombstoned.has(key)) {
+        await this.db.transaction(async (tx) => {
+          await this.writer.delete(tx, table, systemId);
+        });
+      }
+    });
+
+    for (const [column] of active) columns.delete(column);
+    const stillOpen = columns.size > 0;
+    if (!stillOpen) this.drafts.delete(key);
+    if (this.tombstoned.has(key) && !stillOpen) this.tombstoned.delete(key);
+
+    this.notify();
   }
 
   /** Ends every open draft. The exit paths — Sync button, route change, `pagehide`, `visibilitychange` — call this. */

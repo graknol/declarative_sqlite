@@ -138,4 +138,62 @@ describe('Drafts.end', () => {
     expect(s.drafts.activeColumns('c_work_task', 'A').size).toBe(0);
     expect((await s.outbox.pending()).map((e) => e.columnName).sort()).toEqual(['c_qty_installed', 'rowstate']);
   });
+
+  it('leaves the draft in place when its end() write throws', async () => {
+    const s = await setup();
+    db = s.db;
+    const tooWide = 'x'.repeat(4001);
+    s.drafts.begin('c_work_task', 'A', 'rowstate', 'RELEASED');
+    s.drafts.set('c_work_task', 'A', 'rowstate', tooWide);
+
+    await expect(s.drafts.end('c_work_task', 'A', 'rowstate')).rejects.toThrow();
+
+    expect(s.drafts.isActive('c_work_task', 'A', 'rowstate')).toBe(true);
+    expect(s.drafts.get('c_work_task', 'A', 'rowstate')).toBe(tooWide);
+    expect(await db.queryOne('SELECT rowstate FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({ rowstate: 'RELEASED' });
+  });
+
+  it('endRow leaves every column of the row untouched when a later column throws', async () => {
+    const s = await setup();
+    db = s.db;
+    const tooWide = 'x'.repeat(4001);
+    // Insertion order matters: c_qty_installed is processed first and would
+    // have already committed under the old per-column-transaction code by the
+    // time rowstate's write throws.
+    s.drafts.begin('c_work_task', 'A', 'c_qty_installed', 1);
+    s.drafts.set('c_work_task', 'A', 'c_qty_installed', 12);
+    s.drafts.begin('c_work_task', 'A', 'rowstate', 'RELEASED');
+    s.drafts.set('c_work_task', 'A', 'rowstate', tooWide);
+
+    await expect(s.drafts.endRow('c_work_task', 'A')).rejects.toThrow();
+
+    expect(s.drafts.isActive('c_work_task', 'A', 'c_qty_installed')).toBe(true);
+    expect(s.drafts.get('c_work_task', 'A', 'c_qty_installed')).toBe(12);
+    expect(s.drafts.isActive('c_work_task', 'A', 'rowstate')).toBe(true);
+    expect(s.drafts.get('c_work_task', 'A', 'rowstate')).toBe(tooWide);
+
+    expect(await db.queryOne('SELECT c_qty_installed, rowstate FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({
+      c_qty_installed: 1,
+      rowstate: 'RELEASED',
+    });
+    expect(await s.outbox.pending()).toEqual([]);
+  });
+
+  it('endRow commits every column of the row when all writes succeed', async () => {
+    const s = await setup();
+    db = s.db;
+    s.drafts.begin('c_work_task', 'A', 'c_qty_installed', 1);
+    s.drafts.set('c_work_task', 'A', 'c_qty_installed', 12);
+    s.drafts.begin('c_work_task', 'A', 'rowstate', 'RELEASED');
+    s.drafts.set('c_work_task', 'A', 'rowstate', 'WORKSTARTED');
+
+    await s.drafts.endRow('c_work_task', 'A');
+
+    expect(s.drafts.activeColumns('c_work_task', 'A').size).toBe(0);
+    expect(await db.queryOne('SELECT c_qty_installed, rowstate FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({
+      c_qty_installed: 12,
+      rowstate: 'WORKSTARTED',
+    });
+    expect((await s.outbox.pending()).map((e) => e.columnName).sort()).toEqual(['c_qty_installed', 'rowstate']);
+  });
 });
