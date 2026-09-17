@@ -8,6 +8,14 @@ import { quoteIdentifier } from './sql';
 import { writeRow, type RowMap, type SyncedTableApi, type TableApi, type TableApis } from './tables';
 import { Transaction } from './transaction';
 
+/** Thrown for the db-layer's own failures: a closed database, a table the schema does not declare, an upsert without a key, or a forged server-write capability. */
+export class DatabaseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DatabaseError';
+  }
+}
+
 /** Everything `Database.open` needs: the declared schema, an adapter to run it on, and how much freedom the migration has. */
 export interface DatabaseOptions {
   schema: Schema;
@@ -29,6 +37,8 @@ export class Database {
   readonly invalidations = new InvalidationBus();
   private closed = false;
   private writeQueue: Promise<unknown> = Promise.resolve();
+  /** The transaction currently open on this database, if any. Set after `BEGIN IMMEDIATE` succeeds and cleared before its commit/rollback outcome is reported, so that `transaction()` and `execute()` can detect and join it. */
+  private activeTx: Transaction | undefined;
 
   /**
    * Typed CRUD per table, generated from the schema. A `.synced()` table appears
@@ -78,10 +88,26 @@ export class Database {
    * statement wrote so live queries on them re-run; leave it out for a statement
    * that writes nothing (a PRAGMA, an ANALYZE). Prefer `db.tables` or a
    * transaction for ordinary writes — they report row keys and scopes, so only
-   * the queries that actually care re-run.
+   * the queries that actually care re-run. Issued while a transaction is open
+   * on this database, the statement joins it instead of racing it: it runs
+   * immediately and its `invalidates` tables fold into that transaction's
+   * single event rather than firing (and possibly being rolled back) early.
+   * Raw SQL is not covered by the server-truth guard: writing a `.synced()`
+   * table through `execute` outside the pull applier or the outbox committer
+   * corrupts the cursor contract.
    */
   async execute(sql: string, params: SqlValue[] = [], options: { invalidates?: string[] } = {}): Promise<RunResult> {
     this.ensureOpen();
+    if (this.activeTx) return this.activeTx.execute(sql, params, options);
+    const run = this.writeQueue.then(() => this.runExecute(sql, params, options));
+    this.writeQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async runExecute(sql: string, params: SqlValue[], options: { invalidates?: string[] }): Promise<RunResult> {
     const result = await this.adapter.run(sql, params);
     const invalidates = options.invalidates ?? [];
     if (invalidates.length > 0) {
@@ -94,13 +120,17 @@ export class Database {
 
   /**
    * Runs `work` inside one SQLite transaction. Transactions are serialised —
-   * one adapter is one connection — so overlapping callers queue rather than
-   * interleave their BEGINs. On success the transaction's write log becomes
-   * exactly one invalidation event; on failure everything rolls back and no
-   * event is emitted, so a live query can never show a row that was undone.
+   * one adapter is one connection — so overlapping top-level callers queue
+   * rather than interleave their BEGINs. On success the transaction's write
+   * log becomes exactly one invalidation event; on failure everything rolls
+   * back and no event is emitted, so a live query can never show a row that
+   * was undone. While a transaction body is open, every write on this
+   * database — a nested `transaction()`, a `db.tables` call, an `execute` —
+   * joins it and commits or rolls back with it, rather than queuing.
    */
   async transaction<T>(work: (tx: Transaction) => Promise<T>): Promise<T> {
     this.ensureOpen();
+    if (this.activeTx) return work(this.activeTx);
     const run = this.writeQueue.then(() => this.runTransaction(work));
     this.writeQueue = run.then(
       () => undefined,
@@ -113,29 +143,46 @@ export class Database {
     const log = new WriteLog();
     const tx = new Transaction(this.adapter, log);
     await this.adapter.exec('BEGIN IMMEDIATE');
+    this.activeTx = tx;
     let result: T;
     try {
-      result = await work(tx);
-      await this.adapter.exec('COMMIT');
-    } catch (error) {
-      await this.adapter.exec('ROLLBACK');
-      throw error;
+      try {
+        result = await work(tx);
+        await this.adapter.exec('COMMIT');
+      } catch (error) {
+        try {
+          await this.adapter.exec('ROLLBACK');
+        } catch (rollbackError) {
+          console.error('[declarative-sqlite] rollback failed', rollbackError);
+        }
+        throw error;
+      }
+    } finally {
+      this.activeTx = undefined;
     }
     if (!log.isEmpty()) this.invalidations.emit(log.toEvent());
     return result;
   }
 
-  /** Closes the underlying adapter. Every method on this instance throws afterwards; safe to call more than once. */
+  /**
+   * Closes the underlying adapter. Every method on this instance throws
+   * afterwards; safe to call more than once. Marks the database closed
+   * immediately so nothing new joins the write queue, then waits for
+   * whatever was already queued (it never rejects — a queued transaction
+   * still commits or rolls back) before tearing the adapter down.
+   */
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    const pending = this.writeQueue;
+    await pending;
     await this.adapter.close();
   }
 
   /** The declared definition of one table. Throws if the schema does not declare it. */
   tableDef(name: string): TableDef {
     const table = this.schema.tables.find((t) => t.name === name);
-    if (!table) throw new Error(`Table ${name} is not in the schema`);
+    if (!table) throw new DatabaseError(`Table ${name} is not in the schema`);
     return table;
   }
 
@@ -145,7 +192,7 @@ export class Database {
   }
 
   protected ensureOpen(): void {
-    if (this.closed) throw new Error('Database is closed');
+    if (this.closed) throw new DatabaseError('Database is closed');
   }
 
   private buildTableApis(): void {

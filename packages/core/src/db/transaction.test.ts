@@ -10,6 +10,9 @@ function testSchema() {
     t.real('wo_no');
     t.real('c_qty_installed');
   }).synced({ key: 'system_id', scope: ['wo_no'] });
+  s.table('local_note', (t) => {
+    t.text('text');
+  });
   return s.build();
 }
 
@@ -89,4 +92,76 @@ describe('Database.transaction', () => {
     db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
     expect(await db.transaction(async () => 42)).toBe(42);
   });
+
+  it(
+    'a nested db.tables write joins the open transaction instead of hanging',
+    async () => {
+      db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
+      const notes = db.tables['local_note'];
+      if (!notes || !('insert' in notes)) throw new Error('local_note should be writable');
+
+      await db.transaction(async () => {
+        await notes.insert({ system_id: 'n1', text: 'hi' });
+      });
+
+      expect(await notes.get('n1')).toMatchObject({ text: 'hi' });
+    },
+    { timeout: 5000 },
+  );
+
+  it(
+    'a nested db.transaction call resolves and returns its own callback result',
+    async () => {
+      db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
+      const outer = db;
+
+      const result = await outer.transaction(async () => outer.transaction(async () => 'nested-value'));
+
+      expect(result).toBe('nested-value');
+    },
+    { timeout: 5000 },
+  );
+
+  it(
+    'rolls back a nested write when the outer body throws, and emits no invalidation',
+    async () => {
+      db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
+      const notes = db.tables['local_note'];
+      if (!notes || !('insert' in notes)) throw new Error('local_note should be writable');
+      const events: InvalidationEvent[] = [];
+      db.invalidations.subscribe((event) => events.push(event));
+
+      await expect(
+        db.transaction(async () => {
+          await notes.insert({ system_id: 'n1', text: 'hi' });
+          throw new Error('nope');
+        }),
+      ).rejects.toThrow('nope');
+
+      expect(await notes.get('n1')).toBeUndefined();
+      expect(events).toEqual([]);
+    },
+    { timeout: 5000 },
+  );
+
+  it(
+    'one outer transaction with two nested writes emits exactly one event covering both tables',
+    async () => {
+      db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
+      const notes = db.tables['local_note'];
+      if (!notes || !('insert' in notes)) throw new Error('local_note should be writable');
+      const events: InvalidationEvent[] = [];
+      db.invalidations.subscribe((event) => events.push(event));
+
+      await db.transaction(async (tx) => {
+        await notes.insert({ system_id: 'n1', text: 'hi' });
+        await tx.execute(`INSERT INTO "c_work_task" ("system_id", "wo_no") VALUES (?, ?)`, ['A', 1]);
+        tx.markWritten('c_work_task', 'A', { wo_no: 1 });
+      });
+
+      expect(events).toHaveLength(1);
+      expect([...(events[0]?.tables.keys() ?? [])].sort()).toEqual(['c_work_task', 'local_note']);
+    },
+    { timeout: 5000 },
+  );
 });

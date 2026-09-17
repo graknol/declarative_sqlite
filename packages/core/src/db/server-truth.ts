@@ -1,5 +1,5 @@
 import { quoteIdentifier } from './sql';
-import type { Database } from './database';
+import { DatabaseError, type Database } from './database';
 import type { Transaction } from './transaction';
 import { rowScope, writeRow } from './tables';
 import type { Row } from '../types';
@@ -34,7 +34,7 @@ export interface ServerWriter {
  */
 export function serverWriter(db: Database, capability: ServerWriteCapability): ServerWriter {
   if (!capability || capability[SERVER_WRITE] !== true) {
-    throw new Error('serverWriter requires the sync runtime capability object');
+    throw new DatabaseError('serverWriter requires the sync runtime capability object');
   }
 
   return {
@@ -42,7 +42,7 @@ export function serverWriter(db: Database, capability: ServerWriteCapability): S
       const def = db.tableDef(table);
       const keyColumn = db.keyColumn(table);
       const key = String(row[keyColumn] ?? '');
-      if (!key) throw new Error(`${table}: cannot upsert a row without ${keyColumn}`);
+      if (!key) throw new DatabaseError(`${table}: cannot upsert a row without ${keyColumn}`);
       await writeRow(tx, def, keyColumn, key, row, 'upsert');
     },
 

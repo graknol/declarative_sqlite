@@ -29,7 +29,7 @@ export type { MigrationDiff, TableAlteration, ColumnRetype } from './migration/d
 export type { MigrationOperation } from './migration/generate';
 export type { MigrationMode, MigrationPlan } from './migration/migrate';
 
-export { Database } from './db/database';
+export { Database, DatabaseError } from './db/database';
 export { Transaction } from './db/transaction';
 export { InvalidationBus } from './db/invalidation-bus';
 export { quoteIdentifier } from './db/sql';

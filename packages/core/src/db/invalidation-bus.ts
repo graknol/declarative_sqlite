@@ -18,6 +18,7 @@ export class WriteLog {
   private readonly rows = new Map<string, Map<string, ScopeValues | null>>();
   private readonly wholeTables = new Set<string>();
 
+  /** Records that one row of `table` was written, with its scope values (or `null`). A later `markTable` for the same table overrides individual row marks. */
   markRow(table: string, rowKey: string, scope: ScopeValues | null = null): void {
     let forTable = this.rows.get(table);
     if (!forTable) {
@@ -27,14 +28,17 @@ export class WriteLog {
     forTable.set(rowKey, scope);
   }
 
+  /** Records that `table` was written in a way that cannot be pinned to individual rows, so every live query on it must re-run. */
   markTable(table: string): void {
     this.wholeTables.add(table);
   }
 
+  /** True when nothing has been marked yet — the signal `runTransaction` uses to skip emitting an event for a transaction that wrote nothing. */
   isEmpty(): boolean {
     return this.rows.size === 0 && this.wholeTables.size === 0;
   }
 
+  /** Builds the one `InvalidationEvent` this log represents: whole-table marks take precedence over row marks for the same table. */
   toEvent(): InvalidationEvent {
     const tables = new Map<string, TableInvalidation>();
     for (const [table, rows] of this.rows) tables.set(table, rows);
@@ -52,6 +56,7 @@ export class WriteLog {
 export class InvalidationBus {
   private readonly listeners = new Set<(event: InvalidationEvent) => void>();
 
+  /** Registers a listener called with every future invalidation event. Returns a function that unsubscribes it. */
   subscribe(listener: (event: InvalidationEvent) => void): () => void {
     this.listeners.add(listener);
     return () => {
@@ -59,6 +64,7 @@ export class InvalidationBus {
     };
   }
 
+  /** Delivers `event` to every current subscriber. Called once per committed write transaction; never call this from application code. */
   emit(event: InvalidationEvent): void {
     for (const listener of [...this.listeners]) {
       try {

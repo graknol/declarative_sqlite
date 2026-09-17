@@ -84,7 +84,8 @@ describe('db.tables', () => {
 
   it('refuses a forged capability', async () => {
     db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
-    expect(() => serverWriter(db, {} as ReturnType<typeof createServerWriteCapability>)).toThrow(/capability/i);
+    const database = db;
+    expect(() => serverWriter(database, {} as ReturnType<typeof createServerWriteCapability>)).toThrow(/capability/i);
   });
 
   it('looks up a row scope even when the patch does not carry the scope columns', async () => {
