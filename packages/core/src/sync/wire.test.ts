@@ -40,6 +40,45 @@ describe('wire helpers', () => {
     expect(newBatchId()).not.toBe(id);
   });
 
+  it('falls back to getRandomValues when randomUUID is missing', () => {
+    const originalCrypto = globalThis.crypto;
+    try {
+      const getRandomValues = originalCrypto.getRandomValues.bind(originalCrypto);
+      Object.defineProperty(globalThis, 'crypto', {
+        value: { getRandomValues },
+        configurable: true,
+      });
+      const id = newBatchId();
+      expect(id.length).toBe(36);
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+      expect(newBatchId()).not.toBe(id);
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', {
+        value: originalCrypto,
+        configurable: true,
+      });
+    }
+  });
+
+  it('falls back to Math.random when crypto is absent', () => {
+    const originalCrypto = globalThis.crypto;
+    try {
+      Object.defineProperty(globalThis, 'crypto', {
+        value: undefined,
+        configurable: true,
+      });
+      const id = newBatchId();
+      expect(id.length).toBe(36);
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+      expect(newBatchId()).not.toBe(id);
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', {
+        value: originalCrypto,
+        configurable: true,
+      });
+    }
+  });
+
   it('uppercases table and column names for the wire', () => {
     expect(toWireTable('c_work_task')).toBe('C_WORK_TASK');
     expect(toWireColumn('c_qty_installed')).toBe('C_QTY_INSTALLED');

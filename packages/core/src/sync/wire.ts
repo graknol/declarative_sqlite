@@ -43,6 +43,7 @@ export interface PushBatch {
   changes: PushChange[];
 }
 
+/** The outcome of applying one change from a push batch. Values correspond to server result codes. */
 export type PushResultCode = 'applied' | 'noop' | 'rejected';
 
 /** The verdict on one change, by its zero-based position in the batch. */
@@ -97,19 +98,54 @@ export function decodeScalar(text: string | null): unknown {
   }
 }
 
+/** Validates that an encoded scalar fits the server column. Throws `ValueTooLongError` if the JSON is wider than `MAX_VALUE_CHARS`, preventing a rejected push. */
 export function assertScalarFits(table: string, column: string, encoded: string): void {
   if (encoded.length > MAX_VALUE_CHARS) throw new ValueTooLongError(table, column, encoded.length);
 }
 
-/** A batch id that fits `VARCHAR2(36)`: a v4 UUID is exactly 36 characters. */
+/** A batch id that fits `VARCHAR2(36)`: a v4 UUID is exactly 36 characters. Falls back from `randomUUID` through `getRandomValues` to `Math.random()` where needed. */
 export function newBatchId(): string {
-  return crypto.randomUUID();
+  const crypto = globalThis.crypto;
+
+  // Step 1: Use crypto.randomUUID if available
+  if (typeof crypto?.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  // Step 2: Use crypto.getRandomValues if available
+  if (typeof crypto?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    // Set version to 4 (bits 48-51)
+    bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+    // Set variant to 10 (bits 64-65)
+    bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+    return formatUuid(bytes);
+  }
+
+  // Step 3: Fall back to Math.random()
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) {
+    bytes[i] = Math.floor(Math.random() * 256);
+  }
+  // Set version to 4 (bits 48-51)
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  // Set variant to 10 (bits 64-65)
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  return formatUuid(bytes);
 }
 
+function formatUuid(bytes: Uint8Array): string {
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+/** Converts a local table name to its uppercase wire form. Table names are lowercase in the local schema but uppercase on the server; this function goes in the uppercase direction only. */
 export function toWireTable(table: string): string {
   return table.toUpperCase();
 }
 
+/** Converts a local column name to its uppercase wire form. Column names are lowercase in the local schema but uppercase on the server; this function goes in the uppercase direction only. */
 export function toWireColumn(column: string): string {
   return column.toUpperCase();
 }
