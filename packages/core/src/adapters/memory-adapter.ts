@@ -1,12 +1,9 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { SqlValue } from '../types';
-import type { RunResult, SQLiteAdapter } from './adapter';
+import { WasmAdapterBase, type Sqlite3Module } from './wasm';
 
-/** The initialised sqlite3 WASM namespace. Typed as `any` because the official build ships no types for `oo1`/`capi`. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Sqlite3Module = any;
+export type { Sqlite3Module } from './wasm';
 
 /**
  * Resolves and loads the Node entry point of `@sqlite.org/sqlite-wasm`
@@ -56,78 +53,14 @@ export async function loadSqlite3(wasmDir?: string): Promise<Sqlite3Module> {
  * neither OPFS nor IndexedDB is usable: nothing survives a reload, but the SQL
  * semantics are byte-for-byte the ones the persistent adapters give.
  */
-export class MemoryAdapter implements SQLiteAdapter {
-  protected sqlite3: Sqlite3Module | undefined;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  protected db: any;
+export class MemoryAdapter extends WasmAdapterBase {
+  constructor(private readonly options: { wasmDir?: string } = {}) {
+    super();
+  }
 
-  async open(): Promise<void> {
+  override async open(): Promise<void> {
     if (this.db) return;
-    this.sqlite3 = await loadSqlite3();
+    this.sqlite3 = await loadSqlite3(this.options.wasmDir);
     this.db = new this.sqlite3.oo1.DB(':memory:');
-  }
-
-  async close(): Promise<void> {
-    if (!this.db) return;
-    this.db.close();
-    this.db = undefined;
-  }
-
-  isOpen(): boolean {
-    return this.db !== undefined;
-  }
-
-  async exec(sql: string): Promise<void> {
-    this.ensureOpen();
-    this.db.exec(sql);
-  }
-
-  async all<T>(sql: string, params: SqlValue[] = []): Promise<T[]> {
-    this.ensureOpen();
-    const stmt = this.db.prepare(sql);
-    try {
-      this.bind(stmt, params);
-      const rows: T[] = [];
-      while (stmt.step()) rows.push(stmt.get({}) as T);
-      return rows;
-    } finally {
-      stmt.finalize();
-    }
-  }
-
-  async get<T>(sql: string, params: SqlValue[] = []): Promise<T | undefined> {
-    const rows = await this.all<T>(sql, params);
-    return rows[0];
-  }
-
-  async run(sql: string, params: SqlValue[] = []): Promise<RunResult> {
-    this.ensureOpen();
-    const stmt = this.db.prepare(sql);
-    try {
-      this.bind(stmt, params);
-      stmt.step();
-    } finally {
-      stmt.finalize();
-    }
-    return {
-      changes: this.db.changes(),
-      lastInsertRowid: Number(this.sqlite3.capi.sqlite3_last_insert_rowid(this.db.pointer)),
-    };
-  }
-
-  async export(): Promise<Uint8Array> {
-    this.ensureOpen();
-    return new Uint8Array(this.sqlite3.capi.sqlite3_js_db_export(this.db.pointer));
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  protected bind(stmt: any, params: SqlValue[]): void {
-    for (let i = 0; i < params.length; i++) {
-      stmt.bind(i + 1, params[i] ?? null);
-    }
-  }
-
-  protected ensureOpen(): void {
-    if (!this.db) throw new Error('Database is not open. Call open() first.');
   }
 }
