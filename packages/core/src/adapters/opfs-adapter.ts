@@ -45,6 +45,14 @@ export class OpfsAdapter extends WasmAdapterBase {
       throw new Error('OPFS SAH pool VFS is not present in this SQLite build');
     }
     const pool = await this.sqlite3.installOpfsSAHPoolVfs({ name: this.options.poolName ?? 'declarative-sqlite' });
-    this.db = new pool.OpfsSAHPoolDb(`/${this.name}`);
+    try {
+      this.db = new pool.OpfsSAHPoolDb(`/${this.name}`);
+    } catch (error) {
+      // Installing the pool VFS succeeded but constructing the database on top of it
+      // did not; without this, the pool stays registered and leaks a browser-level
+      // resource until the page reloads. Release it and let the real error through.
+      await pool.removeVfs().catch(() => undefined);
+      throw error;
+    }
   }
 }
