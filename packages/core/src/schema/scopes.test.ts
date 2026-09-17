@@ -29,11 +29,17 @@ describe('scope helpers', () => {
     // survives. Nothing rejects a colon on the way in, so nothing may lose it
     // on the way out.
     const written = formatScope({ changed_at: '2026-09-18T01:23:45Z' });
+    if (typeof written !== 'string') {
+      throw new Error('formatScope unexpectedly returned undefined');
+    }
     expect(parseScope(written)).toEqual({ changed_at: '2026-09-18T01:23:45Z' });
   });
 
   it('accepts exactly four pairs', () => {
     const four = formatScope({ a: 1, b: 2, c: 3, d: 4 });
+    if (typeof four !== 'string') {
+      throw new Error('formatScope unexpectedly returned undefined');
+    }
     expect(Object.keys(parseScope(four))).toHaveLength(4);
   });
   it('parses a scope back to lowercase columns', () => {
