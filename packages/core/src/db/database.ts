@@ -3,6 +3,7 @@ import { runMigration, type MigrationMode, type MigrationPlan } from '../migrati
 import type { Schema } from '../schema/types';
 import type { SqlValue } from '../types';
 import { InvalidationBus, WriteLog } from './invalidation-bus';
+import { Transaction } from './transaction';
 
 /** Everything `Database.open` needs: the declared schema, an adapter to run it on, and how much freedom the migration has. */
 export interface DatabaseOptions {
@@ -24,6 +25,7 @@ export interface DatabaseOptions {
 export class Database {
   readonly invalidations = new InvalidationBus();
   private closed = false;
+  private writeQueue: Promise<unknown> = Promise.resolve();
 
   protected constructor(
     readonly schema: Schema,
@@ -75,6 +77,39 @@ export class Database {
       for (const table of invalidates) log.markTable(table);
       this.invalidations.emit(log.toEvent());
     }
+    return result;
+  }
+
+  /**
+   * Runs `work` inside one SQLite transaction. Transactions are serialised —
+   * one adapter is one connection — so overlapping callers queue rather than
+   * interleave their BEGINs. On success the transaction's write log becomes
+   * exactly one invalidation event; on failure everything rolls back and no
+   * event is emitted, so a live query can never show a row that was undone.
+   */
+  async transaction<T>(work: (tx: Transaction) => Promise<T>): Promise<T> {
+    this.ensureOpen();
+    const run = this.writeQueue.then(() => this.runTransaction(work));
+    this.writeQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async runTransaction<T>(work: (tx: Transaction) => Promise<T>): Promise<T> {
+    const log = new WriteLog();
+    const tx = new Transaction(this.adapter, log);
+    await this.adapter.exec('BEGIN IMMEDIATE');
+    let result: T;
+    try {
+      result = await work(tx);
+      await this.adapter.exec('COMMIT');
+    } catch (error) {
+      await this.adapter.exec('ROLLBACK');
+      throw error;
+    }
+    if (!log.isEmpty()) this.invalidations.emit(log.toEvent());
     return result;
   }
 
