@@ -10,3 +10,13 @@ export const VERSION = '3.0.0-alpha.1';
 export type { SqlValue, Row, ScopeValues } from './types';
 export type { SQLiteAdapter, RunResult } from './adapters/adapter';
 export { MemoryAdapter, loadSqlite3 } from './adapters/memory-adapter';
+
+export { SchemaBuilder } from './schema/schema-builder';
+export type { TableHandle } from './schema/schema-builder';
+export { TableBuilder, KeyBuilder, SYSTEM_ID_COLUMN, SYNC_SEQ_COLUMN, SYSTEM_REMOVED_COLUMN } from './schema/table-builder';
+export { ColumnBuilder } from './schema/column-builder';
+export { OUTBOX_TABLE, SYNC_CURSOR_TABLE } from './schema/library-tables';
+export { formatScope, parseScope, scopeKey, scopeMatches, validateScopes, ScopeError } from './schema/scopes';
+export type { ScopeAllowList } from './schema/scopes';
+export { SchemaError } from './schema/types';
+export type { Schema, TableDef, ColumnDef, KeyDef, KeyType, SyncedDef, StorageType, LogicalType } from './schema/types';
