@@ -78,12 +78,24 @@ export async function openAdapter(options: OpenAdapterOptions): Promise<OpenedAd
 
   if (capabilities.opfs()) {
     const adapter = new OpfsAdapter(options.name, options.wasmDir ? { wasmDir: options.wasmDir } : {});
+    // Keep a handle on the unraced open() so a timeout below doesn't strand it.
+    const openPromise = adapter.open();
     try {
-      await withTimeout(adapter.open(), options.opfsTimeoutMs ?? 5000, 'OPFS did not open in time');
+      await withTimeout(openPromise, options.opfsTimeoutMs ?? 5000, 'OPFS did not open in time');
       return { adapter, backend: 'opfs', warnings };
     } catch (error) {
       warnings.push(`OPFS unavailable (${error instanceof Error ? error.message : String(error)}); falling back`);
       await adapter.close().catch(() => undefined);
+      // If that rejection was only our timeout winning the race, the real open() may
+      // still be in flight and could succeed later, leaving a live OPFS handle and a
+      // registered pool VFS nobody holds. Close it whenever it does settle.
+      // Not covered by a Node unit test on purpose: OpfsAdapter.isSupported() is false
+      // in this environment, so open() throws synchronously and never reaches this
+      // race; exercising it needs a real browser (Task 32's smoke check).
+      void openPromise.then(
+        () => { void adapter.close().catch(() => undefined); },
+        () => undefined,
+      );
     }
   }
 
