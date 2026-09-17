@@ -212,7 +212,13 @@ export class Drafts {
       for (const [column, state] of active) {
         await this.writeColumnExit(table, systemId, column, state);
       }
-      if (this.tombstoned.has(key)) {
+      // A `begin()` call landing in the gap before this transaction started
+      // grows `columns` (the same Map this row's key points to) past the
+      // snapshot taken above. That new draft has nothing else guarding it, so
+      // the row must survive this delete — the tombstone stays set for a
+      // later `endRow()` to apply once the new draft also ends.
+      const grownSinceSnapshot = columns.size > active.length;
+      if (this.tombstoned.has(key) && !grownSinceSnapshot) {
         await this.db.transaction(async (tx) => {
           await this.writer.delete(tx, table, systemId);
         });

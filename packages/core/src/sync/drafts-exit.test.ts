@@ -196,4 +196,32 @@ describe('Drafts.end', () => {
     });
     expect((await s.outbox.pending()).map((e) => e.columnName).sort()).toEqual(['c_qty_installed', 'rowstate']);
   });
+
+  it('does not delete a row when a new draft begins before endRow\'s transaction starts', async () => {
+    const s = await setup();
+    db = s.db;
+    s.drafts.begin('c_work_task', 'A', 'c_qty_installed', 1);
+    s.drafts.set('c_work_task', 'A', 'c_qty_installed', 12);
+    expect(s.drafts.holdTombstone('c_work_task', 'A')).toBe(true);
+
+    // Not awaited: endRow runs synchronously up to its first `await` (opening
+    // the shared transaction) and then yields control back here, before the
+    // transaction body — and its tombstone-delete decision — ever runs.
+    const endRowPromise = s.drafts.endRow('c_work_task', 'A');
+    // Lands in that gap: a fresh draft on another column of the same row,
+    // added to the very Map endRow already snapshotted a reference to.
+    s.drafts.begin('c_work_task', 'A', 'rowstate', 'WORKSTARTED');
+
+    await endRowPromise;
+
+    // The row must survive: a new, unrelated draft is open on it.
+    expect(await db.queryOne('SELECT system_id FROM c_work_task WHERE system_id = ?', ['A'])).toBeDefined();
+    expect(s.drafts.isActive('c_work_task', 'A', 'rowstate')).toBe(true);
+    expect(s.drafts.get('c_work_task', 'A', 'rowstate')).toBe('WORKSTARTED');
+
+    // The tombstone must have survived too, ready to apply once this last
+    // draft also ends.
+    await s.drafts.end('c_work_task', 'A', 'rowstate');
+    expect(await db.queryOne('SELECT system_id FROM c_work_task WHERE system_id = ?', ['A'])).toBeUndefined();
+  });
 });
