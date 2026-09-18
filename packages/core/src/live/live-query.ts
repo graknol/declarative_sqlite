@@ -41,6 +41,8 @@ export class LiveQuery<T extends Record<string, unknown> = Row> {
   private rows: T[] = [];
   private listeners = new Set<(rows: T[]) => void>();
   private closed = false;
+  /** Whether the first `runOnce()` has completed. Backs the public `hasLoaded` getter. */
+  private loaded = false;
   /** The run currently querying the database, if any. Concurrent `refresh()` calls await this instead of starting a second query. */
   private inFlight: Promise<void> | undefined;
   /** At most one follow-up run, queued while `inFlight` was busy. Coalesces any number of invalidations that arrive mid-run into a single extra pass. */
@@ -62,7 +64,7 @@ export class LiveQuery<T extends Record<string, unknown> = Row> {
    */
   subscribe(listener: (rows: T[]) => void): () => void {
     this.listeners.add(listener);
-    if (this.rows.length > 0) listener(this.rows);
+    if (this.loaded) listener(this.rows);
     return () => {
       this.listeners.delete(listener);
     };
@@ -71,6 +73,18 @@ export class LiveQuery<T extends Record<string, unknown> = Row> {
   /** The most recently emitted rows, or `[]` before the first result arrives. Does not trigger a query. */
   snapshot(): T[] {
     return this.rows;
+  }
+
+  /**
+   * True once this query's first `runOnce()` has completed, regardless of
+   * whether that first result was empty. `snapshot()` alone cannot tell a
+   * consumer "this query has not run yet" apart from "this query ran and has
+   * nothing" — both are `[]` — so a list view should render its loading state
+   * while `hasLoaded` is `false` and only treat an empty `snapshot()` as
+   * "no items" once it flips to `true`.
+   */
+  get hasLoaded(): boolean {
+    return this.loaded;
   }
 
   /**
@@ -106,7 +120,9 @@ export class LiveQuery<T extends Record<string, unknown> = Row> {
     const table = this.spec.overlayTable ?? this.spec.reads[0]?.table;
     const transformed = transform && table ? transform(table, raw) : raw;
     const { rows, changed } = diffRows(this.rows as unknown as Row[], transformed, this.spec.key);
-    if (!changed) return;
+    const firstRun = !this.loaded;
+    this.loaded = true;
+    if (!changed && !firstRun) return;
     this.rows = rows as unknown as T[];
     this.emit();
   }

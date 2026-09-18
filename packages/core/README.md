@@ -172,6 +172,26 @@ query.refresh();  // force a re-run
 query.close();    // stop watching
 ```
 
+**Telling "still loading" from "genuinely empty".** `snapshot()` starts at
+`[]` before the query has ever run, and a query whose first real run finds
+nothing also settles on `[]` — the same value, for two different reasons. A
+list view driven only by rows cannot render a spinner for one and "no items"
+for the other. `hasLoaded` disambiguates them: it is `false` until the first
+run completes and `true` from then on, including when that first result was
+empty, and a subscriber that joins after that first run still gets an
+immediate callback so it does not sit in silence mistaking "loaded, empty"
+for "hasn't run yet".
+
+```ts
+if (!query.hasLoaded) {
+  renderSpinner();
+} else if (query.snapshot().length === 0) {
+  renderEmptyState();
+} else {
+  render(query.snapshot());
+}
+```
+
 ## Sync
 
 The library never speaks HTTP. You supply a `SyncTransport`:

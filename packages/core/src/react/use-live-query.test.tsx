@@ -8,7 +8,7 @@ import { Database } from '../db/database';
 import { FakeTransport } from '../testing/fake-transport';
 import { createSyncRuntime, type SyncRuntime } from '../sync/runtime';
 import { SyncProvider } from './provider';
-import { useLiveQuery } from './use-live-query';
+import { useLiveQuery, useLiveQueryState } from './use-live-query';
 
 function testSchema() {
   const s = new SchemaBuilder();
@@ -53,6 +53,16 @@ function TasksForOrder({ woNo }: { woNo: number }) {
       ))}
     </ul>
   );
+}
+
+function EmptyOrderTasks() {
+  const state = useLiveQueryState<{ system_id: string; c_qty_installed: number }>({
+    sql: 'SELECT system_id, c_qty_installed FROM c_work_task WHERE wo_no = ? ORDER BY system_id',
+    params: [3188],
+    reads: [{ table: 'c_work_task', scope: { wo_no: 3188 } }],
+    key: 'system_id',
+  });
+  return <div data-testid="status">{state.hasLoaded ? `loaded:${state.rows.length}` : 'loading'}</div>;
 }
 
 describe('useLiveQuery', () => {
@@ -135,5 +145,25 @@ describe('useLiveQuery', () => {
 
     await waitFor(() => expect(screen.getByTestId('B').textContent).toBe('2'));
     expect(screen.queryByTestId('A')).toBeNull();
+  });
+
+  it('useLiveQueryState tells "not loaded yet" apart from "loaded and empty"', async () => {
+    db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
+    const transport = new FakeTransport();
+    sync = await createSyncRuntime({ db, transport, deviceId: 'test' });
+    // No seed and no pull: wo_no 3188 genuinely has no rows once the query runs.
+
+    render(
+      <SyncProvider db={db} sync={sync}>
+        <EmptyOrderTasks />
+      </SyncProvider>,
+    );
+
+    // Synchronously after mount, the query's first run has not resolved yet —
+    // this is the state a bare `useLiveQuery() === []` cannot be told apart
+    // from "loaded and empty".
+    expect(screen.getByTestId('status').textContent).toBe('loading');
+
+    await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('loaded:0'));
   });
 });
