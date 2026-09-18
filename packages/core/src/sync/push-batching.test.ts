@@ -8,7 +8,7 @@ import { Outbox } from './outbox';
 import { Drafts } from './drafts';
 import { CursorStore } from './cursor-store';
 import { PullApplier } from './pull-applier';
-import { PushService } from './push-service';
+import { PushService, type PushServiceOptions } from './push-service';
 
 function testSchema() {
   const s = new SchemaBuilder();
@@ -20,7 +20,7 @@ function testSchema() {
   return s.build();
 }
 
-async function setup(options: { maxChangesPerBatch?: number } = {}) {
+async function setup(options: Partial<Pick<PushServiceOptions, 'maxChangesPerBatch' | 'isTerminalError'>> = {}) {
   const db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
   const writer = serverWriter(db, createServerWriteCapability());
   const outbox = new Outbox(db, writer);
@@ -131,5 +131,46 @@ describe('PushService batching', () => {
     const order = (await s.outbox.pending()).map((e) => e.id);
     await s.outbox.markSending(order, 'other-batch');
     expect(await s.push.pushNow()).toMatchObject({ batches: 0 });
+  });
+
+  it('notifies onRejected only for the entries the current push just rejected, not an older unresolved rejection', async () => {
+    const s = await setup();
+    db = s.db;
+
+    // An earlier, unrelated push already rejected row B and nobody has
+    // retried or discarded it yet, so it still sits in the outbox as `rejected`.
+    s.transport.reject('C_WORK_TASK', 'C_QTY_INSTALLED', 'CNOROW: stale row');
+    await s.outbox.record({ table: 'c_work_task', systemId: 'B', changes: { c_qty_installed: 99 } });
+    await s.push.pushNow();
+    expect((await s.outbox.entries({ status: 'rejected' })).map((e) => e.systemId)).toEqual(['B']);
+
+    const seen: string[] = [];
+    s.push.onRejected((entry) => seen.push(entry.id));
+
+    // Now a different, unrelated change on row A gets rejected by its own column rule.
+    s.transport.reject('C_WORK_TASK', 'ROWSTATE', 'CNOSTATE: bad transition');
+    await s.outbox.record({ table: 'c_work_task', systemId: 'A', changes: { rowstate: 'WORKSTARTED' } });
+    await s.push.pushNow();
+
+    const rejectedA = (await s.outbox.entries({ status: 'rejected' })).find((e) => e.systemId === 'A');
+    expect(rejectedA).toBeDefined();
+    expect(seen).toEqual([rejectedA?.id]);
+  });
+
+  it('notifies onRejected once per entry when the transport throws a terminal error', async () => {
+    class TerminalError extends Error {}
+    const s = await setup({ isTerminalError: (error) => error instanceof TerminalError });
+    db = s.db;
+    await s.outbox.record({ table: 'c_work_task', systemId: 'A', changes: { rowstate: 'WORKSTARTED', c_qty_installed: 10 } });
+
+    const seen: string[] = [];
+    s.push.onRejected((entry) => seen.push(entry.id));
+
+    s.transport.failNextPush(new TerminalError('CVAL: rejected by the server'));
+    await s.push.pushNow();
+
+    const rejected = await s.outbox.entries({ status: 'rejected' });
+    expect(rejected.map((e) => e.systemId)).toEqual(['A', 'A']);
+    expect(seen.sort()).toEqual(rejected.map((e) => e.id).sort());
   });
 });

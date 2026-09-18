@@ -176,13 +176,36 @@ export class PushService {
     await this.applyAnswerRows(batch, answer.rows);
 
     const counts = { applied: 0, noop: 0, rejected: 0 };
-    for (const result of answer.results) counts[result.result]++;
-    if (counts.rejected > 0) {
-      for (const entry of await this.outbox.entries({ status: 'rejected' })) {
-        for (const listener of [...this.rejectedListeners]) listener(entry);
+    const rejectedIds: string[] = [];
+    for (const result of answer.results) {
+      counts[result.result]++;
+      if (result.result === 'rejected') {
+        const entry = batch.entries[result.index];
+        if (entry) rejectedIds.push(entry.id);
       }
     }
+    await this.notifyRejected(rejectedIds);
     return { delivered: true, ...counts };
+  }
+
+  /**
+   * Tells `rejectedListeners` about exactly the entries the caller just
+   * marked rejected — never the whole rejected backlog. `Outbox` has no
+   * by-id lookup (and this file does not add one), so the only way to get
+   * current `OutboxEntry` records is to read every `rejected` row and keep
+   * the ones named in `rejectedIds`; an unrelated entry left over from an
+   * earlier, still-unresolved rejection is excluded because its id was
+   * never passed in. Both `sendBatch` (one rejected batch answer) and
+   * `handleFailure` (a whole batch refused outright) fan out through this
+   * one place instead of each re-implementing the same filter-and-notify.
+   */
+  private async notifyRejected(rejectedIds: string[]): Promise<void> {
+    if (rejectedIds.length === 0 || this.rejectedListeners.size === 0) return;
+    const wanted = new Set(rejectedIds);
+    for (const entry of await this.outbox.entries({ status: 'rejected' })) {
+      if (!wanted.has(entry.id)) continue;
+      for (const listener of [...this.rejectedListeners]) listener(entry);
+    }
   }
 
   /** Applies the answer rows table by table, with the seq guard, and without moving any cursor. Rows the batch did not mention are ignored. */
@@ -223,6 +246,7 @@ export class PushService {
         batch.entries.map((_, index) => ({ index, result: 'rejected' as const, error: message })),
         batch.entries.map((e) => e.id),
       );
+      await this.notifyRejected(batch.entries.map((e) => e.id));
       this.setStatus({ lastError: message });
       return;
     }
