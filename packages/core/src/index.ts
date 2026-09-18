@@ -10,6 +10,11 @@ export const VERSION = '3.0.0-alpha.1';
 export type { SqlValue, Row, ScopeValues } from './types';
 export type { SQLiteAdapter, RunResult } from './adapters/adapter';
 export { MemoryAdapter, loadSqlite3 } from './adapters/memory-adapter';
+export { OpfsAdapter } from './adapters/opfs-adapter';
+export { IndexedDbAdapter } from './adapters/indexeddb-adapter';
+export { WasmAdapterBase } from './adapters/wasm';
+export { openAdapter } from './adapters/open-adapter';
+export type { AdapterBackend, AdapterCapabilities, OpenAdapterOptions, OpenedAdapter } from './adapters/open-adapter';
 
 export { SchemaBuilder } from './schema/schema-builder';
 export type { TableHandle } from './schema/schema-builder';
@@ -39,6 +44,9 @@ export type { InvalidationEvent, TableInvalidation } from './db/invalidation-bus
 export type { RowMap, TableApi, SyncedTableApi, TableApis } from './db/tables';
 export type { ServerWriter } from './db/server-truth';
 
+// Scripted server every test in this package runs against, exported so applications can use it in their own tests.
+export { FakeTransport } from './testing/fake-transport';
+
 export { LiveQuery } from './live/live-query';
 export { LiveRegistry } from './live/registry';
 export { diffRows } from './live/diff-rows';
@@ -61,5 +69,10 @@ export type { PullOptions, PullReport } from './sync/pull-service';
 export type { PushOutcome, PushServiceOptions, SyncStatus } from './sync/push-service';
 export type { SyncTransport } from './sync/transport';
 export type { RowsPage, RowDoc, PullRequest, PushBatch, PushResult } from './sync/wire';
+export {
+  encodeScalar, decodeScalar, newBatchId, toWireTable, toWireColumn, fromWireData,
+  ValueTooLongError, MAX_VALUE_CHARS, MAX_BATCH_CHANGES, MAX_BATCH_ID_CHARS, PULL_WINDOW, DEFAULT_PAGE_LIMIT,
+} from './sync/wire';
+export type { PushChange, PushChangeResult, PushResultCode } from './sync/wire';
 export type { Tick } from './sync/tick-coalescer';
 export type { SyncRuntime, SyncRuntimeOptions } from './sync/runtime';
