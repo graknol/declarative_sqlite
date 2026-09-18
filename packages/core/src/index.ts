@@ -38,3 +38,8 @@ export type { DatabaseOptions } from './db/database';
 export type { InvalidationEvent, TableInvalidation } from './db/invalidation-bus';
 export type { RowMap, TableApi, SyncedTableApi, TableApis } from './db/tables';
 export type { ServerWriter } from './db/server-truth';
+
+export { LiveQuery } from './live/live-query';
+export { LiveRegistry } from './live/registry';
+export { diffRows } from './live/diff-rows';
+export type { LiveQuerySpec, ReadDependency, RowTransform } from './live/live-query';
