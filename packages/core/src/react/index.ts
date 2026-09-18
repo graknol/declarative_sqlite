@@ -6,7 +6,8 @@
  */
 export { SyncProvider, useDatabase, useSyncRuntime } from './provider';
 export type { SyncProviderProps } from './provider';
-export { useLiveQuery } from './use-live-query';
+export { useLiveQuery, useLiveQueryState } from './use-live-query';
+export type { LiveQueryState } from './use-live-query';
 export { useDraftField } from './use-draft-field';
 export type { DraftFieldBinding } from './use-draft-field';
 export { useOutboxCounts } from './use-outbox-counts';
