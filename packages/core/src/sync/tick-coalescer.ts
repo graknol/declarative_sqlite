@@ -28,6 +28,7 @@ export class TickCoalescer {
     private readonly options: { windowMs?: number } = {},
   ) {}
 
+  /** Schedules a pull for the table and scope(s) in the tick, coalescing with other pending ticks without pulling immediately. */
   notify(tick: Tick): void {
     if (this.stopped) return;
     const existing = this.pendingTicks.get(tick.table);
@@ -73,6 +74,7 @@ export class TickCoalescer {
     }
   }
 
+  /** Prevents any further scheduled or in-flight pulls from completing after this call. */
   stop(): void {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);

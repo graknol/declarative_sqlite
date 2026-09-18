@@ -62,4 +62,46 @@ describe('TickCoalescer', () => {
     await ticks.flush();
     expect(pull.pull).toHaveBeenCalledTimes(1);
   });
+
+  it('prevents further pulls after stop() is called during flush', async () => {
+    vi.useFakeTimers();
+    try {
+      let releasePull: (() => void) | undefined;
+      const pullBlocker = new Promise<{ rows: number; pages: number; cursor: number }>((resolve) => {
+        releasePull = () => resolve({ rows: 0, pages: 1, cursor: 0 });
+      });
+
+      const pull = {
+        pull: vi.fn().mockReturnValue(pullBlocker),
+        openScopes: () => [{ wo_no: 3188 }, { wo_no: 4000 }],
+      } as unknown as PullService;
+      const cursors = { get: vi.fn().mockResolvedValue(0) } as unknown as CursorStore;
+
+      const ticks = new TickCoalescer(pull, cursors, { windowMs: 10000 });
+      ticks.notify({ table: 'c_work_task', seq: 10 });
+
+      // Start flush directly (don't wait for timer) so pendingTicks still has the tick
+      const flushPromise = ticks.flush();
+
+      // Let the event loop process - first pull starts but blocks
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Call stop() while first pull is pending
+      ticks.stop();
+
+      // Release the blocked pull
+      if (releasePull) {
+        releasePull();
+      }
+
+      // Await flush to complete
+      await flushPromise;
+
+      // Verify pull was called exactly once (second scope never pulled)
+      expect(pull.pull).toHaveBeenCalledTimes(1);
+      expect(pull.pull).toHaveBeenCalledWith('c_work_task', { wo_no: 3188 }, { from: 'window' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
