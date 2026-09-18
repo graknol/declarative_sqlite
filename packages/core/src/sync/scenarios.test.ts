@@ -94,6 +94,7 @@ describe('sync scenarios', () => {
 
     const rejected = await s.sync.outbox.entries({ status: 'rejected' });
     expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.errorText).toContain('CBADSTATE');
 
     s.transport.serverEdit('C_WORK_TASK', 'A', { ROWSTATE: 'RELEASED' });
     await s.sync.pull.pull('c_work_task', { wo_no: 3188 }, { from: 'window' });
