@@ -9,3 +9,7 @@ export type { SyncProviderProps } from './provider';
 export { useLiveQuery } from './use-live-query';
 export { useDraftField } from './use-draft-field';
 export type { DraftFieldBinding } from './use-draft-field';
+export { useOutboxCounts } from './use-outbox-counts';
+export type { OutboxCounts } from './use-outbox-counts';
+export { useSyncStatus } from './use-sync-status';
+export type { SyncStatus } from '../sync/push-service';
