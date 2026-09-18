@@ -1,0 +1,73 @@
+/** @vitest-environment happy-dom */
+import { describe, it, expect, afterEach } from 'vitest';
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { MemoryAdapter } from '../adapters/memory-adapter';
+import { SchemaBuilder } from '../schema/schema-builder';
+import { Database } from '../db/database';
+import { FakeTransport } from '../testing/fake-transport';
+import { createSyncRuntime, type SyncRuntime } from '../sync/runtime';
+import { SyncProvider } from './provider';
+import { useLiveQuery } from './use-live-query';
+
+function testSchema() {
+  const s = new SchemaBuilder();
+  s.table('c_work_task', (t) => {
+    t.real('wo_no');
+    t.real('c_qty_installed');
+  }).synced({ key: 'system_id', scope: ['wo_no'] });
+  return s.build();
+}
+
+function Tasks() {
+  const rows = useLiveQuery<{ system_id: string; c_qty_installed: number }>({
+    sql: 'SELECT system_id, c_qty_installed FROM c_work_task WHERE wo_no = ? ORDER BY system_id',
+    params: [3188],
+    reads: [{ table: 'c_work_task', scope: { wo_no: 3188 } }],
+    key: 'system_id',
+  });
+  return (
+    <ul>
+      {rows.map((row) => (
+        <li key={row.system_id} data-testid={row.system_id}>
+          {row.c_qty_installed}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+describe('useLiveQuery', () => {
+  let db: Database | undefined;
+  let sync: SyncRuntime | undefined;
+
+  afterEach(async () => {
+    cleanup();
+    sync?.close();
+    await db?.close();
+    db = undefined;
+    sync = undefined;
+  });
+
+  it('renders rows and re-renders when the data changes', async () => {
+    db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
+    const transport = new FakeTransport();
+    transport.seed('C_WORK_TASK', [{ id: 'A', data: { WO_NO: 3188, C_QTY_INSTALLED: 1 } }]);
+    sync = await createSyncRuntime({ db, transport, deviceId: 'test' });
+    await sync.pull.pull('c_work_task', { wo_no: 3188 });
+
+    render(
+      <SyncProvider db={db} sync={sync}>
+        <Tasks />
+      </SyncProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('A').textContent).toBe('1'));
+
+    await sync.outbox.record({ table: 'c_work_task', systemId: 'A', changes: { c_qty_installed: 10 } });
+    await waitFor(() => expect(screen.getByTestId('A').textContent).toBe('10'));
+  });
+
+  it('throws a useful error outside the provider', () => {
+    expect(() => render(<Tasks />)).toThrow(/SyncProvider/);
+  });
+});
