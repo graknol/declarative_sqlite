@@ -26,6 +26,7 @@ function Remark({ systemId, value }: { systemId: string; value: string }) {
 describe('SyncProvider', () => {
   let db: Database | undefined;
   let sync: SyncRuntime | undefined;
+  let consoleErrorSpy: { mockRestore: () => void } | undefined;
 
   afterEach(async () => {
     cleanup();
@@ -39,6 +40,8 @@ describe('SyncProvider', () => {
     }
     db = undefined;
     sync = undefined;
+    consoleErrorSpy?.mockRestore();
+    consoleErrorSpy = undefined;
   });
 
   it('does not produce an unhandled rejection when the database closes while an unmount-triggered draft flush is mid-flight', async () => {
@@ -81,5 +84,30 @@ describe('SyncProvider', () => {
     );
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it('re-throws non-database-closure errors so they surface as unhandled rejections', async () => {
+    db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
+    const transport = new FakeTransport();
+    transport.seed('C_WORK_TASK', [{ id: 'A', data: { WO_NO: 3188, INTERNAL_REMARK: 'start' } }]);
+    sync = await createSyncRuntime({ db, transport, deviceId: 'test' });
+    await sync.pull.pull('c_work_task', { wo_no: 3188 });
+
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    // Directly test endAll() behavior when an OutboxError occurs
+    sync.drafts.begin('c_work_task', 'A', 'internal_remark', 'start');
+    sync.drafts.set('c_work_task', 'A', 'internal_remark', 'changed');
+
+    // Delete the row to trigger an OutboxError when endAll() tries to record the change
+    await db.execute('DELETE FROM c_work_task WHERE system_id = ?', ['A']);
+
+    // When the row no longer exists, endAll() should re-throw the OutboxError
+    // rather than catching and logging it to console.error
+    await expect(sync.drafts.endAll()).rejects.toThrow('row does not exist locally');
+
+    // Verify console.error was NOT called — the error should have been re-thrown,
+    // not caught and logged.
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 });

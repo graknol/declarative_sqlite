@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { DatabaseError } from '../db/database';
 import type { Database } from '../db/database';
 import type { SyncRuntime } from '../sync/runtime';
 
@@ -36,7 +37,14 @@ export function SyncProvider({ db, sync, routeKey, children }: SyncProviderProps
       // the write queue — that race is expected, not a bug, so it is caught
       // and logged instead of becoming an unhandled rejection.
       sync.drafts.endAll().catch((error: unknown) => {
-        console.error('[declarative-sqlite] draft flush failed', error);
+        if (error instanceof DatabaseError && error.message === 'Database is closed') {
+          // The database can legitimately close while this fire-and-forget flush is
+          // still in flight — React cannot await an effect cleanup, so this is an
+          // expected shutdown race, not a bug. Anything else re-throws.
+          console.error('[declarative-sqlite] draft flush failed', error);
+          return;
+        }
+        throw error;
       });
     };
     const onVisibility = () => {
@@ -57,7 +65,14 @@ export function SyncProvider({ db, sync, routeKey, children }: SyncProviderProps
       // `DatabaseError: Database is closed` from a draft flush still in flight
       // is expected here and must not surface as an unhandled rejection.
       sync.drafts.endAll().catch((error: unknown) => {
-        console.error('[declarative-sqlite] draft flush failed', error);
+        if (error instanceof DatabaseError && error.message === 'Database is closed') {
+          // The database can legitimately close while this fire-and-forget flush is
+          // still in flight — React cannot await an effect cleanup, so this is an
+          // expected shutdown race, not a bug. Anything else re-throws.
+          console.error('[declarative-sqlite] draft flush failed', error);
+          return;
+        }
+        throw error;
       });
     };
   }, [sync, routeKey]);
