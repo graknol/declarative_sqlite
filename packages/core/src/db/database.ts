@@ -166,6 +166,19 @@ export class Database {
     } finally {
       this.activeTx = undefined;
     }
+    // Only reachable once COMMIT succeeded — the rollback path rethrows above —
+    // so anything registered with `tx.onCommit` runs strictly after durable
+    // state exists and never after a rollback. Run them before the event so a
+    // live query re-run cannot observe a collaborator's stale in-memory state,
+    // and isolate each one the way InvalidationBus does: a callback that throws
+    // must not stop the rest.
+    for (const callback of tx.drainAfterCommit()) {
+      try {
+        callback();
+      } catch (error) {
+        console.error('[declarative-sqlite] after-commit callback failed', error);
+      }
+    }
     if (!log.isEmpty()) this.invalidations.emit(log.toEvent());
     return result;
   }

@@ -136,13 +136,19 @@ export class Outbox {
         );
       }
       tx.markTableWritten(OUTBOX_TABLE);
+      // Through onCommit, not after the await: `record` is called from inside
+      // Drafts.endRow's transaction, and a nested db.transaction() resolves
+      // when its own body ends, not when the outer COMMIT is decided. Mutating
+      // the index there would leave a column reading as pending after a later
+      // step of that outer transaction rolled the insert away.
+      tx.onCommit(() => {
+        for (const entry of entries) {
+          this.indexPut(table.name, request.systemId, entry.column, entry.id, request.changes[entry.column]);
+        }
+        this.notify();
+      });
     });
 
-    for (const entry of entries) {
-      this.indexPut(table.name, request.systemId, entry.column, entry.id, request.changes[entry.column]);
-    }
-
-    this.notify();
     return groupId;
   }
 
@@ -287,16 +293,24 @@ export class Outbox {
         );
       }
       tx.markTableWritten(OUTBOX_TABLE);
-    });
 
-    for (const id of answered) {
-      const row = await this.db.queryOne<{ table_name: string; system_id: string; column_name: string }>(
-        `SELECT table_name, system_id, column_name FROM ${quoteIdentifier(OUTBOX_TABLE)} WHERE id = ? AND batch_id = ?`,
-        [id, batchId],
-      );
-      if (row) this.indexRemove(row.table_name, row.system_id, row.column_name, id);
-    }
-    this.notify();
+      // The re-query runs inside the transaction (it sees the updates above) so
+      // that the whole index mutation can be deferred to onCommit: read the
+      // still-matching rows now, remove them from the index only once the
+      // outermost transaction has really committed.
+      const settled: Array<{ id: string; table_name: string; system_id: string; column_name: string }> = [];
+      for (const id of answered) {
+        const row = await tx.queryOne<{ table_name: string; system_id: string; column_name: string }>(
+          `SELECT table_name, system_id, column_name FROM ${quoteIdentifier(OUTBOX_TABLE)} WHERE id = ? AND batch_id = ?`,
+          [id, batchId],
+        );
+        if (row) settled.push({ id, ...row });
+      }
+      tx.onCommit(() => {
+        for (const row of settled) this.indexRemove(row.table_name, row.system_id, row.column_name, row.id);
+        this.notify();
+      });
+    });
   }
 
   /** A network error: the batch never reached a verdict, so its entries queue again. The push service re-sends them under the same batch id. */
@@ -317,9 +331,11 @@ export class Outbox {
     await this.db.transaction(async (tx) => {
       await tx.execute(`DELETE FROM ${quoteIdentifier(OUTBOX_TABLE)} WHERE id = ?`, [id]);
       tx.markTableWritten(OUTBOX_TABLE);
+      tx.onCommit(() => {
+        if (row) this.indexRemove(row.table_name, row.system_id, row.column_name, id);
+        this.notify();
+      });
     });
-    if (row) this.indexRemove(row.table_name, row.system_id, row.column_name, id);
-    this.notify();
   }
 
   /** The user retries a rejected change: back to `pending`, error cleared, index restored. */
@@ -335,9 +351,11 @@ export class Outbox {
         [id],
       );
       tx.markTableWritten(OUTBOX_TABLE);
+      tx.onCommit(() => {
+        this.indexPut(row.table_name, row.system_id, row.column_name, id, decodeScalar(row.new_value));
+        this.notify();
+      });
     });
-    this.indexPut(row.table_name, row.system_id, row.column_name, id, decodeScalar(row.new_value));
-    this.notify();
   }
 
   /** Counts of entries by status, for the sync badge. */

@@ -10,6 +10,9 @@ import type { WriteLog } from './invalidation-bus';
  * invalidation event emitted after the transaction commits.
  */
 export class Transaction {
+  /** Callbacks registered through `onCommit`, waiting for the owning `runTransaction` to drain them after `COMMIT`. */
+  private readonly afterCommit: Array<() => void> = [];
+
   constructor(
     private readonly adapter: SQLiteAdapter,
     private readonly log: WriteLog,
@@ -49,5 +52,25 @@ export class Transaction {
   /** Records that a table was written in a way that cannot be pinned to individual rows, so every live query on it must re-run after commit. */
   markTableWritten(table: string): void {
     this.log.markTable(table);
+  }
+
+  /**
+   * Defers `fn` until the outermost enclosing transaction actually commits — it
+   * never runs after a rollback, and never merely because the body of a nested
+   * `db.transaction()` call finished. A nested call is handed this same
+   * `Transaction` instance, so a collaborator that registers here from inside
+   * one still waits for the real commit decision made by whichever
+   * `runTransaction` owns the instance. Use it for in-memory bookkeeping that
+   * must not treat a write as durable before SQLite has said so: without it, a
+   * nested caller announces state that the outer transaction can still undo,
+   * leaving its memory and the tables permanently disagreeing.
+   */
+  onCommit(fn: () => void): void {
+    this.afterCommit.push(fn);
+  }
+
+  /** Returns the pending after-commit callbacks and clears them. Called exactly once, by the `runTransaction` that owns this instance, after a real `COMMIT` succeeds — never after a rollback, and never by application code. */
+  drainAfterCommit(): Array<() => void> {
+    return this.afterCommit.splice(0);
   }
 }

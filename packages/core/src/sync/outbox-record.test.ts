@@ -129,3 +129,69 @@ describe('Outbox.record', () => {
     await expect(s.outbox.record({ table: 'c_work_task', systemId: 'A', changes })).rejects.toThrow(/group/i);
   });
 });
+
+/**
+ * `db.transaction()` is reentrant: called while one is open it hands the body
+ * the same `Transaction` and resolves as soon as that body ends, long before
+ * the outer COMMIT is decided. Every in-memory mutation the outbox makes must
+ * therefore hang off `tx.onCommit`, or a later failure in the enclosing
+ * transaction leaves the index claiming changes the tables never kept — a split
+ * only a reload repairs.
+ */
+describe('Outbox inside an enclosing transaction', () => {
+  let db: Database | undefined;
+
+  afterEach(async () => {
+    await db?.close();
+    db = undefined;
+  });
+
+  it('leaves nothing pending when a later step of the same outer transaction fails', async () => {
+    const s = await setup();
+    db = s.db;
+
+    await expect(
+      db.transaction(async () => {
+        await s.outbox.record({ table: 'c_work_task', systemId: 'A', changes: { c_qty_installed: 1 } });
+        // Something else in the same outer transaction fails after record()'s
+        // own nested call has already "resolved" from record()'s point of view.
+        throw new Error('simulated failure later in the same outer transaction');
+      }),
+    ).rejects.toThrow('simulated failure later in the same outer transaction');
+
+    // The whole outer transaction rolled back, so nothing should be pending.
+    expect(s.outbox.pendingColumns('c_work_task', 'A').size).toBe(0);
+    expect(await s.outbox.entries({ status: 'pending' })).toHaveLength(0);
+  });
+
+  it('indexes the change when the enclosing transaction does commit', async () => {
+    const s = await setup();
+    db = s.db;
+
+    await db.transaction(async () => {
+      await s.outbox.record({ table: 'c_work_task', systemId: 'A', changes: { c_qty_installed: 7 } });
+    });
+
+    expect(s.outbox.pendingValue('c_work_task', 'A', 'c_qty_installed')).toEqual({ value: 7 });
+    expect(await s.outbox.entries({ status: 'pending' })).toHaveLength(1);
+  });
+
+  it('keeps a discarded entry in the index when the outer transaction rolls back', async () => {
+    const s = await setup();
+    db = s.db;
+    await s.outbox.record({ table: 'c_work_task', systemId: 'A', changes: { c_qty_installed: 10 } });
+    const [entry] = await s.outbox.entries({ status: 'pending' });
+    const id = entry?.id ?? '';
+
+    await expect(
+      db.transaction(async () => {
+        await s.outbox.discard(id);
+        throw new Error('simulated failure after discard');
+      }),
+    ).rejects.toThrow('simulated failure after discard');
+
+    // The DELETE rolled back, so the entry is still there and still pending.
+    expect(await s.outbox.entries({ status: 'pending' })).toHaveLength(1);
+    expect(s.outbox.pendingColumns('c_work_task', 'A').has('c_qty_installed')).toBe(true);
+  });
+});
