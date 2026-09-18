@@ -1,4 +1,5 @@
 /** @vitest-environment happy-dom */
+import { StrictMode } from 'react';
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import { MemoryAdapter } from '../adapters/memory-adapter';
@@ -69,5 +70,23 @@ describe('useLiveQuery', () => {
 
   it('throws a useful error outside the provider', () => {
     expect(() => render(<Tasks />)).toThrow(/SyncProvider/);
+  });
+
+  it('still shows live data under <StrictMode>, which mounts, cleans up, and re-mounts effects', async () => {
+    db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
+    const transport = new FakeTransport();
+    transport.seed('C_WORK_TASK', [{ id: 'A', data: { WO_NO: 3188, C_QTY_INSTALLED: 1 } }]);
+    sync = await createSyncRuntime({ db, transport, deviceId: 'test' });
+    await sync.pull.pull('c_work_task', { wo_no: 3188 });
+
+    render(
+      <StrictMode>
+        <SyncProvider db={db} sync={sync}>
+          <Tasks />
+        </SyncProvider>
+      </StrictMode>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('A').textContent).toBe('1'));
   });
 });
