@@ -30,7 +30,14 @@ export interface SyncProviderProps {
 export function SyncProvider({ db, sync, routeKey, children }: SyncProviderProps): JSX.Element {
   useEffect(() => {
     const endAll = () => {
-      void sync.drafts.endAll();
+      // Fire-and-forget: React's effect/event handling here cannot await this.
+      // The caller may close the underlying `Database` in the same synchronous
+      // stretch (a page navigating away) before this flush's own read reaches
+      // the write queue — that race is expected, not a bug, so it is caught
+      // and logged instead of becoming an unhandled rejection.
+      sync.drafts.endAll().catch((error: unknown) => {
+        console.error('[declarative-sqlite] draft flush failed', error);
+      });
     };
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') endAll();
@@ -45,7 +52,13 @@ export function SyncProvider({ db, sync, routeKey, children }: SyncProviderProps
 
   useEffect(() => {
     return () => {
-      void sync.drafts.endAll();
+      // Same as above: this cleanup is synchronous by React's contract and the
+      // unmounting caller may close the database right after unmounting, so a
+      // `DatabaseError: Database is closed` from a draft flush still in flight
+      // is expected here and must not surface as an unhandled rejection.
+      sync.drafts.endAll().catch((error: unknown) => {
+        console.error('[declarative-sqlite] draft flush failed', error);
+      });
     };
   }, [sync, routeKey]);
 
