@@ -260,20 +260,29 @@ pull the last ten work orders the user had open so the app isn't empty on
 first paint.
 
 The check that decides whether this runs at all — a v3 open against a
-database that still carries the v2 table — is a plain `sqlite_master` lookup
-through `db.queryOne`:
+database that still carries the v2 table — must run before any `Database`
+instance opens. Use the raw adapter directly to probe for the legacy table:
 
 ```ts
-const legacy = await db.queryOne<{ n: number }>(
-  `SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = '__dirty_rows'`,
+import { openAdapter } from 'declarative-sqlite';
+
+const { adapter } = await openAdapter({ name: dbName, wasmDir: '/assets' });
+await adapter.open();
+const [legacy] = await adapter.all<{ n: number }>(
+  `SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='__dirty_rows'`,
 );
-if ((legacy?.n ?? 0) > 0) await runLegacyUpgrade();
+if ((legacy?.n ?? 0) > 0) {
+  await runLegacyUpgrade(adapter);
+}
+await adapter.close();
+// Only now open the real Database with the v3 schema.
 ```
 
-Run this check, and `runLegacyUpgrade()` if it fires, **before** calling
-`Database.open` with the v3 schema — the v2 storage location and the v3 one
-are the same file/image name, so the legacy database must be drained and
-deleted first.
+The flow is: (1) open a raw adapter to the same storage location, (2) probe
+for the legacy `__dirty_rows` table, (3) call `runLegacyUpgrade(adapter)` if it
+exists (the v2 storage location and the v3 one are the same file/image name, so
+the legacy database must be drained and deleted first), (4) close that adapter,
+and (5) only then call `Database.open` with the v3 schema.
 
 ## 8. What v3 does not do
 
