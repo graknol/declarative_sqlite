@@ -3,6 +3,7 @@ import { MemoryAdapter } from '../adapters/memory-adapter';
 import { SchemaBuilder } from '../schema/schema-builder';
 import { Database } from '../db/database';
 import { createServerWriteCapability, serverWriter } from '../db/server-truth';
+import { LiveQuery } from './live-query';
 
 function testSchema() {
   const s = new SchemaBuilder();
@@ -178,6 +179,79 @@ describe('LiveQuery', () => {
     query.close();
   });
 
+  it('does not produce an unhandled rejection when the database closes while an invalidation-triggered refresh is mid-flight', async () => {
+    const opened = await openDb();
+    db = opened.db;
+    await opened.put('A', 3188, 1);
+
+    const query = db.live<{ system_id: string; c_qty_installed: number }>({
+      sql: 'SELECT system_id, c_qty_installed FROM c_work_task WHERE wo_no = ? ORDER BY system_id',
+      params: [3188],
+      reads: [{ table: 'c_work_task', scope: { wo_no: 3188 } }],
+      key: 'system_id',
+    });
+    // Let the query's own creation-triggered refresh (registry.create()) settle
+    // before racing the one under test, so only one refresh is in flight below.
+    await settle();
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    // The exact race: a write is already queued (and will commit and emit its
+    // invalidation event, which drives `LiveRegistry.onInvalidation()` to call
+    // `query.refresh()` fire-and-forget) when `db.close()` runs. `close()` marks
+    // the database closed synchronously before draining that queued write, so
+    // the commit still lands but the refresh it triggers hits an already-closed
+    // database — reproducing a route change or teardown racing a committed write.
+    const writePromise = opened.put('A', 3188, 5);
+    const closePromise = db.close();
+
+    await Promise.allSettled([writePromise, closePromise]);
+    // Give the still in-flight refresh's rejection a chance to settle. If
+    // registry.ts does not catch it, vitest reports an unhandled rejection and
+    // fails this test run even though no assertion below fails.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[declarative-sqlite]'),
+      expect.objectContaining({ message: expect.stringContaining('closed') }),
+    );
+
+    consoleErrorSpy.mockRestore();
+    query.close();
+  });
+
+  it('re-throws a refresh failure that is not the database closing', async () => {
+    const opened = await openDb();
+    db = opened.db;
+    const database = opened.db;
+    await opened.put('A', 3188, 1);
+
+    // Built directly against `database.query()` rather than through
+    // `database.live()`, so this exercises the exact call chain
+    // `LiveRegistry.refreshInBackground()` drives (`LiveQuery.refresh()` ->
+    // `runQuery()` -> `Database.query()` -> the adapter) without going through
+    // the registry's own fire-and-forget `create()` call, which would
+    // otherwise turn this genuine bug into an unhandled rejection the moment
+    // the query is constructed rather than when this test calls `refresh()`.
+    const query = new LiveQuery(
+      { sql: 'SELECT system_id FROM does_not_exist', reads: [{ table: 'c_work_task' }], key: 'system_id' },
+      (sql, params) => database.query(sql, params),
+      () => undefined,
+      () => undefined,
+    );
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    // Not a `DatabaseError: Database is closed` — the one case the registry's
+    // catch is allowed to swallow — so it must still reject the caller instead
+    // of being logged-and-dropped.
+    await expect(query.refresh()).rejects.toThrow(/does_not_exist|no such table/i);
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(expect.stringContaining('[declarative-sqlite]'), expect.anything());
+
+    consoleErrorSpy.mockRestore();
+    query.close();
+  });
+
   it('exposes the latest rows through snapshot()', async () => {
     const opened = await openDb();
     db = opened.db;
@@ -190,6 +264,56 @@ describe('LiveQuery', () => {
     expect(query.snapshot()).toEqual([]);
     await query.refresh();
     expect(query.snapshot()).toEqual([{ system_id: 'A' }]);
+    query.close();
+  });
+
+  it('notifies a subscriber once when the first run is empty, and flips hasLoaded to true even with nothing to show', async () => {
+    const opened = await openDb();
+    db = opened.db;
+    // No rows written: the first run genuinely has nothing to return.
+
+    const query = db.live<{ system_id: string }>({
+      sql: 'SELECT system_id FROM c_work_task WHERE wo_no = ?',
+      params: [3188],
+      reads: [{ table: 'c_work_task', scope: { wo_no: 3188 } }],
+      key: 'system_id',
+    });
+    expect(query.hasLoaded).toBe(false);
+
+    const listener = vi.fn();
+    query.subscribe(listener);
+    await settle();
+
+    expect(query.hasLoaded).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith([]);
+
+    // A second run with the same (empty) result is a genuine no-op and must
+    // not emit again — the emit-on-change guarantee still holds after the
+    // first run.
+    await query.refresh();
+    expect(listener).toHaveBeenCalledTimes(1);
+    query.close();
+  });
+
+  it('gives a subscriber that joins after an empty first run an immediate callback instead of silence', async () => {
+    const opened = await openDb();
+    db = opened.db;
+
+    const query = db.live<{ system_id: string }>({
+      sql: 'SELECT system_id FROM c_work_task WHERE wo_no = ?',
+      params: [3188],
+      reads: [{ table: 'c_work_task', scope: { wo_no: 3188 } }],
+      key: 'system_id',
+    });
+    await settle();
+    expect(query.hasLoaded).toBe(true);
+
+    const late = vi.fn();
+    query.subscribe(late);
+
+    expect(late).toHaveBeenCalledTimes(1);
+    expect(late).toHaveBeenCalledWith([]);
     query.close();
   });
 });
