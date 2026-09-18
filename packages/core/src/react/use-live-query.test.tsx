@@ -37,6 +37,24 @@ function Tasks() {
   );
 }
 
+function TasksForOrder({ woNo }: { woNo: number }) {
+  const rows = useLiveQuery<{ system_id: string; c_qty_installed: number }>({
+    sql: 'SELECT system_id, c_qty_installed FROM c_work_task WHERE wo_no = ? ORDER BY system_id',
+    params: [woNo],
+    reads: [{ table: 'c_work_task', scope: { wo_no: woNo } }],
+    key: 'system_id',
+  });
+  return (
+    <ul>
+      {rows.map((row) => (
+        <li key={row.system_id} data-testid={row.system_id}>
+          {row.c_qty_installed}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 describe('useLiveQuery', () => {
   let db: Database | undefined;
   let sync: SyncRuntime | undefined;
@@ -88,5 +106,34 @@ describe('useLiveQuery', () => {
     );
 
     await waitFor(() => expect(screen.getByTestId('A').textContent).toBe('1'));
+  });
+
+  it('closes old query and creates new one when spec changes', async () => {
+    db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
+    const transport = new FakeTransport();
+    transport.seed('C_WORK_TASK', [
+      { id: 'A', data: { WO_NO: 3188, C_QTY_INSTALLED: 1 } },
+      { id: 'B', data: { WO_NO: 3189, C_QTY_INSTALLED: 2 } },
+    ]);
+    sync = await createSyncRuntime({ db, transport, deviceId: 'test' });
+    await sync.pull.pull('c_work_task', { wo_no: 3188 });
+    await sync.pull.pull('c_work_task', { wo_no: 3189 });
+
+    const { rerender: rerenderComponent } = render(
+      <SyncProvider db={db} sync={sync}>
+        <TasksForOrder woNo={3188} />
+      </SyncProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('A').textContent).toBe('1'));
+
+    rerenderComponent(
+      <SyncProvider db={db} sync={sync}>
+        <TasksForOrder woNo={3189} />
+      </SyncProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('B').textContent).toBe('2'));
+    expect(screen.queryByTestId('A')).toBeNull();
   });
 });
