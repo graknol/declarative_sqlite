@@ -70,4 +70,20 @@ describe('createSyncRuntime', () => {
     expect(second.outbox.pendingValue('c_work_task', 'A', 'c_qty_installed')).toEqual({ value: 10 });
     second.close();
   });
+
+  it('purges settled outbox entries older than retentionDays on startup, but keeps recent ones', async () => {
+    db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
+    const transport = new FakeTransport();
+    await db.execute(
+      `INSERT INTO outbox (id, table_name, system_id, column_name, old_value, new_value, changed_at, status, group_id)
+       VALUES ('old', 'c_work_task', 'A', 'c_qty_installed', 'null', '1', '2026-01-01T00:00:00.000Z', 'applied', 'g'),
+              ('recent', 'c_work_task', 'A', 'c_qty_installed', 'null', '2', '2026-09-17T00:00:00.000Z', 'noop', 'g')`,
+    );
+
+    const sync = await createSyncRuntime({ db, transport, deviceId: 'ipad', retentionDays: 7, clock: () => new Date('2026-09-18T00:00:00.000Z') });
+
+    const remaining = (await sync.outbox.entries()).map((e) => e.id).sort();
+    expect(remaining).toEqual(['recent']);
+    sync.close();
+  });
 });

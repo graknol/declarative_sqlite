@@ -218,6 +218,14 @@ that:
   trigger one pull per `(table, scope)` the app currently has open
   (`sync.pull.registerScope`), skipping scopes the tick's own `scopes` list
   does not mention and scopes whose cursor is already caught up.
+- **Outbox retention.** Every changed column leaves one settled (`applied` or
+  `noop`) row in the `outbox` table forever unless something deletes it, which
+  matters on a device left running for months. `createSyncRuntime` calls
+  `Outbox.purgeOlderThan` once on startup to delete settled rows older than
+  `retentionDays` (default 30); pass a different number to change the window,
+  or `0` to disable the automatic purge and call `outbox.purgeOlderThan`
+  yourself on your own schedule. `rejected` entries are never purged this way —
+  they stay until the user retries or discards them.
 
 ## React
 

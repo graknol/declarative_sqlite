@@ -23,7 +23,20 @@ export interface SyncRuntimeOptions {
   tickWindowMs?: number;
   clock?: () => Date;
   isTerminalError?: (error: unknown) => boolean;
+  /**
+   * Days of settled (`applied`/`noop`) outbox history to keep. `createSyncRuntime`
+   * purges older settled rows once on startup, right after the outbox's pending
+   * index is loaded: every edited column leaves one row behind forever otherwise,
+   * which matters on a device that can stay offline and in daily use for months.
+   * Defaults to 30 days. Pass `0` to disable the automatic purge and manage
+   * retention yourself via `outbox.purgeOlderThan`. Rejected entries are never
+   * purged, on startup or otherwise; they wait for the user to retry or discard.
+   */
+  retentionDays?: number;
 }
+
+/** Default for `SyncRuntimeOptions.retentionDays`: generous for a daily-use app, short enough that the outbox table never grows unbounded on a device left running for months. */
+const DEFAULT_RETENTION_DAYS = 30;
 
 /** Everything the sync layer exposes for one database. Create it once, right after `Database.open`. */
 export interface SyncRuntime {
@@ -102,6 +115,18 @@ function createNetworkServices(
 export async function createSyncRuntime(options: SyncRuntimeOptions): Promise<SyncRuntime> {
   const { db } = options;
   const core = await createCoreServices(db, options.clock);
+
+  // After the pending index is loaded, not before: settled (applied/noop) rows
+  // were never part of that index (load() only reads pending/sending), so the
+  // order can't corrupt it, but doing this first keeps startup's one DELETE
+  // grouped with the rest of the outbox's own setup. purgeOlderThan is a single
+  // DELETE against an indexed (status, changed_at) column, so it is cheap
+  // enough to await inline rather than run in the background.
+  const retentionDays = options.retentionDays ?? DEFAULT_RETENTION_DAYS;
+  if (retentionDays > 0) {
+    await core.outbox.purgeOlderThan(retentionDays);
+  }
+
   const { pull, push, ticks } = createNetworkServices(options, core);
 
   const transform = (table: string, rows: Row[]): Row[] => core.drafts.apply(table, core.overlay.apply(table, rows));
