@@ -88,4 +88,16 @@ describe('Drafts', () => {
     const rows = [{ system_id: 'A', c_qty_installed: 1 }];
     expect(s.drafts.apply('c_work_task', rows)).toBe(rows);
   });
+
+  it('keeps identity when the only drafted column is absent from the row', async () => {
+    const s = await setup();
+    db = s.db;
+    s.drafts.begin('c_work_task', 'A', 'rowstate', 'RELEASED');
+    s.drafts.set('c_work_task', 'A', 'rowstate', 'DONE');
+    const row = { system_id: 'A', c_qty_installed: 1 };
+    const rows = [row];
+    const result = s.drafts.apply('c_work_task', rows);
+    expect(result).toBe(rows);
+    expect(result[0]).toBe(row);
+  });
 });

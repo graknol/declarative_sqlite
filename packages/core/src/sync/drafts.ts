@@ -98,10 +98,13 @@ export class Drafts {
       const columns = this.drafts.get(Drafts.rowKey(table, String(row[keyColumn] ?? '')));
       if (!columns || columns.size === 0) return row;
       const held: Row = { ...row };
+      let rowChanged = false;
       for (const [column, state] of columns) {
         if (!(column in row)) continue;
         held[column] = toSqlValue(state.value);
+        rowChanged = true;
       }
+      if (!rowChanged) return row;
       changed = true;
       return held;
     });
