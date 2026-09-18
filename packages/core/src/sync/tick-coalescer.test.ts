@@ -55,6 +55,54 @@ describe('TickCoalescer', () => {
     }
   });
 
+  it('merges two scoped ticks into the union of their scopes instead of dropping either', async () => {
+    vi.useFakeTimers();
+    try {
+      const { pull, cursors } = fakes([{ wo_no: 3188 }, { wo_no: 4000 }, { wo_no: 5000 }]);
+      const ticks = new TickCoalescer(pull, cursors, { windowMs: 10 });
+      ticks.notify({ table: 'c_work_task', seq: 10, scopes: [3188] });
+      ticks.notify({ table: 'c_work_task', seq: 20, scopes: [4000] });
+      await vi.advanceTimersByTimeAsync(20);
+      expect(pull.pull).toHaveBeenCalledTimes(2);
+      expect(pull.pull).toHaveBeenCalledWith('c_work_task', { wo_no: 3188 }, { from: 'window' });
+      expect(pull.pull).toHaveBeenCalledWith('c_work_task', { wo_no: 4000 }, { from: 'window' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not let a later scoped tick narrow away an earlier table-wide tick', async () => {
+    vi.useFakeTimers();
+    try {
+      const { pull, cursors } = fakes([{ wo_no: 3188 }, { wo_no: 4000 }]);
+      const ticks = new TickCoalescer(pull, cursors, { windowMs: 10 });
+      ticks.notify({ table: 'c_work_task', seq: 10 });
+      ticks.notify({ table: 'c_work_task', seq: 20, scopes: [4000] });
+      await vi.advanceTimersByTimeAsync(20);
+      expect(pull.pull).toHaveBeenCalledTimes(2);
+      expect(pull.pull).toHaveBeenCalledWith('c_work_task', { wo_no: 3188 }, { from: 'window' });
+      expect(pull.pull).toHaveBeenCalledWith('c_work_task', { wo_no: 4000 }, { from: 'window' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets a later table-wide tick widen an earlier scoped tick', async () => {
+    vi.useFakeTimers();
+    try {
+      const { pull, cursors } = fakes([{ wo_no: 3188 }, { wo_no: 4000 }]);
+      const ticks = new TickCoalescer(pull, cursors, { windowMs: 10 });
+      ticks.notify({ table: 'c_work_task', seq: 10, scopes: [4000] });
+      ticks.notify({ table: 'c_work_task', seq: 20 });
+      await vi.advanceTimersByTimeAsync(20);
+      expect(pull.pull).toHaveBeenCalledTimes(2);
+      expect(pull.pull).toHaveBeenCalledWith('c_work_task', { wo_no: 3188 }, { from: 'window' });
+      expect(pull.pull).toHaveBeenCalledWith('c_work_task', { wo_no: 4000 }, { from: 'window' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('flush() pulls immediately without waiting for the window', async () => {
     const { pull, cursors } = fakes([{ wo_no: 3188 }]);
     const ticks = new TickCoalescer(pull, cursors, { windowMs: 5000 });

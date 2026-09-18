@@ -32,13 +32,12 @@ export class TickCoalescer {
   notify(tick: Tick): void {
     if (this.stopped) return;
     const existing = this.pendingTicks.get(tick.table);
-    if (!existing || tick.seq > existing.seq) {
-      this.pendingTicks.set(tick.table, {
-        ...tick,
-        ...(existing?.scopes && tick.scopes ? { scopes: [...new Set([...existing.scopes, ...tick.scopes])] } : {}),
-      });
-    } else if (existing.scopes && tick.scopes) {
-      existing.scopes = [...new Set([...existing.scopes, ...tick.scopes])];
+    if (existing) {
+      const scopes = this.mergeScopes(existing.scopes, tick.scopes);
+      const seq = Math.max(existing.seq, tick.seq);
+      this.pendingTicks.set(tick.table, scopes ? { table: tick.table, seq, scopes } : { table: tick.table, seq });
+    } else {
+      this.pendingTicks.set(tick.table, { ...tick });
     }
 
     if (this.timer) return;
@@ -87,5 +86,20 @@ export class TickCoalescer {
     if (!scope) return true;
     const values = Object.values(scope).map(String);
     return tick.scopes.some((value) => values.includes(String(value)));
+  }
+
+  /**
+   * Combines the scopes of two ticks for the same table. An absent or empty
+   * scopes list means "everything on this table changed", and that signal
+   * must never be narrowed away by merging in a tick that names specific
+   * scopes — broad beats narrow regardless of which side it came from.
+   * Only when both ticks name scopes do the two lists merge (deduplicated).
+   */
+  private mergeScopes(
+    a: Array<string | number> | undefined,
+    b: Array<string | number> | undefined,
+  ): Array<string | number> | undefined {
+    if (!a || a.length === 0 || !b || b.length === 0) return undefined;
+    return [...new Set([...a, ...b])];
   }
 }
