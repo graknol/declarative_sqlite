@@ -14,7 +14,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "removeComments": true,
+    "removeComments": false,
     "importHelpers": true,
     "jsx": "react-jsx",
     
