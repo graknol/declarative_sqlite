@@ -1,41 +1,77 @@
 ---
-sidebar_position: 1
+slug: /intro
+title: Introduction
+description: "What declarative-sqlite is, the three kinds of state it keeps apart, and what it does not do."
 ---
 
-# 👋 Introduction
+# declarative-sqlite
 
-Welcome to the official documentation for **Declarative SQLite**, a comprehensive ecosystem for declarative SQLite schema management, data operations, and real-time synchronization in Dart and Flutter.
+declarative-sqlite is a TypeScript library for apps that must keep working
+without a network. It runs real SQLite in the browser (WebAssembly, stored in
+OPFS where available), keeps a local copy of server data, lets the user edit it
+offline, and syncs the edits back when the connection returns.
 
-## 🤔 What is Declarative SQLite?
+:::note Version
+These docs cover **v3**, currently published as an alpha:
+`npm install declarative-sqlite@alpha`. v3 is a rewrite; see
+[Upgrading from v2](./upgrading-from-v2.md) if you have an existing app.
+:::
 
-Declarative SQLite provides a fluent, type-safe, and reactive API for interacting with SQLite databases. It is designed to abstract away the complexities of manual schema migrations, raw SQL queries, and change tracking, allowing you to focus on building your application's features.
+## What you get
 
-The ecosystem is built as a monorepo containing several key packages:
+- **A declarative schema.** Describe tables in code. `Database.open` compares
+  the schema with the database on disk and migrates it. Migrations only add
+  tables, columns and indexes; they never drop anything.
+- **Live queries.** Write plain SQL, declare which tables (and which slice of
+  them) it reads, and subscribe. The query re-runs only when a committed write
+  touches what it declared, and it emits only when its rows actually changed.
+- **Sync.** Pull server rows page by page from a cursor, record local edits in
+  an outbox, and push them in batches the server can apply idempotently. You
+  supply two functions that talk to your API; the library never makes HTTP
+  calls itself.
+- **React bindings** in `declarative-sqlite/react`: `useLiveQuery`,
+  `useDraftField`, `useOutboxCounts`, `useSyncStatus`.
 
-- 📦 **`declarative_sqlite`**: The core library providing the foundational features.
-- 📱 **`declarative_sqlite_flutter`**: Flutter-specific widgets and helpers for seamless UI integration.
-- ⚙️ **`declarative_sqlite_generator`**: A code generator to reduce boilerplate and improve type safety.
-- 🚀 **`demo`**: A complete Flutter application showcasing best practices and common use cases.
+## The three kinds of state
 
-## 💡 Core Philosophy
+An offline-first app has three sources of truth for any value on screen. The
+library keeps them apart:
 
-1.  **Declarative Schema Management**: Define your database schema using a fluent Dart API. The library handles schema creation and management automatically.
-2.  **Reactive Data Access**: Built around `Stream`s for reactive applications where UI updates automatically when data changes. Includes reactive synchronization streams for efficient change detection.
-3.  **Type Safety**: Query builder and code generation provide compile-time type checking and autocompletion.
-4.  **Simple Integration**: Easy integration with Flutter widgets for data-driven UIs.
+| State | Where it lives | Who changes it |
+|---|---|---|
+| **Server truth** | Tables marked `.synced()` | Only the sync layer: pulls, and the local write done by `outbox.record` |
+| **Outbox** | The library's own `outbox` table | `sync.outbox.record(...)`; entries settle when the server answers |
+| **Draft** | Memory, keyed by table, row and column | An input the user is typing in (`useDraftField`) |
 
-## 👥 Who is this for?
+When a row is read through a live query, pending outbox values are laid over
+the server value, and a column someone is typing in is held at the draft
+value. A pull that arrives in the meantime can't overwrite either one.
 
-- **Flutter Developers** building data-driven applications that require a local database.
-- **Dart Developers** working on server-side or standalone applications needing a simple yet powerful database solution.
-- Developers who want to avoid writing raw SQL and manual migration scripts.
-- Teams looking for a structured, maintainable, and scalable way to manage their application's database.
+## When it fits
 
-## 📚 How to Use These Docs
+- Browser apps, PWAs and web views that must work offline for long periods.
+- A backend you control, or can put an adapter in front of, that can serve rows
+  by sequence number and accept column-level changes. The
+  [server protocol](./server-protocol.md) page lists exactly what it must do.
 
-- **Getting Started**: This section will guide you through the initial setup, from installation to creating your first database and schema.
-- **Core Library**: A deep dive into the features of the main `declarative_sqlite` package, including advanced queries, synchronization, and file management.
-- **Flutter Integration**: Learn how to use the Flutter-specific widgets to quickly build reactive user interfaces.
-- **Generator**: Understand how to use code generation to automate boilerplate and improve your development workflow.
+## What it does not do
 
-Ready to get started? Head over to the [Installation](./getting-started/installation.md) guide. 🎉
+- **Create or delete synced rows from the client.** The push format carries
+  column changes to rows that already exist. New server rows and deletions
+  arrive by pulling. Tables you don't sync (`db.tables.<name>`) have full
+  insert, update and delete.
+- **Merge conflicts.** The server decides: the last change to arrive wins, per
+  column. Anything the server refuses comes back as a `rejected` outbox entry
+  for the app to show.
+- **Talk to the network.** You write the transport, so you own auth, URLs and
+  headers.
+- **Store files.** Keep blobs in your own storage and reference them from rows.
+
+## Layout of the package
+
+```
+declarative-sqlite          schema, migration, adapters, Database, live queries, sync
+declarative-sqlite/react    SyncProvider and hooks (react is an optional peer dependency)
+```
+
+Next: [Getting started](./getting-started.md).

@@ -1,39 +1,32 @@
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
-
-// This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
+import llmsTxtPlugin, {sidebarPageIds} from './plugins/llms-txt';
+import sidebars from './sidebars';
 
 const config: Config = {
-  title: 'Declarative SQLite',
-  tagline: 'A comprehensive Dart and Flutter library ecosystem for declarative SQLite schema management and database operations',
+  title: 'declarative-sqlite',
+  tagline: 'An offline-first sync data layer for SQLite in the browser',
   favicon: 'img/logo.png',
 
-  // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
-    v4: true, // Improve compatibility with the upcoming Docusaurus v4
+    v4: true,
   },
 
-  // Set the production url of your site here
   url: 'https://declarative-sqlite.linden.no',
-  // Set the /<baseUrl>/ pathname under which your site is served
-  // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: '/',
-
-  // GitHub pages deployment config.
-  // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'graknol', // Usually your GitHub org/user name.
-  projectName: 'declarative_sqlite', // Usually your repo name.
-
-  onBrokenLinks: 'throw',
-  onBrokenMarkdownLinks: 'warn',
-
-  // Add trailing slashes to URLs to avoid redirects (required for GitHub Pages and Algolia crawler)
+  organizationName: 'graknol',
+  projectName: 'declarative_sqlite',
   trailingSlash: true,
 
-  // Even if you don't use internationalization, you can use this field to set
-  // useful metadata like html lang. For example, if your site is Chinese, you
-  // may want to replace "en" with "zh-Hans".
+  onBrokenLinks: 'throw',
+  markdown: {
+    format: 'detect',
+    hooks: {
+      onBrokenMarkdownLinks: 'throw',
+    },
+  },
+
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
@@ -45,11 +38,9 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/graknol/declarative_sqlite/tree/main/docs/',
+          editUrl: 'https://github.com/graknol/declarative_sqlite/tree/main/docs/',
         },
+        blog: false,
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -57,45 +48,45 @@ const config: Config = {
           lastmod: 'date',
           changefreq: 'weekly',
           priority: 0.5,
-          ignorePatterns: ['/tags/**'],
           filename: 'sitemap.xml',
         },
       } satisfies Preset.Options,
     ],
   ],
 
-  themeConfig: {
-    // Algolia search configuration
-    ...(process.env.ALGOLIA_APP_ID && process.env.ALGOLIA_API_KEY && {
-      algolia: {
-        // The application ID provided by Algolia (from environment variable)
-        appId: process.env.ALGOLIA_APP_ID,
-        // Public API key: it is safe to commit it (from environment variable)
-        apiKey: process.env.ALGOLIA_API_KEY,
-        indexName: 'declarative_sqlite',
-        // Optional: see doc section below
-        contextualSearch: true,
-        // Optional: Algolia search parameters
-        searchParameters: {},
-        // Optional: path for search page that enabled by default (`false` to disable it)
-        searchPagePath: 'search',
+  plugins: [
+    [
+      llmsTxtPlugin,
+      {
+        pages: sidebarPageIds(sidebars.docs),
+        summary:
+          'declarative-sqlite is a TypeScript library for offline-first browser apps: SQLite (WebAssembly, OPFS) with a declarative schema, automatic additive migration, live queries, and a sync layer (cursor-based pull, column-level outbox, idempotent batched push). Install v3 with `npm install declarative-sqlite@alpha`.',
       },
-    }),
+    ],
+  ],
+
+  themeConfig: {
     colorMode: {
       defaultMode: 'dark',
-      disableSwitch: false,
-      respectPrefersColorScheme: false,
+      respectPrefersColorScheme: true,
     },
-    // Replace with your project's social card
-    image: 'img/docusaurus-social-card.jpg',
     navbar: {
-      title: '💾 Declarative SQLite',
+      title: 'declarative-sqlite',
+      logo: {
+        alt: 'declarative-sqlite',
+        src: 'img/logo.png',
+      },
       items: [
         {
           type: 'docSidebar',
           sidebarId: 'docs',
           position: 'left',
-          label: 'Documentation',
+          label: 'Docs',
+        },
+        {
+          href: 'https://www.npmjs.com/package/declarative-sqlite',
+          label: 'npm',
+          position: 'right',
         },
         {
           href: 'https://github.com/graknol/declarative_sqlite',
@@ -108,63 +99,32 @@ const config: Config = {
       style: 'dark',
       links: [
         {
-          title: 'Documentation',
+          title: 'Docs',
           items: [
-            {
-              label: 'Getting Started',
-              to: '/docs/intro',
-            },
-            {
-              label: 'Core Library',
-              to: '/docs/core-library/intro',
-            },
-            {
-              label: 'Query Builder',
-              to: '/docs/core-library/query-builder',
-            },
-            {
-              label: 'Flutter Integration',
-              to: '/docs/flutter-integration/intro',
-            },
+            {label: 'Getting started', to: '/docs/getting-started'},
+            {label: 'Sync', to: '/docs/sync'},
+            {label: 'Server protocol', to: '/docs/server-protocol'},
+            {label: 'React', to: '/docs/react'},
           ],
         },
         {
-          title: 'Packages',
+          title: 'Project',
           items: [
+            {label: 'npm', href: 'https://www.npmjs.com/package/declarative-sqlite'},
+            {label: 'GitHub', href: 'https://github.com/graknol/declarative_sqlite'},
+            {label: 'Issues', href: 'https://github.com/graknol/declarative_sqlite/issues'},
             {
-              label: 'declarative_sqlite',
-              href: 'https://pub.dev/packages/declarative_sqlite',
-            },
-            {
-              label: 'declarative_sqlite_flutter',
-              href: 'https://pub.dev/packages/declarative_sqlite_flutter',
-            },
-            {
-              label: 'declarative_sqlite_generator',
-              href: 'https://pub.dev/packages/declarative_sqlite_generator',
-            },
-          ],
-        },
-        {
-          title: 'More',
-          items: [
-            {
-              label: 'GitHub',
-              href: 'https://github.com/graknol/declarative_sqlite',
-            },
-            {
-              label: 'Issues',
-              href: 'https://github.com/graknol/declarative_sqlite/issues',
+              label: 'Changelog',
+              href: 'https://github.com/graknol/declarative_sqlite/blob/main/packages/core/CHANGELOG.md',
             },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Declarative SQLite. Built with Docusaurus.`,
+      copyright: `MIT licensed · © ${new Date().getFullYear()} declarative-sqlite`,
     },
     prism: {
       theme: prismThemes.github,
       darkTheme: prismThemes.dracula,
-      additionalLanguages: ['dart'],
     },
   } satisfies Preset.ThemeConfig,
 };
