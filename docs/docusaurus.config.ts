@@ -60,7 +60,7 @@ const config: Config = {
       {
         pages: sidebarPageIds(sidebars.docs),
         summary:
-          'declarative-sqlite is a TypeScript library for offline-first browser apps: SQLite (WebAssembly, OPFS) with a declarative schema, automatic additive migration, live queries, and a sync layer (cursor-based pull, column-level outbox, idempotent batched push). Install v3 with `npm install declarative-sqlite@alpha`.',
+          'declarative-sqlite is a TypeScript library for offline-first browser apps: SQLite (WebAssembly, OPFS) with a declarative schema, automatic additive migration, live queries, and a sync layer (cursor-based pull, column-level outbox, idempotent batched push). Install v3 with `npm install declarative-sqlite`.',
       },
     ],
   ],

@@ -1,6 +1,6 @@
 {
   "name": "declarative-sqlite",
-  "version": "3.0.0-alpha.2",
+  "version": "3.0.0",
   "description": "Offline-first sync data layer for SQLite in the browser: declarative schema, automatic migration, live queries, outbox, drafts and cursor-based sync",
   "type": "module",
   "main": "./dist/index.cjs",

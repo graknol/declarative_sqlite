@@ -58,7 +58,7 @@ export default function Home(): ReactNode {
               How it works
             </Link>
           </div>
-          <code className={styles.install}>npm install declarative-sqlite@alpha</code>
+          <code className={styles.install}>npm install declarative-sqlite</code>
         </div>
       </header>
       <main className="container">

@@ -8,7 +8,7 @@ description: "Install the package, configure Vite, open a local database, and ad
 ## Install
 
 ```bash
-npm install declarative-sqlite@alpha
+npm install declarative-sqlite
 ```
 
 The package depends on `@sqlite.org/sqlite-wasm`, which it installs for you.

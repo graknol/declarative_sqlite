@@ -12,9 +12,9 @@ OPFS where available), keeps a local copy of server data, lets the user edit it
 offline, and syncs the edits back when the connection returns.
 
 :::note Version
-These docs cover **v3**, currently published as an alpha:
-`npm install declarative-sqlite@alpha`. v3 is a rewrite; see
-[Upgrading from v2](./upgrading-from-v2.md) if you have an existing app.
+These docs cover **v3** (`npm install declarative-sqlite`), a full rewrite of
+the package. See [Upgrading from v2](./upgrading-from-v2.md) if you have an
+existing app.
 :::
 
 ## What you get

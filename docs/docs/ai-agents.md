@@ -24,8 +24,8 @@ docs and the types disagree, the types are right.
 These are the mistakes that compile but break at runtime or corrupt sync
 state. Follow them in generated code.
 
-1. **Install the v3 alpha**: `npm install declarative-sqlite@alpha`. The
-   untagged `latest` is v2, a different API.
+1. **Install v3**: `npm install declarative-sqlite`. `latest` is v3; if you
+   need the old API, pin a `2.x` version explicitly.
 2. **Never write a `.synced()` table directly.** Not with `db.tables`, and not
    with `db.execute` or `tx.execute`. Use `sync.outbox.record({ table,
    systemId, changes })`.

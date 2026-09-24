@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.0
+
+Stable release. No code changes since `3.0.0-alpha.2` — see that entry and
+`3.0.0-alpha.1` below for everything v3 brought over v2, and
+[`MIGRATION-v2-to-v3.md`](./MIGRATION-v2-to-v3.md) for the upgrade path.
+
 ## 3.0.0-alpha.2
 
 ### Added
