@@ -313,6 +313,56 @@ export class Outbox {
     });
   }
 
+  /**
+   * Finds the batches that were handed to the transport and never got a
+   * verdict, for `PushService` to re-send after a restart. An entry is still in
+   * flight when it carries a `batch_id` and is `sending` (the process stopped
+   * mid-push) or `pending` (a network error reset it and the in-memory retry
+   * was lost with the process). Each batch is rebuilt with exactly the grouping
+   * and order `PushService.nextBatch` used when it first took the batch -
+   * oldest first, change groups in first-seen order - so `results[i].index` in
+   * the server's stored answer for that batch id still names the right entry.
+   *
+   * A `sending` row with no batch id cannot be matched to any answer, so it
+   * returns to `pending` and goes out in a new batch. Nothing else is touched:
+   * `pending` rows without a batch id, and settled or rejected rows, keep their
+   * state. The caller must be the only runtime on this database (see
+   * `createSyncRuntime`); there is no cross-tab lock.
+   */
+  async recoverInFlight(): Promise<{ batches: Array<{ batchId: string; entries: OutboxEntry[] }>; reset: number }> {
+    const outbox = quoteIdentifier(OUTBOX_TABLE);
+    let reset = 0;
+    let rows: Array<Record<string, string | null>> = [];
+    await this.db.transaction(async (tx) => {
+      const result = await tx.execute(
+        `UPDATE ${outbox} SET status = 'pending', batch_id = NULL WHERE status = 'sending' AND (batch_id IS NULL OR batch_id = '')`,
+      );
+      reset = result.changes;
+      if (reset > 0) tx.markTableWritten(OUTBOX_TABLE);
+      // The same ORDER BY as `entries()`, which is what `nextBatch` read when
+      // it first built these batches.
+      rows = await tx.query<Record<string, string | null>>(
+        `SELECT * FROM ${outbox} WHERE status IN ('pending','sending') AND batch_id IS NOT NULL AND batch_id <> '' ORDER BY changed_at, rowid`,
+      );
+    });
+    if (reset > 0) this.notify();
+
+    const byBatch = new Map<string, Map<string, OutboxEntry[]>>();
+    for (const entry of rows.map(toEntry)) {
+      const batchId = entry.batchId ?? '';
+      let groups = byBatch.get(batchId);
+      if (!groups) {
+        groups = new Map();
+        byBatch.set(batchId, groups);
+      }
+      const group = groups.get(entry.groupId);
+      if (group) group.push(entry);
+      else groups.set(entry.groupId, [entry]);
+    }
+    const batches = [...byBatch].map(([batchId, groups]) => ({ batchId, entries: [...groups.values()].flat() }));
+    return { batches, reset };
+  }
+
   /** A network error: the batch never reached a verdict, so its entries queue again. The push service re-sends them under the same batch id. */
   async resetSending(batchId: string): Promise<void> {
     await this.db.transaction(async (tx) => {

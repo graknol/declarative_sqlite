@@ -137,7 +137,7 @@ Each outbox entry moves through these states:
 | Status | Meaning |
 |---|---|
 | `pending` | Recorded, not sent yet |
-| `sending` | In a batch waiting for an answer |
+| `sending` | In a batch waiting for an answer; the row keeps the batch id |
 | `applied` | The server applied it |
 | `noop` | The server already had that value |
 | `rejected` | The server refused it; `errorText` says why |
@@ -168,6 +168,23 @@ const sync = await createSyncRuntime({
   isTerminalError: (error) => error instanceof HttpError && error.status >= 400 && error.status < 500,
 });
 ```
+
+### Restarts during a push
+
+If the app reloads, crashes or is killed while a batch is in flight (or while
+it is waiting to retry one), its entries stay in the outbox with their batch
+id. `createSyncRuntime` picks them up on startup: before anything new is
+sent, each unanswered batch is rebuilt from the outbox in its original order
+and sent again **under its original batch id**, so a server that already
+applied it returns its stored answer instead of applying it twice. A push is
+scheduled for it on startup; you don't need to call anything. The overlay
+keeps showing the local value until the answer arrives. A `sending` entry
+with no batch id (not written by any 3.x release) goes back to `pending` and
+is sent in a new batch.
+
+This assumes one sync runtime per database. There is no cross-tab lock: the
+OPFS backend only lets one tab open a database file, and the IndexedDB
+backend gives each tab its own copy.
 
 ### Rejected changes
 

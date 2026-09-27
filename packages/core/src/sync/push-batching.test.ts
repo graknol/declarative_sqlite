@@ -127,6 +127,10 @@ describe('PushService batching', () => {
   it('only sends pending entries, never ones already sending', async () => {
     const s = await setup();
     db = s.db;
+    // Startup recovery has already run (createSyncRuntime awaits it), so an
+    // entry marked sending after that is in flight in this process, not an
+    // orphan of a previous one, and must not be taken again.
+    await s.push.recover();
     await s.outbox.record({ table: 'c_work_task', systemId: 'A', changes: { c_qty_installed: 10 } });
     const order = (await s.outbox.pending()).map((e) => e.id);
     await s.outbox.markSending(order, 'other-batch');

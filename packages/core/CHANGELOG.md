@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased (next 3.0.x patch)
+
+### Fixed
+- Outbox entries caught `sending` by a reload, crash or OS kill are no longer
+  stuck forever. `createSyncRuntime` now recovers them on startup, and every
+  push waits for that recovery. Each batch that was sent without an answer
+  (entries still `sending`, or reset to `pending` by a network error whose
+  in-memory retry died with the process) is rebuilt from the persisted
+  `batch_id` in its original order and re-sent under the SAME batch id before
+  any new batch, so the server's idempotent `batchId` path dedupes it. A push
+  is scheduled on startup when anything was recovered. `sending` rows without
+  a batch id go back to `pending`. No schema change: `outbox.batch_id` has
+  been persisted since 3.0.0. New: `PushService.recover()` and
+  `Outbox.recoverInFlight()`. Assumes one sync runtime per database (there is
+  no cross-tab lock).
+
 ## 3.0.0
 
 Stable release. No code changes since `3.0.0-alpha.2` — see that entry and

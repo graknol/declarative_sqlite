@@ -129,10 +129,22 @@ export async function createSyncRuntime(options: SyncRuntimeOptions): Promise<Sy
 
   const { pull, push, ticks } = createNetworkServices(options, core);
 
+  // Before anything can push: entries a previous process left `sending` (or
+  // reset to `pending` under a batch id it never got an answer for) are queued
+  // to go out again under that same batch id, so the server can dedupe. This
+  // assumes one runtime per database, which the persistent adapters enforce in
+  // practice (OPFS's SAH pool is exclusive to one tab; the IndexedDB adapter is
+  // one in-memory image per tab) - there is no cross-tab lock or leader
+  // election, and two runtimes on one database file are not supported.
+  const recovered = await push.recover();
+
   const transform = (table: string, rows: Row[]): Row[] => core.drafts.apply(table, core.overlay.apply(table, rows));
   db.setRowTransform(transform);
 
   const unsubscribeOutbox = core.outbox.subscribe(() => push.schedule());
+  // Nothing else would trigger a push for work that was already in flight
+  // before the restart; queue one through the normal debounce.
+  if (recovered.batches > 0 || recovered.reset > 0) push.schedule();
 
   return {
     outbox: core.outbox,

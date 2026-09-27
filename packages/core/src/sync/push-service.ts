@@ -52,6 +52,9 @@ export class PushService {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<PushOutcome> | undefined;
   private retryBatch: PreparedBatch | undefined;
+  /** Batches a previous process sent without getting a verdict, re-sent under their own ids before anything new. Filled once by `recover()`. */
+  private recovered: PreparedBatch[] = [];
+  private recovery: Promise<{ batches: number; reset: number }> | undefined;
   private state: SyncStatus = { online: true, sending: false, attempt: 0, nextRetryAt: null, lastError: null };
   private readonly statusListeners = new Set<(status: SyncStatus) => void>();
   private readonly rejectedListeners = new Set<(entry: OutboxEntry) => void>();
@@ -86,12 +89,40 @@ export class PushService {
     return this.inFlight;
   }
 
+  /**
+   * Picks up what a previous process left in flight: a push that was cut off
+   * (reload, crash, the OS killing the app) leaves its entries `sending`, and a
+   * network error followed by a restart leaves them `pending` with the batch id
+   * still on the row — either way the in-memory `retryBatch` is gone. Each such
+   * batch is rebuilt from the outbox and sent again under its ORIGINAL batch id
+   * before any new batch, so a server that already applied it answers from its
+   * stored result instead of applying it twice. Legacy `sending` rows without a
+   * batch id go back to `pending`. Runs once per service; `createSyncRuntime`
+   * awaits it on startup and every push awaits it too, so no batch can be taken
+   * before recovery has finished. Resolves to how many batches were recovered
+   * and how many legacy rows were reset.
+   */
+  recover(): Promise<{ batches: number; reset: number }> {
+    this.recovery ??= this.outbox.recoverInFlight().then(
+      ({ batches, reset }) => {
+        this.recovered = batches;
+        return { batches: batches.length, reset };
+      },
+      (error: unknown) => {
+        this.recovery = undefined;
+        throw error;
+      },
+    );
+    return this.recovery;
+  }
+
   private async run(): Promise<PushOutcome> {
     const outcome: PushOutcome = { applied: 0, noop: 0, rejected: 0, batches: 0 };
     this.setStatus({ sending: true });
     try {
+      await this.recover();
       for (;;) {
-        const batch = this.retryBatch ?? (await this.nextBatch());
+        const batch = this.retryBatch ?? this.recovered.shift() ?? (await this.nextBatch());
         if (!batch) break;
         const sent = await this.sendBatch(batch);
         outcome.batches++;
