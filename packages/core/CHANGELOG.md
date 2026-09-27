@@ -2,7 +2,62 @@
 
 ## Unreleased (next 3.0.x patch)
 
+### Added
+- `OpfsAdapter` pool sizing and cleanup, for devices several users sign in
+  to. The SAH pool keeps each database in one of a fixed number of slots
+  (sqlite-wasm's default is 6) under random file names, so a database could
+  not be deleted from outside and every user who ever signed in kept a slot
+  until opens failed with "SAH pool is full".
+  - Options `initialCapacity` (slots when the pool is first created) and
+    `minimumCapacity` (the pool must have at least this many, or `open()`
+    fails). Also accepted by
+    `openAdapter({ opfs: { poolName, initialCapacity, minimumCapacity } })`.
+  - `adapter.deleteDatabase(name?)` closes the adapter first if `name` is
+    its own (the default), then unlinks the database and its
+    `-journal`/`-wal`/`-shm` names from the pool, freeing the slots.
+    Resolves `true` if the database existed.
+  - `OpfsAdapter.deleteDatabase(name, options?)` does the same without an
+    open adapter.
+  - `adapter.poolInfo()` returns `{ capacity, fileCount, fileNames }`.
+  - Call both deletes from the context (tab or worker) that owns the
+    databases: the pool allows one holder per origin. Both throw if the
+    database is open through another `OpfsAdapter` in that context.
+  - If another context holds the pool, the static delete rejects with an
+    error whose `cause` is the browser's `NoModificationAllowedError`. The
+    library does not delete anything itself in that case. sqlite-wasm's own
+    cleanup of the failed install (`removeVfs()`, a recursive delete of the
+    pool directory) runs, and only the browser's OPFS locks on the other
+    context's files stop it. Checked in Chromium (`browser-test/`). The
+    failure is cached per context, so the static delete does not retry it.
+  - When the static delete had to install or resume the pool and nothing is
+    open through it afterwards, it pauses the pool again (`pauseVfs`,
+    sqlite-wasm 3.50+), so the context that owns the databases can still
+    open it. `open()` resumes a paused pool. With sqlite-wasm older than
+    3.50 (the dependency range still starts at 3.47.2) there is no pause, and
+    the pool stays held by the context that installed it until that context
+    ends.
+- `npm run test:browser`: Playwright (Chromium) tests of the OPFS adapter on
+  real OPFS, outside `npm test`.
+
 ### Fixed
+- `OpfsAdapter.open()` tries to leave room for one more database and its
+  journal: it grows the pool to `fileCount + 2` slots. That is best effort:
+  if OPFS refuses (quota), it warns and still opens an existing database.
+  Defaults are otherwise unchanged (pool `declarative-sqlite`, initial
+  capacity 6).
+- `OpfsAdapter.open()` no longer calls `pool.removeVfs()` when the database
+  cannot be created (e.g. a full pool). `removeVfs()` deletes the pool's
+  whole directory, so that failure deleted every other database in the pool.
+  The pool is paused instead where sqlite-wasm supports it, and otherwise
+  stays installed.
+- `open()` installs the pool with `forceReinitIfPreviouslyFailed`, so an
+  open that failed because another context held the pool can be retried in
+  the same context instead of replaying the first rejection.
+- The Node loader also finds sqlite-wasm 3.51+'s `dist/node.mjs`. The test
+  suite passes on 3.47.2, 3.50.4 and 3.53.4.
+- The `OpfsAdapter` docs no longer claim it works on the main thread.
+  Browsers expose `createSyncAccessHandle` only in dedicated workers.
+
 - Outbox entries caught `sending` by a reload, crash or OS kill are no longer
   stuck forever. `createSyncRuntime` now recovers them on startup, and every
   push waits for that recovery. Each batch that was sent without an answer

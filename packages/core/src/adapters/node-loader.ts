@@ -6,6 +6,7 @@
 // check against that stub even though this code never runs in the browser; a
 // default import only ever needs the `default` binding, which the stub always
 // provides, so the build only warns instead of hard-erroring.
+import fs from 'node:fs';
 import nodeModule from 'node:module';
 import path from 'node:path';
 import nodeUrl from 'node:url';
@@ -25,6 +26,8 @@ import type { Sqlite3Module } from './wasm';
 export async function loadNodeSqlite3(): Promise<Sqlite3Module> {
   const require = nodeModule.createRequire(import.meta.url);
   const pkgJson = require.resolve('@sqlite.org/sqlite-wasm/package.json');
-  const entry = path.join(path.dirname(pkgJson), 'sqlite-wasm', 'jswasm', 'sqlite3-node.mjs');
+  const root = path.dirname(pkgJson);
+  const legacy = path.join(root, 'sqlite-wasm', 'jswasm', 'sqlite3-node.mjs');
+  const entry = fs.existsSync(legacy) ? legacy : path.join(root, 'dist', 'node.mjs');
   return import(/* @vite-ignore */ nodeUrl.pathToFileURL(entry).href);
 }

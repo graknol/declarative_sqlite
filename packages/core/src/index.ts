@@ -11,6 +11,7 @@ export type { SqlValue, Row, ScopeValues } from './types';
 export type { SQLiteAdapter, RunResult } from './adapters/adapter';
 export { MemoryAdapter, loadSqlite3 } from './adapters/memory-adapter';
 export { OpfsAdapter } from './adapters/opfs-adapter';
+export type { OpfsAdapterOptions, OpfsPoolInfo } from './adapters/opfs-adapter';
 export { IndexedDbAdapter } from './adapters/indexeddb-adapter';
 export { WasmAdapterBase } from './adapters/wasm';
 export { openAdapter } from './adapters/open-adapter';

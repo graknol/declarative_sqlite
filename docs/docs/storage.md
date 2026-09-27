@@ -38,6 +38,75 @@ something, since everything they do will be lost on reload.
 | `backend` | `'auto'` | Force `'opfs'`, `'indexeddb'` or `'memory'`. Skips detection, and throws instead of falling back |
 | `wasmDir` | – | Folder `sqlite3.wasm` is served from, if not the default location |
 | `opfsTimeoutMs` | `5000` | How long to wait for OPFS before falling back. Some browsers that report OPFS support hang on the first open |
+| `opfs` | – | `{ poolName?, initialCapacity?, minimumCapacity? }` for the OPFS backend, see [The OPFS pool](#the-opfs-pool) |
+
+## The OPFS pool
+
+The OPFS adapter uses SQLite's SAH-pool VFS. The pool lives in the OPFS
+directory `.<poolName>` (default `.declarative-sqlite`) and keeps every file
+in one of a fixed number of pre-allocated slots with a random file name. Each
+database takes a slot, and so does its rollback journal while a write
+transaction runs. The pool needs `createSyncAccessHandle`, which browsers
+expose only in dedicated workers, so open OPFS databases in a worker.
+
+| `OpfsAdapter` option | Default | Meaning |
+|---|---|---|
+| `poolName` | `'declarative-sqlite'` | Pool (VFS) name and directory |
+| `initialCapacity` | `6` | Slots when the pool is created for the first time on this origin. Ignored for an existing pool |
+| `minimumCapacity` | – | The pool grows to at least this many slots, and `open()` fails if it cannot. It never shrinks |
+
+Whatever you pass, `open()` also tries to grow the pool to `fileCount + 2`
+slots: room for one more database and one journal. That is best effort. If
+OPFS refuses (quota), it logs a warning and still opens an existing database.
+It does not cover the temporary journal slots of several databases writing at
+the same time, so size `minimumCapacity` for the databases you keep open.
+
+```ts
+const adapter = new OpfsAdapter('user-42.db', { minimumCapacity: 16 });
+// or: openAdapter({ name: 'user-42.db', opfs: { minimumCapacity: 16 } })
+await adapter.open();
+adapter.poolInfo(); // { capacity: 16, fileCount: 1, fileNames: ['/user-42.db'] }
+```
+
+### Deleting a database
+
+Because the files have random names, deleting `user-42.db` at the OPFS root
+does nothing, and the slot stays taken. Delete through the pool:
+
+```ts
+await adapter.deleteDatabase();               // this adapter's own: closes it, then deletes
+await adapter.deleteDatabase('user-17.db');   // another database in the same pool
+await OpfsAdapter.deleteDatabase('user-17.db', { wasmDir: '/assets' }); // no adapter open
+```
+
+Each unlinks the database and its `-journal`, `-wal` and `-shm` names, frees
+their slots, and resolves `true` if the database existed. Deleting a database
+that another `OpfsAdapter` in the same tab or worker has open throws; close
+that adapter first. Call it from the context that owns the database (below).
+
+**Shared devices.** When several people sign in on one device and each gets
+their own database, delete the previous user's database on sign-out (or
+remove old ones on sign-in), and set `minimumCapacity` to cover the
+databases you keep. Otherwise each user who ever signed in keeps a slot, and
+once the pool is full, opening a new database fails with "SAH pool is full".
+
+**One holder per origin.** The pool holds exclusive access handles on all
+its slots, so only one tab or worker per origin can have it at a time. Call
+`deleteDatabase` from the context that owns the databases, typically your
+database worker, not from the UI thread.
+
+- If another context holds the pool, `OpfsAdapter.deleteDatabase` rejects
+  with an error whose `cause` is the browser's `NoModificationAllowedError`.
+  The library deletes nothing. sqlite-wasm's own cleanup of the failed
+  install, a recursive delete of the pool directory, still runs, and only
+  the browser's OPFS locks on the holder's files stop it. That is checked in
+  Chromium. sqlite-wasm caches the failure, so a retry from the same context
+  rejects the same way.
+- When `OpfsAdapter.deleteDatabase` had to install the pool and nothing is
+  open through it afterwards, it pauses the pool, which releases its handles
+  (`pauseVfs`, sqlite-wasm 3.50+). The next `open()` resumes it. With an
+  older sqlite-wasm, the pool stays held by the context that called it until
+  that context ends, and your database worker cannot open it meanwhile.
 
 ## The IndexedDB caveat
 
