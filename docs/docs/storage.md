@@ -38,6 +38,62 @@ something, since everything they do will be lost on reload.
 | `backend` | `'auto'` | Force `'opfs'`, `'indexeddb'` or `'memory'`. Skips detection, and throws instead of falling back |
 | `wasmDir` | – | Folder `sqlite3.wasm` is served from, if not the default location |
 | `opfsTimeoutMs` | `5000` | How long to wait for OPFS before falling back. Some browsers that report OPFS support hang on the first open |
+| `opfs` | – | `{ poolName?, initialCapacity?, minimumCapacity? }` for the OPFS backend, see [The OPFS pool](#the-opfs-pool) |
+
+## The OPFS pool
+
+The OPFS adapter uses SQLite's SAH-pool VFS. The pool lives in the OPFS
+directory `.<poolName>` (default `.declarative-sqlite`) and keeps every file
+in one of a fixed number of pre-allocated slots with a random file name. Each
+database takes a slot, and so does its rollback journal while a write
+transaction runs.
+
+| `OpfsAdapter` option | Default | Meaning |
+|---|---|---|
+| `poolName` | `'declarative-sqlite'` | Pool (VFS) name and directory |
+| `initialCapacity` | `6` | Slots when the pool is created for the first time on this origin. Ignored for an existing pool |
+| `minimumCapacity` | `0` | After opening, the pool grows to at least this many slots. It never shrinks |
+
+Whatever you pass, `open()` grows the pool to `max(minimumCapacity, fileCount + 2)`
+so there is always room for one more database and its journal.
+
+```ts
+const adapter = new OpfsAdapter('user-42.db', { minimumCapacity: 16 });
+// or: openAdapter({ name: 'user-42.db', opfs: { minimumCapacity: 16 } })
+await adapter.open();
+adapter.poolInfo(); // { capacity: 16, fileCount: 1, fileNames: ['/user-42.db'] }
+```
+
+### Deleting a database
+
+Because the files have random names, deleting `user-42.db` at the OPFS root
+does nothing, and the slot stays taken. Delete through the pool:
+
+```ts
+await adapter.deleteDatabase();               // this adapter's own: closes it, then deletes
+await adapter.deleteDatabase('user-17.db');   // another database in the same pool
+await OpfsAdapter.deleteDatabase('user-17.db', { wasmDir: '/assets' }); // no adapter open
+```
+
+Each unlinks the database and its `-journal`, `-wal` and `-shm` names, frees
+their slots, and resolves `true` if the database existed. Deleting a database
+that another `OpfsAdapter` in the same tab or worker has open throws; close
+that adapter first.
+
+**Shared devices.** When several people sign in on one device and each gets
+their own database, delete the previous user's database on sign-out (or
+remove old ones on sign-in), and set `minimumCapacity` to cover the
+databases you keep. Otherwise each user who ever signed in keeps a slot, and
+once the pool is full, opening a new database fails with "SAH pool is full".
+
+**One holder per origin.** The pool holds exclusive access handles on all
+its slots, so only one tab or worker per origin can have it at a time. Call
+`deleteDatabase` from the same tab or worker that opens your databases (for
+example the database worker). `OpfsAdapter.deleteDatabase` installs the pool
+in the calling tab or worker, where it then stays until that context ends.
+If another context holds the pool, it rejects with an error whose `cause` is
+the browser's `DOMException` (usually `NoModificationAllowedError`), and
+nothing is deleted.
 
 ## The IndexedDB caveat
 

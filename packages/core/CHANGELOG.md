@@ -2,7 +2,40 @@
 
 ## Unreleased (next 3.0.x patch)
 
+### Added
+- `OpfsAdapter` pool sizing and cleanup, for devices several users sign in
+  to. The SAH pool keeps each database in one of a fixed number of slots
+  (sqlite-wasm's default is 6) under random file names, so a database could
+  not be deleted from outside and every user who ever signed in kept a slot
+  until opens failed with "SAH pool is full".
+  - Options `initialCapacity` (slots when the pool is first created) and
+    `minimumCapacity` (the pool grows to at least this). Also accepted by
+    `openAdapter({ opfs: { poolName, initialCapacity, minimumCapacity } })`.
+  - `adapter.deleteDatabase(name?)` closes the adapter first if `name` is
+    its own (the default), then unlinks the database and its
+    `-journal`/`-wal`/`-shm` names from the pool, freeing the slots.
+    Resolves `true` if the database existed.
+  - `OpfsAdapter.deleteDatabase(name, options?)` does the same without an
+    open adapter; it installs the pool in the calling realm.
+  - `adapter.poolInfo()` returns `{ capacity, fileCount, fileNames }`.
+  - Both deletes throw if the database is open through another `OpfsAdapter`
+    in the same realm. The pool allows one holder per origin: if another
+    tab or worker has it, the static delete rejects with an error whose
+    `cause` is the browser's `NoModificationAllowedError`.
+
 ### Fixed
+- `OpfsAdapter.open()` always leaves room for one more database and its
+  journal: after installing the pool it grows it to
+  `max(minimumCapacity, fileCount + 2)`. Defaults are otherwise unchanged
+  (pool `declarative-sqlite`, initial capacity 6).
+- `OpfsAdapter.open()` no longer calls `pool.removeVfs()` when the database
+  cannot be created (e.g. a full pool). `removeVfs()` deletes the pool's
+  whole directory, so that failure deleted every other database in the pool.
+  The pool now stays installed and the next `open()` reuses it.
+- The pool is installed with `forceReinitIfPreviouslyFailed`, so an `open()`
+  that failed because another tab held the pool can be retried in the same
+  realm instead of replaying the first rejection.
+
 - Outbox entries caught `sending` by a reload, crash or OS kill are no longer
   stuck forever. `createSyncRuntime` now recovers them on startup, and every
   push waits for that recovery. Each batch that was sent without an answer

@@ -1,7 +1,7 @@
 import type { SQLiteAdapter } from './adapter';
 import { IndexedDbAdapter } from './indexeddb-adapter';
 import { MemoryAdapter } from './memory-adapter';
-import { OpfsAdapter } from './opfs-adapter';
+import { OpfsAdapter, type OpfsAdapterOptions } from './opfs-adapter';
 
 /** Which concrete adapter backed the database `openAdapter` returned. */
 export type AdapterBackend = 'opfs' | 'indexeddb' | 'memory';
@@ -22,6 +22,8 @@ export interface OpenAdapterOptions {
   wasmDir?: string;
   /** How long to wait for OPFS before falling back. Safari has been seen to hang here; default 5000 ms. */
   opfsTimeoutMs?: number;
+  /** Pool name and capacity for the OPFS backend (see `OpfsAdapterOptions`); `wasmDir` above still applies. */
+  opfs?: Omit<OpfsAdapterOptions, 'wasmDir'>;
   capabilities?: AdapterCapabilities;
 }
 
@@ -31,6 +33,10 @@ export interface OpenedAdapter {
   backend: AdapterBackend;
   /** Anything the app should log or show: a fallback that happened, or that this session is not persistent. */
   warnings: string[];
+}
+
+function opfsOptions(options: OpenAdapterOptions): OpfsAdapterOptions {
+  return { ...options.opfs, ...(options.wasmDir ? { wasmDir: options.wasmDir } : {}) };
 }
 
 const defaultCapabilities: AdapterCapabilities = {
@@ -68,7 +74,7 @@ export async function openAdapter(options: OpenAdapterOptions): Promise<OpenedAd
   if (requested !== 'auto') {
     const adapter =
       requested === 'opfs'
-        ? new OpfsAdapter(options.name, options.wasmDir ? { wasmDir: options.wasmDir } : {})
+        ? new OpfsAdapter(options.name, opfsOptions(options))
         : requested === 'indexeddb'
           ? new IndexedDbAdapter(options.name, options.wasmDir ? { wasmDir: options.wasmDir } : {})
           : new MemoryAdapter(options.wasmDir ? { wasmDir: options.wasmDir } : {});
@@ -77,7 +83,7 @@ export async function openAdapter(options: OpenAdapterOptions): Promise<OpenedAd
   }
 
   if (capabilities.opfs()) {
-    const adapter = new OpfsAdapter(options.name, options.wasmDir ? { wasmDir: options.wasmDir } : {});
+    const adapter = new OpfsAdapter(options.name, opfsOptions(options));
     // Keep a handle on the unraced open() so a timeout below doesn't strand it.
     const openPromise = adapter.open();
     try {
