@@ -2,6 +2,17 @@
 
 ## Unreleased (next 3.0.x patch)
 
+### Fixed
+- A pull page fetched before a push but applied after the push answer no
+  longer rolls the row back. `PullApplier.applyPage` now skips a row whose
+  `seq` is strictly below the local `sync_seq` (new `staleGuard` option,
+  default on; counted in `skippedBySeq`). Equal seqs are still written, so
+  the rewind window behaves as before. The applier also remembers the seq of
+  recent tombstones, so a stale page cannot bring back a row a newer deletion
+  removed. A `from: 0` pull turns the guard off (`staleGuard: false`), so a
+  full re-read can still repair a device after the server's sequence
+  restarted. Push answers keep their stricter `seq <= local` guard.
+
 ### Added
 - `OpfsAdapter` pool sizing and cleanup, for devices several users sign in
   to. The SAH pool keeps each database in one of a fixed number of slots

@@ -155,4 +155,99 @@ describe('PullApplier', () => {
     });
     expect(await s.cursors.get('c_work_task', { wo_no: 3188 })).toBe(0);
   });
+  it('a pull page answered before a push but applied after its answer does not roll the row back', async () => {
+    const s = await setup();
+    db = s.db;
+    const scope = { wo_no: 3188 };
+    const v1 = { id: 'A', seq: 100, removed: false, data: { WO_NO: 3188, C_QTY_INSTALLED: 5, ROWSTATE: 'ACTIVE' } };
+    await s.applier.applyPage('c_work_task', page([v1], 100), { scope });
+
+    // The push answer (the user's change, now seq 105) lands first...
+    await s.applier.applyRows('c_work_task', [{ id: 'A', seq: 105, removed: false, data: { WO_NO: 3188, C_QTY_INSTALLED: 5, ROWSTATE: 'DELETED' } }]);
+    // ...then a page the server answered before it, still carrying seq 100.
+    const report = await s.applier.applyPage('c_work_task', page([v1], 100), { scope });
+
+    expect(report.skippedBySeq).toBe(1);
+    expect(await db.queryOne('SELECT rowstate, sync_seq FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({ rowstate: 'DELETED', sync_seq: 105 });
+  });
+
+  it('a page re-sending the same seq (the rewind window) is still written', async () => {
+    const s = await setup();
+    db = s.db;
+    const row = { id: 'A', seq: 100, removed: false, data: { WO_NO: 3188, C_QTY_INSTALLED: 5, ROWSTATE: 'ACTIVE' } };
+    await s.applier.applyPage('c_work_task', page([row], 100), { scope: { wo_no: 3188 } });
+    const report = await s.applier.applyPage('c_work_task', page([row], 100), { scope: { wo_no: 3188 } });
+    expect(report).toMatchObject({ upserted: 1, skippedBySeq: 0 });
+  });
+
+  it('a from-zero re-read (staleGuard: false) can take a lower seq, for a server whose sequence restarted', async () => {
+    const s = await setup();
+    db = s.db;
+    await s.applier.applyPage('c_work_task', page([{ id: 'A', seq: 900, removed: false, data: { WO_NO: 3188, C_QTY_INSTALLED: 5, ROWSTATE: 'OLD' } }], 900), { scope: { wo_no: 3188 } });
+    await s.applier.applyPage('c_work_task', page([{ id: 'A', seq: 7, removed: false, data: { WO_NO: 3188, C_QTY_INSTALLED: 6, ROWSTATE: 'NEW' } }], 7), { scope: { wo_no: 3188 }, staleGuard: false });
+    expect(await db.queryOne('SELECT rowstate, sync_seq FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({ rowstate: 'NEW', sync_seq: 7 });
+  });
+  it('a stale tombstone does not delete a row the device holds a newer version of', async () => {
+    const s = await setup();
+    db = s.db;
+    await s.applier.applyRows('c_work_task', [{ id: 'A', seq: 105, removed: false, data: { WO_NO: 3188, ROWSTATE: 'ACTIVE' } }]);
+    const report = await s.applier.applyPage('c_work_task', page([{ id: 'A', seq: 100, removed: true, data: {} }], 100));
+    expect(report).toMatchObject({ skippedBySeq: 1, deleted: 0 });
+    expect(await db.queryOne('SELECT rowstate, sync_seq FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({ rowstate: 'ACTIVE', sync_seq: 105 });
+  });
+
+  it('a stale page does not bring back a row a newer tombstone deleted', async () => {
+    const s = await setup();
+    db = s.db;
+    const v1 = { id: 'A', seq: 100, removed: false, data: { WO_NO: 3188, ROWSTATE: 'ACTIVE' } };
+    await s.applier.applyPage('c_work_task', page([v1], 100));
+    await s.applier.applyPage('c_work_task', page([{ id: 'A', seq: 105, removed: true, data: {} }], 105));
+
+    const stale = await s.applier.applyPage('c_work_task', page([v1], 100));
+    expect(stale.skippedBySeq).toBe(1);
+    expect(await db.queryOne('SELECT system_id FROM c_work_task WHERE system_id = ?', ['A'])).toBeUndefined();
+
+    // A newer version (the row was restored on the server) is written as usual.
+    await s.applier.applyPage('c_work_task', page([{ ...v1, seq: 110 }], 110));
+    expect(await db.queryOne('SELECT rowstate, sync_seq FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({ rowstate: 'ACTIVE', sync_seq: 110 });
+  });
+
+  it('a from-zero re-read (staleGuard: false) brings back a row behind a remembered tombstone', async () => {
+    const s = await setup();
+    db = s.db;
+    await s.applier.applyPage('c_work_task', page([{ id: 'A', seq: 900, removed: true, data: {} }], 900));
+    await s.applier.applyPage('c_work_task', page([{ id: 'A', seq: 7, removed: false, data: { WO_NO: 3188, ROWSTATE: 'NEW' } }], 7), { staleGuard: false });
+    expect(await db.queryOne('SELECT rowstate, sync_seq FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({ rowstate: 'NEW', sync_seq: 7 });
+  });
+
+  it('applies a page row over a local row that has no server seq yet', async () => {
+    const s = await setup();
+    db = s.db;
+    await db.transaction(async (tx) => {
+      await s.writer.upsert(tx, 'c_work_task', { system_id: 'A', wo_no: 3188, rowstate: 'LOCAL' });
+    });
+    const report = await s.applier.applyPage('c_work_task', page([{ id: 'A', seq: 3, removed: false, data: { WO_NO: 3188, ROWSTATE: 'SERVER' } }], 3));
+    expect(report).toMatchObject({ upserted: 1, skippedBySeq: 0 });
+    expect(await db.queryOne('SELECT rowstate, sync_seq FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({ rowstate: 'SERVER', sync_seq: 3 });
+  });
+
+  it('skips only the stale rows of a page and writes the rest', async () => {
+    const s = await setup();
+    db = s.db;
+    await s.applier.applyRows('c_work_task', [{ id: 'B', seq: 50, removed: false, data: { WO_NO: 3188, ROWSTATE: 'PUSHED' } }]);
+    const report = await s.applier.applyPage(
+      'c_work_task',
+      page([
+        { id: 'A', seq: 10, removed: false, data: { WO_NO: 3188, ROWSTATE: 'PULLED' } },
+        { id: 'B', seq: 20, removed: false, data: { WO_NO: 3188, ROWSTATE: 'OLD' } },
+        { id: 'C', seq: 30, removed: false, data: { WO_NO: 3188, ROWSTATE: 'PULLED' } },
+      ], 30),
+      { scope: { wo_no: 3188 } },
+    );
+    expect(report).toMatchObject({ upserted: 2, skippedBySeq: 1 });
+    expect(await db.query('SELECT system_id, rowstate FROM c_work_task ORDER BY system_id')).toEqual([
+      { system_id: 'A', rowstate: 'PULLED' }, { system_id: 'B', rowstate: 'PUSHED' }, { system_id: 'C', rowstate: 'PULLED' },
+    ]);
+    expect(await s.cursors.get('c_work_task', { wo_no: 3188 })).toBe(30);
+  });
 });
