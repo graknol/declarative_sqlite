@@ -9,9 +9,11 @@
   default on; counted in `skippedBySeq`). Equal seqs are still written, so
   the rewind window behaves as before. The applier also remembers the seq of
   recent tombstones, so a stale page cannot bring back a row a newer deletion
-  removed. A `from: 0` pull turns the guard off (`staleGuard: false`), so a
-  full re-read can still repair a device after the server's sequence
-  restarted. Push answers keep their stricter `seq <= local` guard.
+  removed. Push answers keep their stricter `seq <= local` guard.
+- (3.0.36) The guard now applies to `from: 0` pulls too: apps use them for
+  everyday forced refreshes, which race a push just like an incremental pull.
+  The escape hatch for a server whose sequence restarted is now explicit:
+  `pull.pull(table, scope, { from: 0, overwriteNewer: true })`.
 
 ### Added
 - `OpfsAdapter` pool sizing and cleanup, for devices several users sign in

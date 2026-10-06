@@ -28,7 +28,7 @@ export interface ApplyOptions {
    * Skips a row whose `seq` is strictly BELOW the local `sync_seq` - one the device already
    * has a newer version of (typically a push answer that landed while this page was in
    * flight). Equal seqs are still written, so the rewind window's re-sends apply. Default
-   * true for `applyPage`; `PullService.pull` turns it off for a `from: 0` re-read, the escape
+   * true for `applyPage`; `PullService.pull` turns it off for `overwriteNewer`, the escape
    * hatch for a server whose sequence restarted. Ignored when `seqGuard` is on (stricter).
    */
   staleGuard?: boolean;
@@ -90,7 +90,7 @@ export class PullApplier {
    * the device already holds a newer version, typically a push answer that
    * landed while this page was in flight. A row at the same seq - such as one
    * the server re-sent under its rewind window - is written again.
-   * `staleGuard: false` writes every row (the `from: 0` re-read). The cursor update runs inside
+   * `staleGuard: false` writes every row (`PullOptions.overwriteNewer`). The cursor update runs inside
    * the same transaction as the row writes (see `runInTransaction`), so a
    * page of any size is still exactly one commit and one invalidation.
    */
