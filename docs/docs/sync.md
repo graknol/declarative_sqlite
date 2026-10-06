@@ -78,9 +78,9 @@ Pulling a row you already have is harmless: rows are upserted by id.
 
 A pulled row whose sequence number is lower than the one the device already
 holds is skipped, so a page fetched before a push answer but applied after it
-cannot roll the row back (this also covers rows a newer deletion removed). A
-`from: 0` pull writes every row regardless, to repair a device after the
-server's sequence restarted.
+cannot roll the row back (this also covers rows a newer deletion removed).
+This holds for every `from`. To repair a device after the server's sequence
+restarted, pull with `{ from: 0, overwriteNewer: true }`, which writes every row.
 
 A pulled row with `removed: true` is deleted locally. Server columns your
 schema doesn't declare are ignored, so the server can add columns before

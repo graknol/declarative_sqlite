@@ -171,24 +171,23 @@ describe('PullService and a push answer that lands mid-pull', () => {
     ]);
   });
 
-  it('a from-zero re-read writes every row, even below the local seq', async () => {
+  it('overwriteNewer writes every row, even below the local seq (a restarted server sequence)', async () => {
     const s = await scripted([{ table: 'C_WORK_TASK', rows: [row('A', 7, 'REREAD')], next: 7, hasMore: false }]);
     await s.applier.applyRows('c_work_task', [row('A', 900, 'BEFORE_RESTORE')]);
 
-    await s.pull.pull('c_work_task', { wo_no: 3188 }, { from: 0 });
+    await s.pull.pull('c_work_task', { wo_no: 3188 }, { from: 0, overwriteNewer: true });
     expect(await s.db.queryOne('SELECT rowstate, sync_seq FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({ rowstate: 'REREAD', sync_seq: 7 });
   });
 
-  it('a cursor or window pull skips a row below the local seq', async () => {
-    const s = await scripted([
-      { table: 'C_WORK_TASK', rows: [row('A', 7, 'STALE')], next: 7, hasMore: false },
-      { table: 'C_WORK_TASK', rows: [row('A', 7, 'STALE')], next: 7, hasMore: false },
-    ]);
+  it('a cursor, window or from-zero pull skips a row below the local seq', async () => {
+    const stale = { table: 'C_WORK_TASK', rows: [row('A', 7, 'STALE')], next: 7, hasMore: false };
+    const s = await scripted([stale, stale, stale]);
     await s.applier.applyRows('c_work_task', [row('A', 900, 'NEWER')]);
 
     await s.pull.pull('c_work_task', { wo_no: 3188 });
     await s.pull.pull('c_work_task', { wo_no: 3188 }, { from: 'window' });
-    expect(s.requests).toHaveLength(2);
+    await s.pull.pull('c_work_task', { wo_no: 3188 }, { from: 0 });
+    expect(s.requests).toHaveLength(3);
     expect(await s.db.queryOne('SELECT rowstate, sync_seq FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({ rowstate: 'NEWER', sync_seq: 900 });
   });
 });

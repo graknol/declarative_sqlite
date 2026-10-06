@@ -11,6 +11,13 @@ export interface PullOptions {
   limit?: number;
   /** Safety valve against a server that always says `hasMore`. Default 100. */
   maxPages?: number;
+  /**
+   * Writes every pulled row, even one older (lower `seq`) than the device's copy.
+   * Off by default, for every `from`: an older row is normally a page that a push
+   * answer overtook. Turn it on with `from: 0` to repair a device after the
+   * server's sequence restarted (a database restore).
+   */
+  overwriteNewer?: boolean;
 }
 
 /** What one `pull()` call did: how many rows it wrote, how many pages it fetched, and where the cursor landed. */
@@ -70,8 +77,7 @@ export class PullService {
       });
       pages++;
       rows += page.rows.length;
-      // A from-zero re-read takes the server's word even for a lower seq (a restarted sequence).
-      await this.applier.applyPage(table, page, { ...(scope ? { scope } : {}), advanceCursor: true, ...(from === 0 ? { staleGuard: false } : {}) });
+      await this.applier.applyPage(table, page, { ...(scope ? { scope } : {}), advanceCursor: true, ...(options.overwriteNewer ? { staleGuard: false } : {}) });
       after = page.next;
       if (!page.hasMore || pages >= maxPages) break;
     }

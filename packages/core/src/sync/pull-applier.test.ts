@@ -180,7 +180,7 @@ describe('PullApplier', () => {
     expect(report).toMatchObject({ upserted: 1, skippedBySeq: 0 });
   });
 
-  it('a from-zero re-read (staleGuard: false) can take a lower seq, for a server whose sequence restarted', async () => {
+  it('staleGuard: false (overwriteNewer) can take a lower seq, for a server whose sequence restarted', async () => {
     const s = await setup();
     db = s.db;
     await s.applier.applyPage('c_work_task', page([{ id: 'A', seq: 900, removed: false, data: { WO_NO: 3188, C_QTY_INSTALLED: 5, ROWSTATE: 'OLD' } }], 900), { scope: { wo_no: 3188 } });
@@ -212,7 +212,7 @@ describe('PullApplier', () => {
     expect(await db.queryOne('SELECT rowstate, sync_seq FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({ rowstate: 'ACTIVE', sync_seq: 110 });
   });
 
-  it('a from-zero re-read (staleGuard: false) brings back a row behind a remembered tombstone', async () => {
+  it('staleGuard: false (overwriteNewer) brings back a row behind a remembered tombstone', async () => {
     const s = await setup();
     db = s.db;
     await s.applier.applyPage('c_work_task', page([{ id: 'A', seq: 900, removed: true, data: {} }], 900));
