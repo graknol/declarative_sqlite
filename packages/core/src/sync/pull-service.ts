@@ -70,7 +70,8 @@ export class PullService {
       });
       pages++;
       rows += page.rows.length;
-      await this.applier.applyPage(table, page, { ...(scope ? { scope } : {}), advanceCursor: true });
+      // A from-zero re-read takes the server's word even for a lower seq (a restarted sequence).
+      await this.applier.applyPage(table, page, { ...(scope ? { scope } : {}), advanceCursor: true, ...(from === 0 ? { staleGuard: false } : {}) });
       after = page.next;
       if (!page.hasMore || pages >= maxPages) break;
     }

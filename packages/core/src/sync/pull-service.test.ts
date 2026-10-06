@@ -9,12 +9,15 @@ import { Drafts } from './drafts';
 import { CursorStore } from './cursor-store';
 import { PullApplier } from './pull-applier';
 import { PullService } from './pull-service';
+import type { SyncTransport } from './transport';
+import type { PullRequest, RowsPage } from './wire';
 
 function testSchema() {
   const s = new SchemaBuilder();
   s.table('c_work_task', (t) => {
     t.real('wo_no');
     t.real('c_qty_installed');
+    t.text('rowstate');
   }).synced({ key: 'system_id', scope: ['wo_no'] });
   return s.build();
 }
@@ -114,5 +117,78 @@ describe('PullService', () => {
     const report = await s.pull.pull('c_work_task', { wo_no: 3188 }, { maxPages: 2 });
     expect(report.pages).toBe(2);
     expect(report.rows).toBe(2);
+  });
+});
+describe('PullService and a push answer that lands mid-pull', () => {
+  let db: Database | undefined;
+
+  afterEach(async () => {
+    await db?.close();
+    db = undefined;
+  });
+
+  /** A transport that serves scripted pages and runs `between` after reading page `n` but before returning it, as a push answer would land. */
+  async function scripted(pages: RowsPage[], between?: (pageIndex: number, applier: PullApplier) => Promise<void>) {
+    db = await Database.open({ schema: testSchema(), adapter: new MemoryAdapter() });
+    const writer = serverWriter(db, createServerWriteCapability());
+    const outbox = new Outbox(db, writer);
+    await outbox.load();
+    const cursors = new CursorStore(db);
+    const applier = new PullApplier(db, writer, outbox, new Drafts(db, outbox, writer), cursors);
+    const requests: PullRequest[] = [];
+    let served = 0;
+    const transport: SyncTransport = {
+      async pullRows(req) {
+        requests.push(req);
+        const pageIndex = served++;
+        const result = pages[pageIndex] ?? { table: 'C_WORK_TASK', rows: [], next: req.after, hasMore: false };
+        await between?.(pageIndex, applier);
+        return result;
+      },
+      push: () => Promise.reject(new Error('not used')),
+    };
+    return { db, applier, cursors, requests, pull: new PullService(transport, applier, cursors) };
+  }
+
+  const row = (id: string, seq: number, rowstate: string) => ({ id, seq, removed: false, data: { WO_NO: 3188, ROWSTATE: rowstate } });
+
+  it('keeps the push answer over the older copy in a later page of the same pull', async () => {
+    const s = await scripted(
+      [
+        { table: 'C_WORK_TASK', rows: [row('A', 10, 'PULLED')], next: 10, hasMore: true },
+        { table: 'C_WORK_TASK', rows: [row('B', 20, 'OLD'), row('C', 30, 'PULLED')], next: 30, hasMore: false },
+      ],
+      async (pageIndex, applier) => {
+        // Page 2 was read by the server before the push answer for B (seq 40) reached the device.
+        if (pageIndex === 1) await applier.applyRows('c_work_task', [row('B', 40, 'PUSHED')]);
+      },
+    );
+
+    const report = await s.pull.pull('c_work_task', { wo_no: 3188 });
+    expect(report).toMatchObject({ pages: 2, rows: 3, cursor: 30 });
+    expect(await s.db.query('SELECT system_id, rowstate FROM c_work_task ORDER BY system_id')).toEqual([
+      { system_id: 'A', rowstate: 'PULLED' }, { system_id: 'B', rowstate: 'PUSHED' }, { system_id: 'C', rowstate: 'PULLED' },
+    ]);
+  });
+
+  it('a from-zero re-read writes every row, even below the local seq', async () => {
+    const s = await scripted([{ table: 'C_WORK_TASK', rows: [row('A', 7, 'REREAD')], next: 7, hasMore: false }]);
+    await s.applier.applyRows('c_work_task', [row('A', 900, 'BEFORE_RESTORE')]);
+
+    await s.pull.pull('c_work_task', { wo_no: 3188 }, { from: 0 });
+    expect(await s.db.queryOne('SELECT rowstate, sync_seq FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({ rowstate: 'REREAD', sync_seq: 7 });
+  });
+
+  it('a cursor or window pull skips a row below the local seq', async () => {
+    const s = await scripted([
+      { table: 'C_WORK_TASK', rows: [row('A', 7, 'STALE')], next: 7, hasMore: false },
+      { table: 'C_WORK_TASK', rows: [row('A', 7, 'STALE')], next: 7, hasMore: false },
+    ]);
+    await s.applier.applyRows('c_work_task', [row('A', 900, 'NEWER')]);
+
+    await s.pull.pull('c_work_task', { wo_no: 3188 });
+    await s.pull.pull('c_work_task', { wo_no: 3188 }, { from: 'window' });
+    expect(s.requests).toHaveLength(2);
+    expect(await s.db.queryOne('SELECT rowstate, sync_seq FROM c_work_task WHERE system_id = ?', ['A'])).toEqual({ rowstate: 'NEWER', sync_seq: 900 });
   });
 });
